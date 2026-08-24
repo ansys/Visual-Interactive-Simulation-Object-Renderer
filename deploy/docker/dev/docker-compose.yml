@@ -1,0 +1,46 @@
+
+services:
+  backend:
+    container_name: visor-service-dev
+    build:
+      context: ../../..
+      dockerfile: deploy/docker/dev/Dockerfile
+    ports:
+      # Ports for visor server
+      - "53211:53211"
+      # Ports for visor trame server
+      - "8081:8081"
+      - "8082:8082"
+      - "8083:8083"
+      - "8084:8084"
+      - "8085:8085"
+      - "8086:8086"
+      # Ports for visor dash component
+      - "8050:8050"
+      - "8051:8051"
+      - "8052:8052"
+    environment:
+      - PYTHONPATH=/app/src
+    volumes:
+      - ../../..:/workspace
+      # Alternative if using the local_data_volume:
+      # - local_data_volume:/workspace
+
+
+# To customize the local directory being mounted in the container:
+# 1. Modify the `device` option in the `volumes` section below.
+#    Note: The path should be the absolute path to the directory
+# 2. Uncomment the volume definition below.
+# 3. Remove the line "- .:/workspace" under the "volumes" section of the
+#    `backend` service above and uncomment the alternative, "- local_data_volume:/workspace"
+
+
+# volumes:
+#   local_data_volume:
+#     driver: local
+#     driver_opts:
+#       type: none
+#       o: bind
+#       # On windows, set path using the WSL path format
+#       # e.g. for a Windows path like C:\ANSYSDev\NoBackup\example-data:
+#       device: /mnt/c/ANSYSDev/NoBackup/example-data

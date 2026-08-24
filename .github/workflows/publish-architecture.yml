@@ -1,0 +1,25 @@
+name: Publish Architecture
+
+on:
+  push:
+    branches:
+    - main
+    paths:
+    - 'developer-docs/architecture/**'
+jobs:
+  publish-structurizr:
+    runs-on: ['ansys-internal-arc-dind-rss']
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Publish Structurizr Workspace
+        uses: ansys-internal/actions/structurizr-cli-publish@v6
+        with:
+          workspace-id: '2'
+          api-key: '77e2981f-e7d6-47da-931f-61948abb3249'
+          api-secret: ${{ secrets.VISOR_STRUCTURIZR_ONPREM_API_SECRET }}
+          workspace-json: './developer_docs/architecture/workspace.json'
+          acr-endpoint: ${{ vars.IT_AKS_ACR_ENDPOINT }}
+          acr-username: ${{ vars.CI_TEMPLATES_ACR_USER }}
+          acr-token: ${{ secrets.CI_TEMPLATES_ACR_TOKEN }}

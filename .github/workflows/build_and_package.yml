@@ -1,0 +1,363 @@
+name: Build and Release Package
+
+on:
+  schedule: # UTC at 22:00 = 6pm EDT
+    - cron: '0 22 * * *'
+  pull_request:
+    branches:
+      - main
+  push:
+    tags:
+      - 'v*'
+    branches:
+      - main
+env:
+  MAIN_PYTHON_VERSION: "3.11"
+  POETRY_VERSION: "2.3.2"
+
+  # For Solutions private PyPI:
+  POETRY_HTTP_BASIC_SOLUTIONS_PRIVATE_PYPI_USERNAME: "PAT"
+  POETRY_HTTP_BASIC_SOLUTIONS_PRIVATE_PYPI_PASSWORD: ${{ secrets.SOLUTIONS_PRIVATE_PYPI_PASSWORD }}
+
+  # For PyAnsys private PyPI:
+  POETRY_HTTP_BASIC_PYANSYS_PRIVATE_PYPI_USERNAME: "PAT"
+  POETRY_HTTP_BASIC_PYANSYS_PRIVATE_PYPI_PASSWORD: ${{ secrets.SOLUTIONS_PRIVATE_PYPI_PASSWORD }}
+
+jobs:
+  update-changelog:
+    name: "Update CHANGELOG (on release)"
+    if: github.event_name == 'push' && contains(github.ref, 'refs/tags')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # Required to create the changelog on the release branch
+      pull-requests: write # Required to create on main the associated PR with the changelog
+    steps:
+      - uses: ansys/actions/doc-deploy-changelog@84b6533ae76f5dde69a1df26c18682160a8121cf # v10.3.5
+        with:
+          token: ${{ secrets.PYANSYS_CI_BOT_TOKEN }}
+          bot-user: ${{ secrets.PYANSYS_CI_BOT_USERNAME }}
+          bot-email: ${{ secrets.PYANSYS_CI_BOT_EMAIL }}
+
+  pre-commit:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.MAIN_PYTHON_VERSION }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v1
+        with:
+          node-version: '22.12.0'
+
+      - name: Install visor-client npm dependencies
+        working-directory: src/ansys/visor/visor-client
+        run: npm install
+
+      - name: Install dash npm dependencies
+        working-directory: src/ansys/visor/dash
+        run: npm install
+
+      - name: Install pre-commit
+        run: pip install pre-commit
+
+      - name: Run pre-commit
+        run: pre-commit run --all-files
+
+  build:
+    needs: [pre-commit, update-changelog]
+    if: >
+      always() &&
+      (needs.pre-commit.result == 'success' || needs.pre-commit.result == 'skipped') &&
+      (needs.update-changelog.result == 'success' || needs.update-changelog.result == 'skipped') &&
+      (github.event_name != 'schedule' || github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+    # Set up Python
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.MAIN_PYTHON_VERSION }}
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libx11-6 libxrender1 curl
+
+      - name: Install poetry
+        run: |
+          pip install poetry==${{ env.POETRY_VERSION }}
+          poetry --version
+
+      - name: Install dependencies for visor-setup
+        run: |
+          python -m venv .venv
+          poetry lock
+          poetry install --with setup --no-ansi --no-interaction
+
+      - name: Run python setup file
+        run: |
+          if [[ "${{ runner.os }}" == "Windows" ]]; then . .venv/Scripts/activate; fi
+          if [[ "${{ runner.os }}" == "Linux" ]]; then . .venv/bin/activate; fi
+          visor-setup
+
+    # Node.js package build
+      - name: Set up Node.js
+        uses: actions/setup-node@v1
+        with:
+          node-version: '22.12.0'
+
+      - name: Install visor-client npm dependencies
+        working-directory: src/ansys/visor/visor-client
+        run: npm install
+
+      - name: Build visor-client npm package
+        working-directory: src/ansys/visor/visor-client
+        run: npm run build
+
+      - name: Install dash npm dependencies
+        working-directory: src/ansys/visor/dash
+        run: npm install
+
+      - name: Build dash npm package
+        working-directory: src/ansys/visor/dash
+        run: |
+          poetry run npm run build
+
+      - name: Remove client_bundle from .gitignore
+        run: |
+          sed -i '/client_bundle\|dash\|GITIGNORE/d' .gitignore
+
+      - name: When on nightly build, append .dev0+date to version
+        # Run for nightly build only
+        if: |
+          (github.event_name == 'schedule' && github.ref == 'refs/heads/main')
+        run: |
+          DATE=$(date +%Y%m%d)
+          VERSION=$(poetry version -s)
+          poetry version "${VERSION}.dev0+${DATE}"
+
+      - name: Set package_version output
+        id: set_package_version
+        run: |
+          VERSION=$(poetry version -s)
+          echo "package_version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Create Python and NPM package via poetry
+        run: |
+          poetry build
+
+      - name: Install testing dependencies
+        run: |
+          poetry install --with dev --no-ansi --no-interaction
+          poetry run playwright install chromium
+          poetry run playwright install-deps chromium
+
+      # Install Xvfb and Mesa for headless OpenGL rendering (needed for VTK and similar libraries)
+      - name: Install Xvfb and Mesa
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb mesa-utils libgl1
+
+      # Start Xvfb on display :99 to provide a virtual X server for graphical tests
+      - name: Start Xvfb
+        run: |
+          Xvfb :99 -screen 0 1920x1080x24 &
+          echo "DISPLAY=:99" >> $GITHUB_ENV
+
+      - name: Run tests
+        continue-on-error: true
+        env:
+          DISPLAY: ":99"  # Use the virtual X server started by Xvfb
+          VTK_DEFAULT_RENDER_WINDOW_OFFSCREEN: "1"  # Force VTK to use offscreen rendering
+        run: |
+          set -o pipefail
+          mkdir -p tests/artifacts/smoke/screenshots
+          mkdir -p tests/artifacts/smoke/reports
+          poetry run pytest tests/e2e/smoke -m "not saf" \
+            --html=tests/artifacts/smoke/reports/smoke-tests.html \
+            --self-contained-html \
+            --junitxml=tests/artifacts/smoke/reports/smoke-junit.xml \
+            --verbose | tee tests/artifacts/smoke/reports/smoke-result.log
+
+      # Check for test failures in the log, so the workflow only fails if tests actually fail,
+      # not just because of X server errors at shutdown
+
+      - name: Check for test failures and errors
+        id: check_fail
+        env:
+          MISSING_XML_MODE: error
+          DETECT_ERRORS: "true"
+        run: |
+          bash .github/scripts/check_junit_results.sh \
+            "smoke:tests/artifacts/smoke/reports/smoke-junit.xml"
+
+      - name: Upload test logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs
+          path: tests/artifacts/smoke
+
+      # --- SAF smoke tests ---
+      # - name: Install SAF CLI
+      #   run: pip install ansys-saf-cli
+
+      # - name: Clone saf-visor-poc
+      #   uses: actions/checkout@v4
+      #   with:
+      #     repository: ansys-internal/saf-visor-poc
+      #     token: ${{ secrets.PYANSYS_CI_BOT_TOKEN }}
+      #     path: saf-visor-poc
+
+      # - name: Install saf-visor-poc dependencies
+      #   env:
+      #     POETRY_HTTP_BASIC_SOLUTIONS_PRIVATE_PYPI_USERNAME: ${{ secrets.SOLUTIONS_PRIVATE_PYPI_USERNAME }}
+      #     POETRY_HTTP_BASIC_SOLUTIONS_PRIVATE_PYPI_PASSWORD: ${{ secrets.SOLUTIONS_PRIVATE_PYPI_PASSWORD }}
+      #   working-directory: saf-visor-poc
+      #   run: |
+      #     poetry run saf install .
+
+      # - name: Run SAF smoke tests
+      #   continue-on-error: true
+      #   env:
+      #     DISPLAY: ":99"
+      #     VTK_DEFAULT_RENDER_WINDOW_OFFSCREEN: "1"
+      #   run: |
+      #     set -o pipefail
+      #     mkdir -p tests/artifacts/saf-smoke/reports
+      #     poetry run pytest tests/e2e/smoke/test_smoke_saf_visor.py \
+      #       --saf-project-dir "${{ github.workspace }}/saf-visor-poc" \
+      #       --html=tests/artifacts/saf-smoke/reports/saf-smoke-tests.html \
+      #       --self-contained-html \
+      #       --junitxml=tests/artifacts/saf-smoke/reports/saf-smoke-junit.xml \
+      #       --verbose \
+      #       | tee tests/artifacts/saf-smoke/reports/saf-smoke-result.log
+
+      # - name: Check SAF smoke test results
+      #   if: always()
+      #   id: check_saf
+      #   env:
+      #     MISSING_XML_MODE: error
+      #     DETECT_ERRORS: "true"
+      #   run: |
+      #     bash .github/scripts/check_junit_results.sh \
+      #       "saf-smoke:tests/artifacts/saf-smoke/reports/saf-smoke-junit.xml"
+
+      # - name: Upload SAF smoke test logs
+      #   if: always()
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: saf-smoke-logs
+      #     path: tests/artifacts/saf-smoke
+
+      - name: Upload Python package
+        uses: actions/upload-artifact@v4
+        with:
+          name: visor
+          path: dist/*.whl
+
+      - name: Release to Azure Solutions PyPI
+        if : (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
+        uses: ansys-internal/solution-applications-actions/release-to-private-pypi@v18
+        with:
+          python-version: ${{ env.MAIN_PYTHON_VERSION }}
+          twine-repository-url: https://pkgs.dev.azure.com/ansys-solutions/_packaging/ansys-solutions/pypi/upload/
+          twine-username: "TOKEN"
+          twine-password: ${{ secrets.SOLUTIONS_PRIVATE_PYPI_UPLOAD_TOKEN }}
+
+      - name: Release to Azure PyAnsys PyPI
+        if: |
+          (github.event_name == 'schedule' && github.ref == 'refs/heads/main') ||
+          (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
+        uses: ansys-internal/solution-applications-actions/release-to-private-pypi@v18
+        with:
+          python-version: ${{ env.MAIN_PYTHON_VERSION }}
+          twine-repository-url: https://pkgs.dev.azure.com/pyansys/_packaging/ansys-solutions/pypi/upload/
+          twine-username: "TOKEN"
+          twine-password: ${{ secrets.SOLUTIONS_PRIVATE_PYPI_ADMIN_TOKEN }}
+
+    outputs:
+      package_version: ${{ steps.set_package_version.outputs.package_version }}
+
+  sbom:
+    name: Generate and Publish SBOM
+    needs: build
+    if: |
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
+    uses: ansys-internal/saf-github-workflow-templates/.github/workflows/_sbom.yml@v4
+    with:
+      package_type: poetry
+      sbom-name: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && format('viewer-visor/{0}', github.ref_name) || 'viewer-visor' }}
+      publish: true
+    secrets: inherit
+
+  docker:
+    needs: build
+    if: |
+      always() &&
+      needs.build.result == 'success' &&
+      ((github.event_name == 'schedule' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')))
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set image name and tags
+        id: set_image_vars
+        run: |
+          VERSION="${{ needs.build.outputs.package_version }}"
+          SAFE_VERSION="${VERSION//+/_}"
+          if [[ "$SAFE_VERSION" =~ _beta\.dev0_[0-9]{8}$ ]]; then
+            IMAGE_NAME="visor_dev"
+          elif [[ "$SAFE_VERSION" =~ _beta$ ]]; then
+            IMAGE_NAME="visor_beta"
+          elif [[ "$SAFE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            IMAGE_NAME="visor"
+          else
+            IMAGE_NAME="visor_dev"
+          fi
+          echo "image_name=$IMAGE_NAME" >> $GITHUB_OUTPUT
+          echo "image_tags=ghcr.io/${{ github.repository_owner }}/$IMAGE_NAME:latest,ghcr.io/${{ github.repository_owner }}/$IMAGE_NAME:$SAFE_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Build and push release Docker image
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: deploy/docker/release/Dockerfile
+          push: true
+          tags: ${{ steps.set_image_vars.outputs.image_tags }}
+          build-args: |
+            PACKAGE_VERSION=${{ needs.build.outputs.package_version }}
+          secrets: |
+            PYANSYS_PYPI_PRIVATE_PAT=${{ secrets.PYANSYS_PYPI_PRIVATE_PAT }}
+
+      - name: Build and push dev Docker image
+        if: |
+          (github.event_name == 'schedule' && github.ref == 'refs/heads/main')
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: deploy/docker/dev/Dockerfile
+          push: true
+          tags: ${{ steps.set_image_vars.outputs.image_tags }}

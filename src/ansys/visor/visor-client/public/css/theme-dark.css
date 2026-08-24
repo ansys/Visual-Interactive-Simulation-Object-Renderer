@@ -1,0 +1,13 @@
+:root {
+    --theme-color-1: 28, 30, 35;
+    --theme-color-2: 34, 39, 45;
+    --theme-color-3: 42, 48, 55;
+    --theme-color-borders: 121, 121, 129;
+    --theme-color-text: 240, 240, 240;
+    --theme-color-selected-background: 42, 48, 55;
+    --theme-color-selected-text: 240, 240, 240;
+    /* Visor-specific settings below */
+    --visor-viewer-background: 54, 60, 67;
+    --visor-legend-overlay-opacity: 0.6;
+    --visor-legend-overlay-text-color: 255, 255, 255;
+}

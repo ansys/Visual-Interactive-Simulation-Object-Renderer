@@ -1,0 +1,123 @@
+name: Nightly Tests
+
+on:
+  schedule: # UTC at 22:00 = 6pm EDT
+    - cron: '0 23 * * *'
+  workflow_dispatch:
+
+env:
+  MAIN_PYTHON_VERSION: '3.11'
+
+
+jobs:
+  nightly_test:
+    name: Testing
+    if: |
+      (github.event_name == 'schedule' && github.ref == 'refs/heads/main') ||
+      github.event_name == 'workflow_dispatch'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ ubuntu-latest ]
+        python-version: ['3.11', '3.12', '3.13', '3.14']
+
+    steps:
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Checkout repository (for CI scripts)
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/scripts
+
+      - name: Pull nightly dev Docker image
+        run: docker pull ghcr.io/${{ github.repository_owner }}/visor_dev:latest
+
+      - name: Ensure artifacts directory exists
+        run: mkdir -p artifacts
+
+      - name: Run container and execute coverage tests
+        id: coverage_tests
+        continue-on-error: true
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}/artifacts:/results \
+            ghcr.io/${{ github.repository_owner }}/visor_dev:latest \
+            pytest --cov=src/ansys/visor/viewer tests\
+            --color=yes \
+            --cov-report=term \
+            --cov-report=html:/results/htmlcov \
+            --cov-report=xml:/results/coverage.xml
+
+      - name: Run container and execute regression tests
+        id: regression_tests
+        if: steps.coverage_tests.outcome == 'success'
+        continue-on-error: true
+        run: |
+          mkdir -p artifacts/regressions/screenshots
+          mkdir -p artifacts/regressions/reports
+          docker run --rm \
+            -v ${{ github.workspace }}/artifacts:/tests/artifacts \
+            ghcr.io/${{ github.repository_owner }}/visor_dev:latest \
+            bash -c "pytest tests/e2e/regressions --html=/tests/artifacts/regressions/reports/regressions-tests.html --self-contained-html --junitxml=/tests/artifacts/regressions/reports/regressions-junit.xml --verbose | tee /tests/artifacts/regressions/reports/regressions-result.log"
+
+
+      - name: Check for test failures and errors
+        if: always()
+        id: check_fail
+        env:
+          MISSING_XML_MODE: error
+          DETECT_ERRORS: "true"
+          COVERAGE_OUTCOME: ${{ steps.coverage_tests.outcome }}
+          REGRESSION_OUTCOME: ${{ steps.regression_tests.outcome }}
+        run: |
+          # If the coverage step failed, the regression step was skipped and
+          # no regression JUnit XML exists. Report the coverage failure
+          # directly instead of misreporting it as a missing regression result.
+          if [ "$COVERAGE_OUTCOME" != "success" ]; then
+            echo "::error::Coverage tests step did not succeed (outcome=$COVERAGE_OUTCOME). Regression tests were skipped."
+            {
+              echo "exit_code=2"
+              echo "failed_suites="
+              echo "errored_suites=coverage"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          bash .github/scripts/check_junit_results.sh \
+            "regression:artifacts/regressions/reports/regressions-junit.xml"
+
+      - name: Notify Teams on failure or error
+        if: always() && steps.check_fail.outputs.exit_code != '0'
+        uses: mikesprague/teams-incoming-webhook-action@v1
+        with:
+          github-token: ${{ github.token }}
+          webhook-url: ${{ secrets.MS_TEAMS_WEBHOOK_URL }}
+          title: >-
+            ${{ steps.check_fail.outputs.exit_code == '1' && '❌ Regression tests FAILED' ||
+                steps.check_fail.outputs.exit_code == '2' && '⚠️ Regression tests ERRORED' ||
+                '❌⚠️ Regression tests FAILED and ERRORED' }}
+          color: >-
+            ${{ steps.check_fail.outputs.exit_code == '2' && 'warning' || 'failure' }}
+          show-commit-message: true
+          message: |
+            **Workflow:** nightly-tests.yml
+            **Branch:** ${{ github.head_ref || github.ref_name }}
+            **Python:** ${{ matrix.python-version }}
+            **Failed suites:** ${{ steps.check_fail.outputs.failed_suites || 'none' }}
+            **Errored suites:** ${{ steps.check_fail.outputs.errored_suites || 'none' }}
+            **View run:** ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+            ${{ steps.check_fail.outputs.exit_code == '2' && '💡 *Errors indicate infrastructure issues (Docker crash, server timeout). This may not be a code problem — re-running the workflow may help.*' || '' }}
+        # This action sends an Adaptive Card to the configured Teams channel
+        # via the Incoming Webhook URL. [4](https://mikesprague.github.io/teams-incoming-webhook-action/)
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ github.job }}-py${{ matrix.python-version }}
+          path: artifacts

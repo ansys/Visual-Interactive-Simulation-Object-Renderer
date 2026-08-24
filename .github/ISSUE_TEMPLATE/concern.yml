@@ -1,0 +1,14 @@
+name: ⚠️ Concern
+description: Describe the concern here
+title: ""
+labels: ["concern"]
+assignees: [""]
+
+body:
+  - type: textarea
+    id: concern-description
+    attributes:
+      label: '⚠️ Description of the concern'
+      placeholder: Describe the concern and what should be done to resolve it, if possible.
+    validations:
+      required: true

@@ -1,0 +1,169 @@
+{
+  "ui": {
+    "darkTheme": null
+  },
+  "scene": {
+    "unit": "m",
+    "spectrumStates": {
+      "POINT::Normals::3": {
+        "id": "POINT::Normals::3",
+        "magnitudeRange": [
+          0.9999999680464912,
+          1.0000000418852286
+        ],
+        "ranges": [
+          [
+            -0.9987165331840515,
+            0.9987165331840515
+          ],
+          [
+            -0.9987165331840515,
+            0.9987165331840515
+          ],
+          [
+            -1,
+            1
+          ]
+        ]
+      },
+      "POINT::gradient_variable_0::1": {
+        "id": "POINT::gradient_variable_0::1",
+        "magnitudeRange": [
+          0,
+          1
+        ],
+        "ranges": [
+          [
+            0,
+            1
+          ]
+        ]
+      },
+      "POINT::constant_variable_1::1": {
+        "id": "POINT::constant_variable_1::1",
+        "magnitudeRange": [
+          1,
+          1
+        ],
+        "ranges": [
+          [
+            1,
+            1
+          ]
+        ]
+      },
+      "POINT::random_variable_2::1": {
+        "id": "POINT::random_variable_2::1",
+        "magnitudeRange": [
+          2.041605330305174e-05,
+          0.9999546408653259
+        ],
+        "ranges": [
+          [
+            2.041605330305174e-05,
+            0.9999546408653259
+          ]
+        ]
+      }
+    },
+    "datasetStates": {
+      "vtk_scene_sphere_l2_b3_r32_v3_c1_z3": {
+        "id": "8179120606148486",
+        "keyedByName": true,
+        "name": "vtk_scene_sphere_l2_b3_r32_v3_c1_z3",
+        "partStates": {
+          "level_1_block_0_part_0": {
+            "id": "3721921905183888",
+            "keyedByName": true,
+            "name": "level_1_block_0_part_0",
+            "opacity": 0.1111111111111111,
+            "visible": true,
+            "selected": false,
+            "spectrumId": "",
+            "spectrumComponent": -1
+          },
+          "level_1_block_0_part_1": {
+            "id": "7704132612406141",
+            "keyedByName": true,
+            "name": "level_1_block_0_part_1",
+            "opacity": 0.1111111111111111,
+            "visible": true,
+            "selected": false,
+            "spectrumId": "",
+            "spectrumComponent": -1
+          },
+          "level_1_block_0_part_2": {
+            "id": "6038438258649815",
+            "keyedByName": true,
+            "name": "level_1_block_0_part_2",
+            "opacity": 0.1111111111111111,
+            "visible": true,
+            "selected": false,
+            "spectrumId": "",
+            "spectrumComponent": -1
+          },
+          "level_1_block_1_part_0": {
+            "id": "5212416988329659",
+            "keyedByName": true,
+            "name": "level_1_block_1_part_0",
+            "opacity": 0.2222222222222222,
+            "visible": true,
+            "selected": false,
+            "spectrumId": "",
+            "spectrumComponent": -1
+          },
+          "level_1_block_1_part_1": {
+            "id": "3795994468691737",
+            "keyedByName": true,
+            "name": "level_1_block_1_part_1",
+            "opacity": 0.2222222222222222,
+            "visible": true,
+            "selected": false,
+            "spectrumId": "",
+            "spectrumComponent": -1
+          },
+          "level_1_block_1_part_2": {
+            "id": "2633610373980222",
+            "keyedByName": true,
+            "name": "level_1_block_1_part_2",
+            "opacity": 0.2222222222222222,
+            "visible": true,
+            "selected": false,
+            "spectrumId": "",
+            "spectrumComponent": -1
+          },
+          "level_1_block_2_part_0": {
+            "id": "1366333556315428",
+            "keyedByName": true,
+            "name": "level_1_block_2_part_0",
+            "opacity": 0.3333333333333333,
+            "visible": true,
+            "selected": false,
+            "spectrumId": "",
+            "spectrumComponent": -1
+          },
+          "level_1_block_2_part_1": {
+            "id": "1809875816089870",
+            "keyedByName": true,
+            "name": "level_1_block_2_part_1",
+            "opacity": 0.3333333333333333,
+            "visible": true,
+            "selected": false,
+            "spectrumId": "",
+            "spectrumComponent": -1
+          },
+          "level_1_block_2_part_2": {
+            "id": "4221596239203654",
+            "keyedByName": true,
+            "name": "level_1_block_2_part_2",
+            "opacity": 0.3333333333333333,
+            "visible": true,
+            "selected": false,
+            "spectrumId": "",
+            "spectrumComponent": -1
+          }
+        }
+      }
+    }
+  }
+}

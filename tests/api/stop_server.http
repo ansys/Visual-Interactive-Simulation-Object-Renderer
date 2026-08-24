@@ -1,0 +1,2 @@
+POST http://localhost:53211/stop
+Content-Type: application/json

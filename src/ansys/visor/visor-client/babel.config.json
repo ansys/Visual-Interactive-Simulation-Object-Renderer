@@ -1,0 +1,16 @@
+{
+    "presets": [
+        ["@babel/preset-env", {}],
+        [
+            "@babel/preset-react",
+            {
+                // "runtime": "automatic" ensures that we don't
+                // have to import "React" in every .tsx file that
+                // Jest analyzes.
+                // see https://stackoverflow.com/a/69834932
+                "runtime": "automatic"
+            }
+        ],
+        ["@babel/preset-typescript", {}]
+    ]
+}

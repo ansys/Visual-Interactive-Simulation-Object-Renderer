@@ -1,0 +1,75 @@
+name: Nightly Documentation Build
+
+on:
+  schedule: # UTC at 23:00 = 7pm EDT
+    - cron: '0 23 * * *'
+  workflow_dispatch:
+  push:
+    branches: ["main"]
+    tags: [ 'v*' ]
+
+env:
+  # Uncomment the following line to enable custom CNAME for documentation
+  # DOCUMENTATION_CNAME: 'visor.staging.local'
+  MAIN_PYTHON_VERSION: '3.11'
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  docs_build:
+    name: Build docs
+    runs-on: ubuntu-latest
+    steps:
+      # Install Xvfb and Mesa for headless OpenGL rendering (needed for VTK and similar libraries)
+      - name: Install Xvfb and Mesa
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb mesa-utils libgl1
+
+      # Start Xvfb on display :99 to provide a virtual X server for graphical tests
+      - name: Start Xvfb
+        run: |
+          Xvfb :99 -screen 0 1920x1080x24 &
+          echo "DISPLAY=:99" >> $GITHUB_ENV
+
+      # Run tests with DISPLAY=:99 (for Xvfb) and VTK_DEFAULT_RENDER_WINDOW_OFFSCREEN=1
+      # VTK_DEFAULT_RENDER_WINDOW_OFFSCREEN=1 ensures VTK uses offscreen rendering to avoid X errors
+      - name: Run Ansys documentation building action
+        uses: ansys/actions/doc-build@v10
+        env:
+          DISPLAY: ":99"  # Use the virtual X server started by Xvfb
+          VTK_DEFAULT_RENDER_WINDOW_OFFSCREEN: "1"  # Force VTK to use offscreen rendering
+        with:
+          python-version: ${{ env.MAIN_PYTHON_VERSION }}
+          check-links: false
+          sphinxopts: '-j auto'
+          optional-dependencies-name: ""
+          group-dependencies-name: "doc"
+
+  docs_upload:
+    needs: docs_build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy development documentation
+        uses: ansys/actions/doc-deploy-dev@v10
+        with:
+          # Uncomment the following line to enable custom CNAME for documentation
+          # cname: ${{ env.DOCUMENTATION_CNAME }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          bot-user: ${{ secrets.PYANSYS_CI_BOT_USERNAME }}
+          bot-email: ${{ secrets.PYANSYS_CI_BOT_EMAIL }}
+
+  docs_upload_stable:
+    if: startsWith(github.ref, 'refs/tags/') || startsWith(github.ref, 'refs/heads/release/')
+    needs: docs_build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy stable documentation
+        uses: ansys/actions/doc-deploy-stable@v10
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          bot-user: ${{ secrets.PYANSYS_CI_BOT_USERNAME }}
+          bot-email: ${{ secrets.PYANSYS_CI_BOT_EMAIL }}

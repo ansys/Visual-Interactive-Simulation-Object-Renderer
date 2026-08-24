@@ -1,0 +1,53 @@
+name: Docs Build (PR)
+# The documentation is built and deployed in the nightly-docs.yml workflow.
+# This workflow builds the documentation for pull requests to the main branch
+# to catch any issues building the documentation before merging.
+
+
+on:
+  pull_request:
+    branches:
+      - main
+
+
+env:
+  # Uncomment the following line to enable custom CNAME for documentation
+  # DOCUMENTATION_CNAME: 'visor.staging.local'
+  MAIN_PYTHON_VERSION: '3.11'
+
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+
+jobs:
+  docs_build:
+    name: Build docs
+    runs-on: ubuntu-latest
+    steps:
+      # Install Xvfb and Mesa for headless OpenGL rendering (needed for VTK and similar libraries)
+      - name: Install Xvfb and Mesa
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb mesa-utils libgl1
+
+      # Start Xvfb on display :99 to provide a virtual X server for graphical tests
+      - name: Start Xvfb
+        run: |
+          Xvfb :99 -screen 0 1920x1080x24 &
+          echo "DISPLAY=:99" >> $GITHUB_ENV
+
+      # Run tests with DISPLAY=:99 (for Xvfb) and VTK_DEFAULT_RENDER_WINDOW_OFFSCREEN=1
+      # VTK_DEFAULT_RENDER_WINDOW_OFFSCREEN=1 ensures VTK uses offscreen rendering to avoid X errors
+      - name: Run Ansys documentation building action
+        uses: ansys/actions/doc-build@v10
+        env:
+          DISPLAY: ":99"  # Use the virtual X server started by Xvfb
+          VTK_DEFAULT_RENDER_WINDOW_OFFSCREEN: "1"  # Force VTK to use offscreen rendering
+        with:
+          python-version: ${{ env.MAIN_PYTHON_VERSION }}
+          check-links: false
+          sphinxopts: '-j auto'
+          optional-dependencies-name: ""
+          group-dependencies-name: "doc"

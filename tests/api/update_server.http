@@ -1,0 +1,10 @@
+POST http://localhost:53211/update
+Content-Type: application/json
+
+{
+  "file_path": "tests/files/plate.vtp",
+  "metadata": {
+    "name": "Plate Asset",
+    "unit": "cm"
+  }
+}

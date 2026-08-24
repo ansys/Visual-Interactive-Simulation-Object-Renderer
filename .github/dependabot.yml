@@ -1,0 +1,130 @@
+version: 2
+
+registries:
+  github:
+    type: git
+    url: https://github.com
+    username: x-access-token
+    password: ${{ secrets.WORKFLOW_TOKEN }}
+
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    registries:
+      - github
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    labels:
+      - "maintenance"
+      - "dependencies"
+    commit-message:
+      prefix: "chore(actions):"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    labels:
+      - "maintenance"
+      - "dependencies"
+    commit-message:
+      prefix: "build(deps):"
+    groups:
+      python-dependencies:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "npm"
+    directory: "/src/ansys/visor/visor-client"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 3
+    labels:
+      - "maintenance"
+      - "dependencies"
+    commit-message:
+      prefix: "build(npm):"
+    groups:
+      visor-client:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "npm"
+    directory: "/src/ansys/visor/dash"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 3
+    labels:
+      - "maintenance"
+      - "dependencies"
+    commit-message:
+      prefix: "build(dash):"
+    groups:
+      dash:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "docker"
+    directory: "/deploy/docker/dev"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 2
+    labels:
+      - "maintenance"
+      - "dependencies"
+    commit-message:
+      prefix: "build(docker):"
+    groups:
+      docker-dev:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "docker"
+    directory: "/deploy/docker/fuji"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 2
+    labels:
+      - "maintenance"
+      - "dependencies"
+    commit-message:
+      prefix: "build(docker):"
+    groups:
+      docker-fuji:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "docker"
+    directory: "/deploy/docker/release"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 2
+    labels:
+      - "maintenance"
+      - "dependencies"
+    commit-message:
+      prefix: "build(docker):"
+    groups:
+      docker-release:
+        patterns:
+          - "*"
