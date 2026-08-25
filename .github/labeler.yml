@@ -1,0 +1,52 @@
+documentation:
+  - head-branch:
+      - '^doc([/-]|$)'
+  - changed-files:
+      - any-glob-to-any-file:
+          - doc/source/**/*
+          - README.md
+
+maintenance:
+  - head-branch:
+      - '^maint([/-]|$)'
+      - '^ci([/-]|$)'
+      - '^no-ci([/-]|$)'
+  - changed-files:
+      - any-glob-to-any-file:
+          - .github/**/*
+          - pyproject.toml
+          - .pre-commit-config.yaml
+
+added:
+  - head-branch:
+      - '^feat([/-]|$)'
+
+fixed:
+  - head-branch:
+      - '^fix([/-]|$)'
+      - '^patch([/-]|$)'
+
+test:
+  - head-branch:
+      - '^test([/-]|$)'
+      - '^testing([/-]|$)'
+  - changed-files:
+      - any-glob-to-any-file:
+          - tests/**
+
+dependencies:
+  - changed-files:
+      - any-glob-to-any-file:
+          - package.json
+          - package-lock.json
+          - yarn.lock
+          - pnpm-lock.yaml
+
+breaking:
+  - head-branch:
+      - '^breaking([/-]|$)'
+
+miscellaneous:
+  - head-branch:
+      - '^chore([/-]|$)'
+      - '^junk([/-]|$)'

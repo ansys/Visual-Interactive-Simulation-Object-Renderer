@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<VTKFile type="vtkMultiBlockDataSet" version="1.0" byte_order="LittleEndian" header_type="UInt32" compressor="vtkZLibDataCompressor">
+  <vtkMultiBlockDataSet>
+    <Block name="Block-00" index="0">
+      <Block name="Block-00" index="0">
+        <DataSet index="0" name="Block-00" file="plate/plate_0.vtp"/>
+        <DataSet index="1" name="Block-01" file="plate/plate_1.vtp"/>
+        <DataSet index="2" name="Block-02" file="plate/plate_2.vtp"/>
+        <DataSet index="3" name="Block-03" file="plate/plate_3.vtp"/>
+        <DataSet index="4" name="Block-04" file="plate/plate_4.vtp"/>
+        <DataSet index="5" name="Block-05" file="plate/plate_5.vtp"/>
+      </Block>
+    </Block>
+  </vtkMultiBlockDataSet>
+</VTKFile>

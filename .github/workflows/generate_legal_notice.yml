@@ -1,0 +1,164 @@
+# Collect Python + npm third-party license data, merge into one PDF, and publish as a
+# downloadable workflow artifact.
+#
+# Manual run: Actions → "Generate Legal Notice for Visor" → Run workflow.
+# Artifact: <PROJECT_NAME>_LEGAL_NOTICE[_<version>].pdf (download from the completed run).
+
+name: Generate Legal Notice for Visor
+
+on:
+  workflow_dispatch:
+    inputs:
+      project_name:
+        description: Project name used in the legal notice PDF filename
+        required: false
+        type: string
+        default: Visor
+      version:
+        description: Optional label appended to the artifact name (e.g. release version)
+        required: false
+        type: string
+      reference:
+        description: Branch, tag, or SHA to analyze (defaults to the commit that triggered the run)
+        required: false
+        type: string
+  workflow_call:
+    inputs:
+      project_name:
+        description: Project name used in the legal notice PDF filename
+        required: false
+        type: string
+        default: Visor
+      version:
+        description: Optional label appended to the artifact name
+        required: false
+        type: string
+      reference:
+        description: Branch, tag, or SHA to analyze
+        required: false
+        type: string
+
+jobs:
+  collect-py-licenses:
+    name: Collect Python dependency licenses
+    uses: ansys-internal/saf-github-workflow-templates/.github/workflows/_collect_python_dependencies.yml@v5
+    with:
+      repository: ${{ github.repository }}
+      reference: ${{ inputs.reference || github.sha }}
+      pyproject-parent-directory: .
+      direct-dependencies-only: false
+      template-ref: v5
+    secrets: inherit
+
+  collect-npm-visor-client:
+    name: Collect visor-client npm licenses
+    uses: ansys-internal/saf-github-workflow-templates/.github/workflows/_collect_npm_dependencies.yml@v5
+    with:
+      repository: ${{ github.repository }}
+      reference: ${{ inputs.reference || github.sha }}
+      package-json-parent-directory: src/ansys/visor/visor-client
+      packages-to-filter-out: '@tybys/wasm-util'
+      node-version: 20
+      template-ref: v5
+    secrets: inherit
+
+  # SGWT artifact name is still licenses_information_npm_visor — save before dash overwrites it.
+  stage-npm-visor-client:
+    name: Stage visor-client npm licenses
+    needs: collect-npm-visor-client
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v6
+        with:
+          name: licenses_information_npm_visor
+          path: npm-visor-client
+      - uses: actions/upload-artifact@v4
+        with:
+          name: npm-licenses-staging-visor-client
+          path: npm-visor-client
+          if-no-files-found: error
+
+  collect-npm-dash:
+    name: Collect dash npm licenses
+    needs: stage-npm-visor-client
+    uses: ansys-internal/saf-github-workflow-templates/.github/workflows/_collect_npm_dependencies.yml@v5
+    with:
+      repository: ${{ github.repository }}
+      reference: ${{ inputs.reference || github.sha }}
+      package-json-parent-directory: src/ansys/visor/dash
+      node-version: 20
+      template-ref: v5
+    secrets: inherit
+
+  stage-npm-dash:
+    name: Stage dash npm licenses
+    needs: collect-npm-dash
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v6
+        with:
+          name: licenses_information_npm_visor
+          path: npm-dash
+      - uses: actions/upload-artifact@v4
+        with:
+          name: npm-licenses-staging-visor-dash
+          path: npm-dash
+          if-no-files-found: error
+
+  merge-npm-licenses:
+    name: Merge npm licenses for PDF
+    needs:
+      - stage-npm-visor-client
+      - stage-npm-dash
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v6
+        with:
+          path: npm-staged
+          pattern: npm-licenses-staging-*
+          merge-multiple: true
+
+      - name: Merge npm_dependencies.json and license directories
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p merged/licenses_information merged/copyright_information
+          python3 <<'PY'
+          import json
+          from pathlib import Path
+
+          merged: dict = {}
+          for path in sorted(Path("npm-staged").rglob("npm_dependencies.json")):
+              with path.open(encoding="utf-8") as fh:
+                  data = json.load(fh)
+              if isinstance(data, dict):
+                  merged.update(data)
+              else:
+                  raise TypeError(f"Unexpected JSON in {path}: {type(data)}")
+
+          out = Path("merged/npm_dependencies.json")
+          out.write_text(json.dumps(merged, indent=2, sort_keys=True), encoding="utf-8")
+          print(f"Merged {len(merged)} npm packages into {out}")
+          PY
+          for dir_name in licenses_information copyright_information; do
+            find npm-staged -type d -name "$dir_name" | while read -r src_dir; do
+              cp -a "$src_dir/." "merged/$dir_name/"
+            done
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: licenses_information_npm_visor
+          path: merged
+          if-no-files-found: error
+
+  generate-pdf:
+    name: Generate legal notice PDF
+    needs:
+      - collect-py-licenses
+      - merge-npm-licenses
+    uses: ansys-internal/saf-github-workflow-templates/.github/workflows/_generate_legal_notice_pdf.yml@v5
+    with:
+      title: ${{ inputs.project_name }}
+      template-ref: v5
+    secrets: inherit

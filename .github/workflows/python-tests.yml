@@ -1,0 +1,261 @@
+# This workflow will install Python dependencies, run Python tests with the versions of Python
+# that are defined in python-version
+
+
+name: Visor Python Tests
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+permissions:
+  contents: read
+
+env:
+  POETRY_VERSION: '2.3.2'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      matrix:
+        python-version: ["3.11", '3.12', '3.13', '3.14']
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install Poetry
+        run: |
+          curl -sSL https://install.python-poetry.org | python3 - --version ${{ env.POETRY_VERSION }}
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Create venv
+        run: |
+          cd "$GITHUB_WORKSPACE"
+          python -m venv .venv
+
+      - name: Install dependencies
+        run: |
+          poetry install --no-interaction --no-ansi --with setup
+
+      - name: Run setup step
+        run: |
+          cd "$GITHUB_WORKSPACE"
+          poetry run visor-setup
+
+      - name: Build web module
+        run: |
+          cd "$GITHUB_WORKSPACE/src/ansys/visor/visor-client"
+          npm -i install
+          npm run build
+
+      - name: Other install dependencies
+        run: |
+          poetry install --no-interaction --no-ansi
+
+      - name: Install dash npm dependencies
+        working-directory: src/ansys/visor/dash
+        run: npm install
+
+      - name: Build dash npm package
+        working-directory: src/ansys/visor/dash
+        run: |
+          poetry run npm run build
+
+      - name: Run frontend unit tests (Jest)
+        continue-on-error: true
+        working-directory: src/ansys/visor/visor-client
+        env:
+          JEST_JUNIT_OUTPUT_DIR: ../../../../tests/artifacts/unit
+          JEST_JUNIT_OUTPUT_NAME: frontend-junit.xml
+        run: |
+          set -o pipefail
+          mkdir -p ../../../../tests/artifacts/unit
+          npx jest --ci --reporters=default --reporters=jest-junit --verbose 2>&1 | tee ../../../../tests/artifacts/unit/frontend-result.log
+
+# --- Install testing dependencies ---
+      - name: Install Playwright and browsers
+        run: |
+          poetry install --with dev --no-ansi --no-interaction
+          poetry run playwright install chromium
+          poetry run playwright install-deps chromium
+
+      # Install Xvfb and Mesa for headless OpenGL rendering (needed for VTK and similar libraries)
+      - name: Install Xvfb and Mesa
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb mesa-utils libgl1
+
+      # Start Xvfb on display :99 to provide a virtual X server for graphical tests
+      - name: Start Xvfb
+        run: |
+          Xvfb :99 -screen 0 1920x1080x24 &
+          echo "DISPLAY=:99" >> $GITHUB_ENV
+
+      - name: Collect test items
+        run: |
+          poetry run pytest tests --collect-only --verbose
+
+      # Run tests with DISPLAY=:99 (for Xvfb) and VTK_DEFAULT_RENDER_WINDOW_OFFSCREEN=1
+      # VTK_DEFAULT_RENDER_WINDOW_OFFSCREEN=1 ensures VTK uses offscreen rendering to avoid X errors
+      - name: Run Python unit tests
+        continue-on-error: true
+        env:
+          DISPLAY: ":99"  # Use the virtual X server started by Xvfb
+          VTK_DEFAULT_RENDER_WINDOW_OFFSCREEN: "1"  # Force VTK to use offscreen rendering
+        run: |
+          set -o pipefail  # Ensure the step fails if pytest fails, even with tee
+          mkdir -p tests/artifacts/unit
+          poetry run pytest ./tests/unit --html=tests/artifacts/unit/unit-tests.html --self-contained-html --junitxml=tests/artifacts/unit/unit-junit.xml --verbose | tee tests/artifacts/unit/unit-result.log
+
+      - name: Run Python integration tests
+        continue-on-error: true
+        env:
+          DISPLAY: ":99"  # Use the virtual X server started by Xvfb
+          VTK_DEFAULT_RENDER_WINDOW_OFFSCREEN: "1"  # Force VTK to use offscreen rendering
+        run: |
+          set -o pipefail  # Ensure the step fails if pytest fails, even with tee
+          mkdir -p tests/artifacts/integration
+          poetry run pytest ./tests/integration --html=tests/artifacts/integration/integration-tests.html --self-contained-html --junitxml=tests/artifacts/integration/integration-junit.xml --verbose | tee tests/artifacts/integration/integration-result.log
+
+
+      - name: Run Smoke tests
+        continue-on-error: true
+        env:
+          DISPLAY: ":99"  # Use the virtual X server started by Xvfb
+          VTK_DEFAULT_RENDER_WINDOW_OFFSCREEN: "1"  # Force VTK to use offscreen rendering
+        run: |
+          set -o pipefail
+          mkdir -p tests/artifacts/smoke/screenshots
+          mkdir -p tests/artifacts/smoke/reports
+          poetry run pytest tests/e2e/smoke -m "not saf" --html=tests/artifacts/smoke/reports/smoke-tests.html --self-contained-html --junitxml=tests/artifacts/smoke/reports/smoke-junit.xml --verbose | tee tests/artifacts/smoke/reports/smoke-result.log
+
+      # SAF-related steps temporarily disabled
+      # # saf-visor-poc currently only supports Python 3.11 and 3.12
+      # - name: Install SAF CLI
+      #   if: matrix.python-version == '3.11' || matrix.python-version == '3.12'
+      #   run: pip install ansys-saf-cli
+
+      # - name: Clone saf-visor-poc
+      #   if: matrix.python-version == '3.11' || matrix.python-version == '3.12'
+      #   uses: actions/checkout@v4
+      #   with:
+      #     repository: ansys-internal/saf-visor-poc
+      #     token: ${{ secrets.PYANSYS_CI_BOT_TOKEN }}
+      #     path: saf-visor-poc
+
+      # - name: Install saf-visor-poc dependencies
+      #   if: matrix.python-version == '3.11' || matrix.python-version == '3.12'
+      #   env:
+      #     POETRY_HTTP_BASIC_SOLUTIONS_PRIVATE_PYPI_USERNAME: ${{ secrets.SOLUTIONS_PRIVATE_PYPI_USERNAME }}
+      #     POETRY_HTTP_BASIC_SOLUTIONS_PRIVATE_PYPI_PASSWORD: ${{ secrets.SOLUTIONS_PRIVATE_PYPI_PASSWORD }}
+      #   working-directory: saf-visor-poc
+      #   run: poetry run saf install .
+
+      # - name: Run SAF smoke tests
+      #   if: matrix.python-version == '3.11' || matrix.python-version == '3.12'
+      #   continue-on-error: true
+      #   env:
+      #     DISPLAY: ":99"
+      #     VTK_DEFAULT_RENDER_WINDOW_OFFSCREEN: "1"
+      #   run: |
+      #     set -o pipefail
+      #     mkdir -p tests/artifacts/saf-smoke/reports
+      #     poetry run pytest tests/e2e/smoke/test_smoke_saf_visor.py \
+      #       --saf-project-dir "${{ github.workspace }}/saf-visor-poc" \
+      #       --html=tests/artifacts/saf-smoke/reports/saf-smoke-tests.html \
+      #       --self-contained-html \
+      #       --junitxml=tests/artifacts/saf-smoke/reports/saf-smoke-junit.xml \
+      #       --verbose \
+      #       | tee tests/artifacts/saf-smoke/reports/saf-smoke-result.log
+
+      - name: Run Regression tests
+        continue-on-error: true
+        env:
+          DISPLAY: ":99"  # Use the virtual X server started by Xvfb
+          VTK_DEFAULT_RENDER_WINDOW_OFFSCREEN: "1"  # Force VTK to use offscreen rendering
+        run: |
+          set -o pipefail
+          mkdir -p tests/artifacts/regressions/screenshots
+          mkdir -p tests/artifacts/regressions/reports
+          poetry run pytest tests/e2e/regressions \
+            --html=tests/artifacts/regressions/reports/regressions-tests.html \
+            --self-contained-html \
+            --junitxml=tests/artifacts/regressions/reports/regressions-junit.xml \
+            --verbose \
+            | tee tests/artifacts/regressions/reports/regressions-result.log
+
+      - name: Run notebook tests (nbval)
+        continue-on-error: true
+        env:
+          DISPLAY: ":99"  # Use the virtual X server started by Xvfb
+          VTK_DEFAULT_RENDER_WINDOW_OFFSCREEN: "1"  # Force VTK to use offscreen rendering
+        run: |
+          mkdir -p tests/artifacts/notebook
+          NOTEBOOK_PATH="tests/notebooks"
+
+          if [ -d "$NOTEBOOK_PATH" ]; then
+            echo "Running nbval on $NOTEBOOK_PATH ..."
+            poetry run pytest --nbval "$NOTEBOOK_PATH" --html=tests/artifacts/notebook/nbval-tests.html --self-contained-html --junitxml=tests/artifacts/notebook/notebook-junit.xml --verbose | tee tests/artifacts/notebook/nbval-result.log || true
+
+          else
+            echo "No '$NOTEBOOK_PATH' directory found; skipping nbval run." | tee tests/artifacts/notebook/nbval-result.log
+          fi
+
+      # Check for test failures in the log, so the workflow only fails if tests actually fail,
+      # not just because of X server errors at shutdown
+
+      - name: Check for test failures and errors
+        if: always()
+        id: check_results
+        env:
+          MISSING_XML_MODE: error
+          DETECT_ERRORS: "true"
+        run: |
+          bash .github/scripts/check_junit_results.sh \
+            "unit:tests/artifacts/unit/unit-junit.xml" \
+            "frontend-unit:tests/artifacts/unit/frontend-junit.xml" \
+            "integration:tests/artifacts/integration/integration-junit.xml" \
+            "smoke:tests/artifacts/smoke/reports/smoke-junit.xml" \
+            "regression:tests/artifacts/regressions/reports/regressions-junit.xml" \
+            "notebook:tests/artifacts/notebook/notebook-junit.xml"
+
+      # saf-smoke tests commented out temporarily. have to
+      # comment out this whole block or else CI/CD fails.
+      # - name: Check for test failures and errors
+      #   if: always()
+      #   id: check_results
+      #   env:
+      #     MISSING_XML_MODE: error
+      #     DETECT_ERRORS: "true"
+      #   run: |
+      #     saf-smoke XML only exists on Python versions that ran the SAF steps
+      #     SAF_SMOKE_ARG=""
+      #     if [ -f "tests/artifacts/saf-smoke/reports/saf-smoke-junit.xml" ]; then
+      #       SAF_SMOKE_ARG="saf-smoke:tests/artifacts/saf-smoke/reports/saf-smoke-junit.xml"
+      #     fi
+      #     bash .github/scripts/check_junit_results.sh \
+      #       "unit:tests/artifacts/unit/unit-junit.xml" \
+      #       "frontend-unit:tests/artifacts/unit/frontend-junit.xml" \
+      #       "integration:tests/artifacts/integration/integration-junit.xml" \
+      #       "smoke:tests/artifacts/smoke/reports/smoke-junit.xml" \
+      #       $SAF_SMOKE_ARG \
+      #       "regression:tests/artifacts/regressions/reports/regressions-junit.xml" \
+      #       "notebook:tests/artifacts/notebook/notebook-junit.xml"
+
+      - name: Upload test logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs-${{ github.job }}-py${{ matrix.python-version }}
+          path: tests/artifacts

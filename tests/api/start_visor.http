@@ -1,0 +1,11 @@
+POST http://localhost:53211/start
+Content-Type: application/json
+
+{
+  "file_path": "tests/files/many_blocks/many_blocks.vtm",
+  "metadata": {
+    "name": "Many Blocks Asset",
+    "unit": "m"
+  },
+  "timeout": 60
+}

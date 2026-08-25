@@ -1,0 +1,40 @@
+
+services:
+  backend:
+    container_name: visor-fuji
+    build:
+      context: ../../..
+      dockerfile: deploy/docker/fuji/Dockerfile
+      secrets:
+        - pypi_pat
+    ports:
+      - "53211:53211"
+      - "8081:8081"
+    environment:
+      - PYTHONPATH=/app/src
+    volumes:
+      - ../../..:/workspace
+      # Alternative if using the local_data_volume:
+      # - local_data_volume:/workspace
+
+secrets:
+  pypi_pat:
+    environment: SOLUTIONS_PYPI_PRIVATE_PAT
+
+# To customize the local directory being mounted in the container:
+# 1. Modify the `device` option in the `volumes` section below.
+#    Note: The path should be the absolute path to the directory
+# 2. Uncomment the volume definition below.
+# 3. Remove the line "- .:/workspace" under the "volumes" section of the
+#    `backend` service above and uncomment the alternative, "- local_data_volume:/workspace"
+
+
+# volumes:
+#   local_data_volume:
+#     driver: local
+#     driver_opts:
+#       type: none
+#       o: bind
+#       # On windows, set path using the WSL path format
+#       # e.g. for a Windows path like C:\ANSYSDev\NoBackup\example-data:
+#       device: /mnt/c/ANSYSDev/NoBackup/example-data

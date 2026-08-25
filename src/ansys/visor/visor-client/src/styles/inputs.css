@@ -1,0 +1,176 @@
+textarea,
+select,
+input,
+button {
+    font-family: inherit;
+    display: inline-block;
+    vertical-align: top;
+
+    &:not(select) {
+        line-height: 1;
+    }
+
+    &:disabled {
+        transform: none;
+        cursor: auto;
+    }
+
+    &:focus-visible {
+        outline-offset: -2px;
+        outline: rgba(105, 187, 255, 1) solid 4px;
+    }
+}
+
+button {
+    border-radius: 6px;
+    background-color: #4dabf5;
+    font-weight: bold;
+    padding: 10px;
+    text-align: center;
+    cursor: pointer;
+}
+
+input[type='color'],
+.color-input-height {
+    --height: 18px;
+    width: 100%;
+
+    &:is(input) {
+        cursor: pointer;
+        border-radius: 0;
+        height: var(--height);
+    }
+
+    &:not(input) {
+        min-height: var(--height);
+        line-height: var(--height);
+        display: block;
+    }
+}
+
+input[type='range'],
+.range-input-height {
+    --height: 18px;
+    width: 100%;
+
+    &:is(input) {
+        height: var(--height);
+    }
+
+    &:not(input) {
+        min-height: var(--height);
+        line-height: var(--height);
+        display: block;
+    }
+}
+
+textarea,
+input[type='text'],
+input[type='password'],
+.text-input-height {
+    /* the minimum line-height
+     * for text inputs is 1.125 */
+    --line-height: 1.125;
+    --font-size: 16px;
+    --padding: 4px;
+    --border-width: 1px;
+
+    &:is(textarea, input) {
+        line-height: var(--line-height);
+        font-size: var(--font-size);
+        padding: var(--padding);
+        border-width: var(--border-width);
+        border-radius: 3px;
+        width: 100%;
+        -webkit-appearance: none;
+        overflow-x: clip;
+        overflow-y: auto;
+        background-color: #ffffff;
+        border-color: rgba(0, 0, 0, 0.35);
+        text-align: left;
+        color: #000000;
+
+        &:is(textarea) {
+            min-height: 7em;
+            resize: none;
+            white-space: pre-wrap;
+            overflow-wrap: break-word;
+            word-wrap: break-word;
+            word-break: break-word;
+        }
+
+        &:not(:read-only) {
+            background-image: linear-gradient(
+                to bottom,
+                rgba(0, 0, 0, 0.15) 0,
+                rgba(0, 0, 0, 0) 10px
+            );
+        }
+
+        &:nth-child(n) {
+            font-family: Arial, monospace;
+        }
+    }
+
+    &:not(textarea, input) {
+        min-height: calc(
+            (var(--font-size) * var(--line-height)) + (var(--padding) * 2) +
+                (var(--border-width) * 2)
+        );
+        line-height: calc(
+            (var(--font-size) * var(--line-height)) + (var(--padding) * 2) +
+                (var(--border-width) * 2)
+        );
+        display: block;
+    }
+}
+
+select,
+.select-input-height {
+    --line-height: 20px;
+    --font-size: 12px;
+    --border-width: 1px;
+    --select-input-height: calc(var(--line-height) + (var(--border-width) * 2));
+
+    &:is(select) {
+        line-height: var(--line-height);
+        border-width: var(--border-width);
+        font-size: var(--font-size);
+        -webkit-appearance: none;
+        border-style: solid;
+        overflow: hidden;
+        width: auto;
+        min-width: max(100%, var(--select-input-height));
+        text-align: left;
+        border-radius: 4px;
+        border-color: rgba(0, 0, 0, 0.35);
+        background-color: revert;
+        color: #000000;
+        background-size:
+            auto,
+            100% 100%;
+        background-position:
+            right center,
+            top left;
+        background-repeat: no-repeat, repeat;
+
+        &:enabled {
+            padding: 0 26px 0 5px;
+            cursor: pointer;
+            background-image:
+                url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="21" height="10" viewBox="0 0 21 10"><polygon style="fill:rgb(0,0,0);" points="0 2,2 0,8 6,14 0,16 2,8 10"/></svg>'),
+                url('data:image/gif;base64,R0lGODlhAQABAIABAP///wAAACwAAAAAAQABAAACAkQBADs=');
+        }
+
+        &:disabled {
+            padding: 0 5px 0 5px;
+            background-image: url('data:image/gif;base64,R0lGODlhAQABAIABAP///wAAACwAAAAAAQABAAACAkQBADs=');
+        }
+    }
+
+    &:not(select) {
+        min-height: var(--select-input-height);
+        line-height: var(--select-input-height);
+        display: block;
+    }
+}

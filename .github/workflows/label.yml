@@ -1,0 +1,105 @@
+name: Labeler
+
+on:
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - edited
+      - labeled
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+
+  labeler:
+    name: Set labels
+    permissions:
+      contents: read
+      pull-requests: write
+    runs-on: ubuntu-latest
+
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      REPO: ${{ github.repository }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Apply labels based on .github/labeler.yml (if present)
+      - name: Label based on changed files
+        uses: actions/labeler@v5
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          sync-labels: true
+
+      # Label documentation branches
+      - name: Label documentation
+        if: |
+          startsWith(github.event.pull_request.head.ref, 'doc') ||
+          startsWith(github.event.pull_request.head.ref, 'docs')
+        run: gh pr edit "$PR_NUMBER" --add-label "documentation" --repo "$REPO"
+
+      # Label maintenance branches
+      - name: Label maintenance
+        if: |
+          startsWith(github.event.pull_request.head.ref, 'maint') ||
+          startsWith(github.event.pull_request.head.ref, 'ci')
+        run: gh pr edit "$PR_NUMBER" --add-label "maintenance" --repo "$REPO"
+
+      # Label feature branches
+      - name: Label enhancement
+        if: startsWith(github.event.pull_request.head.ref, 'feat')
+        run: gh pr edit "$PR_NUMBER" --add-label "enhancement" --repo "$REPO"
+
+      # Label bug fixes
+      - name: Label bug
+        if: |
+          startsWith(github.event.pull_request.head.ref, 'fix') ||
+          startsWith(github.event.pull_request.head.ref, 'patch')
+        run: gh pr edit "$PR_NUMBER" --add-label "bug" --repo "$REPO"
+
+  commenter:
+    name: Suggest labels
+    needs: labeler
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Suggest labels
+        if: toJSON(github.event.pull_request.labels.*.name) == '{}'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          gh pr comment "$PR_NUMBER" \
+            --repo "$REPOSITORY" \
+            --body "Please add one of these labels so the changelog can be generated: **bug**, **enhancement**, **documentation**, **maintenance**, **dependencies**, **breaking**, **test**, or **miscellaneous**."
+
+  changelog-fragment:
+    name: "Create changelog fragment"
+    needs: [labeler]
+    permissions:
+      contents: write # Required to create changelog fragment
+      pull-requests: write # Required to create changelog fragment
+    runs-on: ubuntu-latest
+    steps:
+      - uses: ansys/actions/doc-changelog@84b6533ae76f5dde69a1df26c18682160a8121cf # v10.3.5
+        with:
+          token: ${{ secrets.PYANSYS_CI_BOT_TOKEN }}
+          use-pull-request-title: true
+          use-default-towncrier-config: true
+          bot-user: ${{ secrets.PYANSYS_CI_BOT_USERNAME }}
+          bot-email: ${{ secrets.PYANSYS_CI_BOT_EMAIL }}

@@ -1,0 +1,96 @@
+repos:
+  - repo: https://github.com/adamchainz/blacken-docs
+    rev: 1.20.0
+    hooks:
+      - id: blacken-docs
+        additional_dependencies: [black==23.12.1]
+
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.4.2
+    hooks:
+      - id: codespell
+        args:
+          - --ignore-words
+          - doc/styles/Vocab/ANSYS/accept.txt
+        exclude: |
+          (?x)^(
+            .*\.vtp$|
+            .*package-lock\.json$|
+            poetry\.lock$|
+            doc/styles/Vocab/ANSYS/accept\.txt
+          )$
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-merge-conflict
+      - id: debug-statements
+      - id: check-yaml
+      - id: trailing-whitespace
+        exclude: ^.*\.(ipynb|svg)$
+
+  # - repo: https://github.com/ansys/pre-commit-hooks
+  #   rev: v0.7.2
+  #   hooks:
+  #     - id: add-license-headers
+  #       files: '^(src|examples|tests)/.*\.(py|proto)$'
+  #       args:
+  #         - --start_year=2024
+
+  # Validate GitHub workflow files
+  - repo: https://github.com/python-jsonschema/check-jsonschema
+    rev: 0.37.2
+    hooks:
+      - id: check-github-workflows
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.16
+    hooks:
+      - id: ruff
+        args: [--fix]
+
+  - repo: local
+    hooks:
+      # -- visor-client (TypeScript / React / Vite) --
+      - id: visor-client-eslint
+        name: visor-client eslint
+        entry: npm --prefix src/ansys/visor/visor-client run lint
+        language: system
+        pass_filenames: false
+        files: ^src/ansys/visor/visor-client/.*\.(js|ts|tsx)$
+
+      - id: visor-client-prettier
+        name: visor-client prettier
+        entry: npm --prefix src/ansys/visor/visor-client run format:check
+        language: system
+        pass_filenames: false
+        files: ^src/ansys/visor/visor-client/.*\.(js|ts|tsx|css|json)$
+
+      # -- dash (plain JS / React / Webpack) --
+      - id: dash-eslint
+        name: dash eslint
+        entry: npm --prefix src/ansys/visor/dash run lint
+        language: system
+        pass_filenames: false
+        files: ^src/ansys/visor/dash/src/.*\.(js|jsx)$
+
+      - id: dash-prettier
+        name: dash prettier
+        entry: npm --prefix src/ansys/visor/dash run format:check
+        language: system
+        pass_filenames: false
+        files: ^src/ansys/visor/dash/src/.*\.(js|jsx|css|json)$
+
+# Exclude generated / vendored / build artifacts
+exclude: |
+  (?x)^(
+    node_modules/.*|
+    .*dist/.*|
+    .*build/.*|
+    .*\.wasm$|
+    .*\.min\.js$|
+    src/ansys/visor/dash/.*/deps/.*|
+    src/ansys/visor/dash/.*/inst/deps/.*|
+    tests/files/.*|
+    examples/assets/.*
+  )$
