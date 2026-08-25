@@ -78,6 +78,10 @@ jobs:
       (needs.update-changelog.result == 'success' || needs.update-changelog.result == 'skipped') &&
       (github.event_name != 'schedule' || github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write # Required for PyPI trusted publisher authentication (OIDC)
+      attestations: write # Required by pypa/gh-action-pypi-publish (>=v1.11)
+      contents: write # Needed to download release artifacts
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -276,6 +280,15 @@ jobs:
           twine-repository-url: https://pkgs.dev.azure.com/ansys-solutions/_packaging/ansys-solutions/pypi/upload/
           twine-username: "TOKEN"
           twine-password: ${{ secrets.SOLUTIONS_PRIVATE_PYPI_UPLOAD_TOKEN }}
+
+      - name: "Upload artifacts to PyPI"
+        if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
+        uses: pypa/gh-action-pypi-publish@ba38be9e461d3875417946c167d0b5f3d385a247 # v1.14.1
+        with:
+          repository-url: "https://upload.pypi.org/legacy/"
+          print-hash: true
+          packages-dir: ${{ env.PACKAGE_NAME }}-artifacts
+          skip-existing: false
 
     outputs:
       package_version: ${{ steps.set_package_version.outputs.package_version }}
