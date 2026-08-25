@@ -43,7 +43,7 @@ def test_update_variables(visor_server, request):
     updates the variable values to constant values, and verifies the update took place.
 
     Test replicates example in documentation:
-    https://vigilant-lamp-162kw9z.pages.github.io/version/stable/examples/03-updating-theia-scene
+    https://supreme-fiesta-v6v17mm.pages.github.io/version/dev/examples/03-updating-visor-scene
     """
 
     visor = visor_server

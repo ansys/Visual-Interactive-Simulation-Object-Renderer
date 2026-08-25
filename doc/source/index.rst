@@ -36,7 +36,7 @@ You can use VISOR to integrate with the following tools:
 You run VISOR with VTK (Visual Toolkit) rendering through Trame for client-server architecture and Python
 integration workflows. You target VTK WASM with WebGL support.
 
-View a `demo <https://theia.dev.ansysapis.com/index.html>`_ to see VISOR in action.
+View a `demo <https://visor.dev.ansysapis.com/index.html>`_ to see VISOR in action.
 
 .. grid:: 2
   :gutter: 4
