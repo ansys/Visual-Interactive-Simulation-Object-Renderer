@@ -14,7 +14,7 @@ on:
 env:
   MAIN_PYTHON_VERSION: "3.11"
   POETRY_VERSION: "2.3.2"
-  PACKAGE_NAME: "VISOR"
+  PROJECT_NAME: "VISOR"
 
   # For Solutions private PyPI:
   POETRY_HTTP_BASIC_SOLUTIONS_PRIVATE_PYPI_USERNAME: "PAT"
@@ -78,8 +78,6 @@ jobs:
       (needs.update-changelog.result == 'success' || needs.update-changelog.result == 'skipped') &&
       (github.event_name != 'schedule' || github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
-    permissions:
-      id-token: write # Required for PyPI trusted publisher authentication
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -269,9 +267,7 @@ jobs:
           path: dist/*.whl
 
       - name: Release to Azure Solutions PyPI
-        if: |
-          (github.event_name == 'schedule' && github.ref == 'refs/heads/main') ||
-          (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
+        if : (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
         uses: ansys-internal/solution-applications-actions/release-to-private-pypi@v18
         with:
           python-version: ${{ env.MAIN_PYTHON_VERSION }}
@@ -279,14 +275,16 @@ jobs:
           twine-username: "TOKEN"
           twine-password: ${{ secrets.SOLUTIONS_PRIVATE_PYPI_UPLOAD_TOKEN }}
 
-      - name: "Upload artifacts to PyPI"
-        if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
-        uses: pypa/gh-action-pypi-publish@ba38be9e461d3875417946c167d0b5f3d385a247 # v1.14.1
+      - name: Release to Azure PyAnsys PyPI
+        if: |
+          (github.event_name == 'schedule' && github.ref == 'refs/heads/main') ||
+          (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
+        uses: ansys-internal/solution-applications-actions/release-to-private-pypi@v18
         with:
-          repository-url: "https://upload.pypi.org/legacy/"
-          print-hash: true
-          packages-dir: ${{ env.PACKAGE_NAME }}-artifacts
-          skip-existing: false
+          python-version: ${{ env.MAIN_PYTHON_VERSION }}
+          twine-repository-url: https://pkgs.dev.azure.com/pyansys/_packaging/ansys-solutions/pypi/upload/
+          twine-username: "TOKEN"
+          twine-password: ${{ secrets.SOLUTIONS_PRIVATE_PYPI_ADMIN_TOKEN }}
 
     outputs:
       package_version: ${{ steps.set_package_version.outputs.package_version }}
