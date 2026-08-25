@@ -78,8 +78,6 @@ jobs:
       (needs.update-changelog.result == 'success' || needs.update-changelog.result == 'skipped') &&
       (github.event_name != 'schedule' || github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
-    permissions:
-      id-token: write # Required for PyPI trusted publisher authentication
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
