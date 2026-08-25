@@ -149,7 +149,7 @@ Only the initial opacity is supported as a per-part property.
 Reference
 ~~~~~~~~~
 
-Reference: ``Metadata`` class (`source code <https://github.com/ansys-internal/theia/blob/main/src/ansys/theia/viewer/core/metadata.py>`_).
+Reference: ``Metadata`` class (`source code <https://github.com/ansys/visor/blob/main/src/ansys/visor/viewer/core/metadata.py>`_).
 
 .. literalinclude:: ../../../../src/ansys/visor/viewer/core/metadata.py
    :pyobject: Metadata

@@ -45,7 +45,7 @@ Settings defaults
 =================
 
 You can use a ``.visor`` file to override the following default values from the
-`Settings class <https://github.com/ansys-internal/theia/blob/707770cf39101281b16cfaa58ab1bee2aa1cebe2/src/ansys/theia/viewer/config.py>`_:
+`Settings class <https://github.com/ansys/visor/blob/main/src/ansys/visor/viewer/config.py>`_:
 
 .. code-block:: yaml
 

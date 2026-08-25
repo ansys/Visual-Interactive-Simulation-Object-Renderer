@@ -73,9 +73,9 @@ Visor documentation.
 * **Standalone Python**
 
    * Launch a desktop Visor app with the Python package ``ansys.visor.viewer`` to visualize files.
-   * See `Visor Python API <https://vigilant-lamp-162kw9z.pages.github.io/version/dev/user_guide/launching_theia/theia_python_api.html>`_
+   * See `Visor Python API <https://supreme-fiesta-v6v17mm.pages.github.io/version/dev/user_guide/launching_visor/visor_python_api.html>`_
      for API usage examples.
-   * See `API reference <https://vigilant-lamp-162kw9z.pages.github.io/version/dev/python_api_reference.html>`_
+   * See `API reference <https://supreme-fiesta-v6v17mm.pages.github.io/version/dev/python_api_reference.html>`_
      for details about the Python API.
 
 * **Visor HTTP service**
@@ -83,20 +83,20 @@ Visor documentation.
    * Manage multiple Visor instances through the Visor HTTP API.
    * Integrate with `PIM (Product Instance Management) <https://github.com/ansys/ansys-api-platform-instancemanagement>`_
      to manage Visor instances in SAF apps.
-   * See `Visor HTTP service <https://vigilant-lamp-162kw9z.pages.github.io/version/dev/user_guide/launching_theia/theia_service.html>`_
+   * See `Visor HTTP service <https://supreme-fiesta-v6v17mm.pages.github.io/version/dev/user_guide/launching_visor/visor_service.html>`_
      for usage examples.
-   * See `HTTP API reference <https://vigilant-lamp-162kw9z.pages.github.io/version/dev/http_api_reference/index.html>`_
+   * See `HTTP API reference <https://supreme-fiesta-v6v17mm.pages.github.io/version/dev/http_api_reference/index.html>`_
      for API details.
 
 * **Dash frontend app**
 
    * Connect to a Visor instance from a Dash app with the Visor Dash component in
      ``ansys.visor.dash.dash_visor_viewer``.
-   * See `Visor Dash component <https://vigilant-lamp-162kw9z.pages.github.io/version/dev/user_guide/launching_theia/theia_dash_component.html>`_
+   * See `Visor Dash component <https://supreme-fiesta-v6v17mm.pages.github.io/version/dev/user_guide/launching_visor/visor_dash_component.html>`_
      for details.
 
 For advanced usage and configuration options, see the following Visor documentation:
 
-`User guide <https://vigilant-lamp-162kw9z.pages.github.io/version/dev/user_guide/index.html>`_ and
-`Examples <https://vigilant-lamp-162kw9z.pages.github.io/version/dev/examples/index.html>`_ in the
+`User guide <https://supreme-fiesta-v6v17mm.pages.github.io/version/dev/user_guide/index.html>`_ and
+`Examples <https://supreme-fiesta-v6v17mm.pages.github.io/version/dev/examples/index.html>`_ in the
 Visor sections.

@@ -224,7 +224,8 @@ diverge as requirements evolve.
 
 Note that as this will also require schema changes to the runtime data transfer object (DTO) that is sent from the
 backend to the frontend to initialize or update the viewer state.  There is a
-[separate ADR](https://github.com/ansys-internal/theia/blob/doc/adr-scene-description-1/developer_docs/adrs/13-scene-details.md) to align on this schema.  (This ADR will be updated to reflect the final results of that discussion
+[separate ADR](https://github.com/ansys/visor/blob/main/doc/developer_docs/adrs/13-scene-details.md) to align on this
+schema.  (This ADR will be updated to reflect the final results of that discussion
 once it is finalized.)
 
 ![VISOR State Model Diagram](../images/visor-state-model.png)
@@ -266,7 +267,7 @@ At the time the save/load state feature was started, the state representation fo
 to the per-part dataset state (opacity only).
 
 For the runtime state at the client/server boundary, we maintain the schema definition in a
-[separate ADR](https://github.com/ansys-internal/theia/blob/doc/adr-scene-description-1/developer_docs/adrs/13-scene-details.md).
+[separate ADR](https://github.com/ansys/visor/blob/main/doc/developer_docs/adrs/13-scene-details.md).
 This schema is intended to evolve as we expand the state representation to include all components required to
 capture the viewer state for the save/load feature.
 
