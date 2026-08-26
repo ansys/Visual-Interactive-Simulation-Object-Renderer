@@ -9,9 +9,9 @@ In order to make use of AWC fonts and icons without installing the entire AWC Re
 - The default AWC UI font (Source Sans 3) and its corresponding CSS font-family stack
 - AWC icon SVGs
 
-Lastly, due to the large number of AWC icon SVG files, there was a need for automating the creation of a JavaScript AWC icon library based on a given list of icon names. This automation resulted in the `awc-icon-generator.html` file found in the Visor repository.
+Lastly, due to the large number of AWC icon SVG files, there was a need for automating the creation of a JavaScript AWC icon library based on a given list of icon names. This automation resulted in the `awc-icon-generator.html` file found in the VISOR repository.
 
-The following sections elaborate on obtaining the AWC font and its font stack, as well as the design behind the `awc-icon-generator.html` file found in the Visor repository.
+The following sections elaborate on obtaining the AWC font and its font stack, as well as the design behind the `awc-icon-generator.html` file found in the VISOR repository.
 
 ## Default AWC UI Font
 
@@ -78,6 +78,6 @@ Traditionally, when websites used icon packs, the website would deploy a single 
 
 Since we wanted to use these AWC icons without installing the AWC package, we needed to download all the SVGs and serve them locally. This way, if the icon URLs became obsolete, it would not affect our application.
 
-Visor inserts AWC icons into React components (or anywhere in JavaScript for that matter) by making use of a dynamically-created `AwcIcons.js` file. This JavaScript library is created by the `awc-icon-generator.html` page, which can actually be run independent of Visor.
+VISOR inserts AWC icons into React components (or anywhere in JavaScript for that matter) by making use of a dynamically-created `AwcIcons.js` file. This JavaScript library is created by the `awc-icon-generator.html` page, which can actually be run independent of VISOR.
 
 The `awc-icon-generator.html` page generates JavaScript inside a &lt;textarea&gt; input, that can be copy-pasted into the `AwcIcons.js` file any time AWC updates its icon collection.
