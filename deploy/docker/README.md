@@ -1,6 +1,6 @@
-# Running Visor in a Docker Container
+# Running VISOR in a Docker Container
 
-The Visor project contains Docker configurations for both development and release environments.
+The VISOR project contains Docker configurations for both development and release environments.
 
 For each environment, there is a Dockerfile and docker-compose.yml to enable containerizing the FastAPI service,
 including its frontend and backend. The Docker configurations are located in the `deploy/docker/dev` directory for development
@@ -60,7 +60,7 @@ Docker compose uses the `docker-compose.yml` file to build and run the container
 which simplifies the process by managing the configuration and dependencies in a
 single file.
 
-The docker-compose.yml file is located in the root of the Visor project directory.
+The docker-compose.yml file is located in the root of the VISOR project directory.
 
 #### i. Build the image and run the container
 

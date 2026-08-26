@@ -1,5 +1,5 @@
 
-Visor
+VISOR
 =====
 
 |pyansys|
@@ -16,15 +16,15 @@ Demo
 ----
 
 You can view a `demo <https://visor.dev.ansysapis.com/index.html>`_ of
-Visor to see it in action.
+VISOR to see it in action.
 
 
 Overview
 --------
 
-Visor is a Python-based 3D visualization web component.
+VISOR is a Python-based 3D visualization web component.
 
-You can use Visor to integrate with the following tools:
+You can use VISOR to integrate with the following tools:
 
 * `SAF (Solution Application Framework) <https://upgraded-carnival-wn6lkym.pages.github.io>`_
   to provide 3D visualization capabilities.
@@ -33,20 +33,20 @@ You can use Visor to integrate with the following tools:
 * `PyAnsys Visualization Interface Tool <https://visualization-interface.tools.docs.pyansys.com/>`_
   to connect PyAnsys libraries to different plotting backends.
 
-You can use Visor for 3D visualization on desktop and on premises. Visor customizes existing
+You can use VISOR for 3D visualization on desktop and on premises. VISOR customizes existing
 rendering frameworks to meet functional and nonfunctional requirements, including integrability,
 scalability, performance, and usability for solution apps.
 
-You run Visor with VTK (Visual Toolkit) rendering and Trame to support a client-server architecture and Python integration
+You run VISOR with VTK (Visual Toolkit) rendering and Trame to support a client-server architecture and Python integration
 workflows. You target VTK WASM with WebGL because WebGPU support is not yet available.
 
 
 Installation
 ------------
 
-To set up prerequisites and install Visor, see
+To set up prerequisites and install VISOR, see
 `Getting started <https://vigilant-lamp-162kw9z.pages.github.io/version/dev/getting_started/index.html>`_
-in the Visor documentation.
+in the VISOR documentation.
 
 
 Quick start
@@ -54,49 +54,49 @@ Quick start
 
 For a basic usage example, see
 `Quick start <https://vigilant-lamp-162kw9z.pages.github.io/version/dev/getting_started/quick_start.html>`_
-in the Visor documentation.
+in the VISOR documentation.
 
 
 Development
 -----------
 
 To set up your development environment, see the `Contributing.md <Contributing.md>`_ file in the
-Visor repository.
+VISOR repository.
 
 
 Usage
 -----
 
-You can use Visor through the following entry points. Links are to the relevant information in he
-Visor documentation.
+You can use VISOR through the following entry points. Links are to the relevant information in he
+VISOR documentation.
 
 * **Standalone Python**
 
-   * Launch a desktop Visor app with the Python package ``ansys.visor.viewer`` to visualize files.
-   * See `Visor Python API <https://supreme-fiesta-v6v17mm.pages.github.io/version/dev/user_guide/launching_visor/visor_python_api.html>`_
+   * Launch a desktop VISOR app with the Python package ``ansys.visor.viewer`` to visualize files.
+   * See `VISOR Python API <https://supreme-fiesta-v6v17mm.pages.github.io/version/dev/user_guide/launching_visor/visor_python_api.html>`_
      for API usage examples.
    * See `API reference <https://supreme-fiesta-v6v17mm.pages.github.io/version/dev/python_api_reference.html>`_
      for details about the Python API.
 
-* **Visor HTTP service**
+* **VISOR HTTP service**
 
-   * Manage multiple Visor instances through the Visor HTTP API.
+   * Manage multiple VISOR instances through the VISOR HTTP API.
    * Integrate with `PIM (Product Instance Management) <https://github.com/ansys/ansys-api-platform-instancemanagement>`_
-     to manage Visor instances in SAF apps.
-   * See `Visor HTTP service <https://supreme-fiesta-v6v17mm.pages.github.io/version/dev/user_guide/launching_visor/visor_service.html>`_
+     to manage VISOR instances in SAF apps.
+   * See `VISOR HTTP service <https://supreme-fiesta-v6v17mm.pages.github.io/version/dev/user_guide/launching_visor/visor_service.html>`_
      for usage examples.
    * See `HTTP API reference <https://supreme-fiesta-v6v17mm.pages.github.io/version/dev/http_api_reference/index.html>`_
      for API details.
 
 * **Dash frontend app**
 
-   * Connect to a Visor instance from a Dash app with the Visor Dash component in
+   * Connect to a VISOR instance from a Dash app with the VISOR Dash component in
      ``ansys.visor.dash.dash_visor_viewer``.
-   * See `Visor Dash component <https://supreme-fiesta-v6v17mm.pages.github.io/version/dev/user_guide/launching_visor/visor_dash_component.html>`_
+   * See `VISOR Dash component <https://supreme-fiesta-v6v17mm.pages.github.io/version/dev/user_guide/launching_visor/visor_dash_component.html>`_
      for details.
 
-For advanced usage and configuration options, see the following Visor documentation:
+For advanced usage and configuration options, see the following VISOR documentation:
 
 `User guide <https://supreme-fiesta-v6v17mm.pages.github.io/version/dev/user_guide/index.html>`_ and
 `Examples <https://supreme-fiesta-v6v17mm.pages.github.io/version/dev/examples/index.html>`_ in the
-Visor sections.
+VISOR sections.
