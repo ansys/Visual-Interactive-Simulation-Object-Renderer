@@ -9,8 +9,7 @@ on:
     tags: [ 'v*' ]
 
 env:
-  # Uncomment the following line to enable custom CNAME for documentation
-  # DOCUMENTATION_CNAME: 'visor.staging.local'
+  DOCUMENTATION_CNAME: 'visor.docs.pyansys.com'
   MAIN_PYTHON_VERSION: '3.11'
   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -56,8 +55,7 @@ jobs:
       - name: Deploy development documentation
         uses: ansys/actions/doc-deploy-dev@v10
         with:
-          # Uncomment the following line to enable custom CNAME for documentation
-          # cname: ${{ env.DOCUMENTATION_CNAME }}
+          cname: ${{ env.DOCUMENTATION_CNAME }}
           token: ${{ secrets.GITHUB_TOKEN }}
           bot-user: ${{ secrets.PYANSYS_CI_BOT_USERNAME }}
           bot-email: ${{ secrets.PYANSYS_CI_BOT_EMAIL }}
@@ -70,6 +68,7 @@ jobs:
       - name: Deploy stable documentation
         uses: ansys/actions/doc-deploy-stable@v10
         with:
+          cname: ${{ env.DOCUMENTATION_CNAME }}
           token: ${{ secrets.GITHUB_TOKEN }}
           bot-user: ${{ secrets.PYANSYS_CI_BOT_USERNAME }}
           bot-email: ${{ secrets.PYANSYS_CI_BOT_EMAIL }}
