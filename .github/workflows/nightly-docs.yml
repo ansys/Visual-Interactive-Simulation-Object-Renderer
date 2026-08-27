@@ -9,8 +9,7 @@ on:
     tags: [ 'v*' ]
 
 env:
-  # Uncomment the following line to enable custom CNAME for documentation
-  # DOCUMENTATION_CNAME: 'visor.staging.local'
+  DOCUMENTATION_CNAME: 'supreme-fiesta-v6v17mm.pages.github.io'
   MAIN_PYTHON_VERSION: '3.11'
   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -54,10 +53,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Deploy development documentation
-        uses: ansys/actions/doc-deploy-dev@v10
+        uses: ansys/actions/doc-deploy-dev@v11.0
         with:
-          # Uncomment the following line to enable custom CNAME for documentation
-          # cname: ${{ env.DOCUMENTATION_CNAME }}
+          cname: ${{ env.DOCUMENTATION_CNAME }}
           token: ${{ secrets.GITHUB_TOKEN }}
           bot-user: ${{ secrets.PYANSYS_CI_BOT_USERNAME }}
           bot-email: ${{ secrets.PYANSYS_CI_BOT_EMAIL }}
@@ -68,8 +66,91 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Deploy stable documentation
-        uses: ansys/actions/doc-deploy-stable@v10
+        uses: ansys/actions/doc-deploy-stable@v11.0
         with:
+          cname: ${{ env.DOCUMENTATION_CNAME }}
           token: ${{ secrets.GITHUB_TOKEN }}
           bot-user: ${{ secrets.PYANSYS_CI_BOT_USERNAME }}
           bot-email: ${{ secrets.PYANSYS_CI_BOT_EMAIL }}
+
+  update_versions_json:
+    name: Update versions.json
+    needs: docs_upload
+    if: needs.docs_upload.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout gh-pages
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate versions.json
+        shell: bash
+        run: |
+          python <<'PY'
+          import json
+          from pathlib import Path
+
+          BASE_URL = "https://supreme-fiesta-v6v17mm.pages.github.io"
+          ROOT = Path(".")
+
+          versions = []
+
+          version_root = ROOT / "version"
+
+          if (version_root / "dev").exists():
+              versions.append(
+                  {
+                      "name": "dev",
+                      "version": "dev",
+                      "url": f"{BASE_URL}/version/dev/",
+                  }
+              )
+
+          if (version_root / "stable").exists():
+              versions.append(
+                  {
+                      "name": "stable",
+                      "version": "stable",
+                      "url": f"{BASE_URL}/version/stable/",
+                  }
+              )
+
+          if version_root.exists():
+              numbered = []
+              for child in version_root.iterdir():
+                  if not child.is_dir():
+                      continue
+                  name = child.name
+                  if name in {"dev", "stable"}:
+                      continue
+                  numbered.append(
+                      {
+                          "name": name,
+                          "version": name.removeprefix("v"),
+                          "url": f"{BASE_URL}/version/{name}/",
+                      }
+                  )
+
+              versions.extend(sorted(numbered, key=lambda x: x["name"], reverse=True))
+
+          out = ROOT / "versions.json"
+          out.parent.mkdir(parents=True, exist_ok=True)
+
+          with open(out, "w", encoding="utf-8") as f:
+              json.dump(versions, f, indent=2)
+              f.write("\n")
+          PY
+
+      - name: Show versions.json
+        run: cat versions.json
+
+      - name: Commit and push versions.json
+        shell: bash
+        run: |
+          git config user.name "${{ secrets.PYANSYS_CI_BOT_USERNAME }}"
+          git config user.email "${{ secrets.PYANSYS_CI_BOT_EMAIL }}"
+          git add versions.json
+          git diff --cached --quiet || git commit -m "docs: update version switcher data"
+          git push
