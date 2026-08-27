@@ -207,11 +207,9 @@ def generate_openapi_json():
     except Exception as e:
         print(f"Error running generate_openapi.py: {e}")
 
-
 def setup(app):
     app.connect('builder-inited', lambda app: generate_openapi_json())
     app.add_css_file("css/reset.css")
-
 
 linkcheck_ignore = []
 
