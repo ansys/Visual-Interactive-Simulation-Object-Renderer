@@ -11,7 +11,7 @@ on:
 
 
 env:
-  DOCUMENTATION_CNAME: 'visor.docs.pyansys.com''
+  DOCUMENTATION_CNAME: 'visor.docs.pyansys.com'
   MAIN_PYTHON_VERSION: '3.11'
 
 
