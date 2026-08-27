@@ -64,10 +64,6 @@ html_context = {
     "doc_path": "doc/source",
 }
 
-# specify the location of your github repo
-# Note: if the visor repo becomes public, we can set
-# "json_url": f"https://{cname}/versions.json"
-# and remove fetch_and_save_versions_json()
 html_theme_options = {
     "switcher": {
         # Per the Sphinx documentation:
