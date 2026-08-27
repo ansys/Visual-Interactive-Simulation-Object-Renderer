@@ -1,0 +1,1059 @@
+
+<!DOCTYPE html>
+
+
+<html lang="en" data-content_root="../" >
+
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Contributing to VISOR &#8212; VISOR documentation |version|</title>
+  
+  
+  
+  
+  <script data-cfasync="false">
+    document.documentElement.dataset.mode = localStorage.getItem("mode") || "";
+    document.documentElement.dataset.theme = localStorage.getItem("theme") || "";
+  </script>
+  <!--
+    this give us a css class that will be invisible only if js is disabled
+  -->
+  <noscript>
+    <style>
+      .pst-js-only { display: none !important; }
+
+    </style>
+  </noscript>
+  
+  <!-- Loaded before other Sphinx assets -->
+  <link href="../_static/styles/theme.css?digest=0790524f97105ba85085" rel="stylesheet" />
+<link href="../_static/styles/pydata-sphinx-theme.css?digest=0790524f97105ba85085" rel="stylesheet" />
+
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=8f2a1f02" />
+    <link rel="stylesheet" type="text/css" href="../_static/styles/ansys-sphinx-theme.css?v=5ffe81b6" />
+    <link rel="stylesheet" type="text/css" href="../_static/copybutton.css?v=76b2166b" />
+    <link rel="stylesheet" type="text/css" href="../_static/css/reset.css?v=be8c3981" />
+    <link rel="stylesheet" type="text/css" href="../_static/sg_gallery.css?v=d2d258e8" />
+    <link rel="stylesheet" type="text/css" href="../_static/sg_gallery-binder.css?v=f4aeca0c" />
+    <link rel="stylesheet" type="text/css" href="../_static/sg_gallery-dataframe.css?v=2082cf3c" />
+    <link rel="stylesheet" type="text/css" href="../_static/sg_gallery-rendered-html.css?v=1277b6f3" />
+    <link rel="stylesheet" type="text/css" href="../_static/styles/ansys-sphinx-theme.css?v=5ffe81b6" />
+    <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.10.23/css/jquery.dataTables.min.css" />
+    <link rel="stylesheet" type="text/css" href="https://www.nerdfonts.com/assets/css/webfont.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/sphinx-design.min.css?v=95c83b7e" />
+    <link rel="stylesheet" type="text/css" href="../_static/custom.css?v=fad717d8" />
+  
+  <!-- So that users can add custom icons -->
+  <script defer src="../_static/scripts/fontawesome.js?digest=0790524f97105ba85085"></script>
+  <!-- Pre-loaded scripts that we'll load fully later -->
+  <link rel="preload" as="script" href="../_static/scripts/bootstrap.js?digest=0790524f97105ba85085" />
+<link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=0790524f97105ba85085" />
+
+
+  <!-- Include desired assets -->
+  <script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
+  
+
+  
+    <link href="../_static/css/breadcrumbs.css" rel="stylesheet" />
+  
+    <script src="../_static/documentation_options.js?v=8a448e45"></script>
+    <script src="../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../_static/clipboard.min.js?v=a7894cd8"></script>
+    <script src="../_static/copybutton.js?v=f281be69"></script>
+    <script src="https://cdn.datatables.net/1.10.23/js/jquery.dataTables.min.js"></script>
+    <script src="../_static/design-tabs.js?v=f930bc37"></script>
+    <script>DOCUMENTATION_OPTIONS.pagename = 'contributing/index';</script>
+    <script>
+        DOCUMENTATION_OPTIONS.theme_version = '0.18.0';
+        DOCUMENTATION_OPTIONS.theme_switcher_json_url = '_static/versions.json';
+        DOCUMENTATION_OPTIONS.theme_switcher_version_match = '1.0';
+        DOCUMENTATION_OPTIONS.show_version_warning_banner =
+            false;
+        </script>
+    <script>DOCUMENTATION_OPTIONS.search_as_you_type = false;</script>
+    <link rel="icon" href="../_static/ansys-favicon.png"/>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Release notes" href="../changelog.html" />
+    <link rel="prev" title="Update variables in existing datasets" href="../examples/03-updating-visor-scene/01-update-variables.html" />
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="docsearch:language" content="en"/>
+  <meta name="docsearch:version" content="1.0.0b0" />
+  
+    
+    <script src="../_static/searchtools.js"></script>
+    <script src="../_static/language_data.js"></script>
+    <script src="../searchindex.js"></script>
+  
+  <link rel="canonical" href="https://visor.docs.pyansys.com/version/stable/contributing/index.html" />
+  </head>
+  <body data-default-mode="">
+  
+  
+  <div id="pst-skip-link" class="skip-link d-print-none"><a href="#main-content">Skip to main content</a></div>
+
+  
+  
+  <div id="pst-scroll-pixel-helper"></div>
+  
+  <button type="button" class="btn rounded-pill" id="pst-back-to-top">
+    <i class="fa-solid fa-arrow-up"></i>Back to top</button>
+  
+  
+  
+  
+  <dialog id="pst-search-dialog">
+    
+<form class="bd-search d-flex align-items-center"
+      action="../search.html"
+      method="get">
+  <i class="fa-solid fa-magnifying-glass"></i>
+  <input type="search"
+         class="form-control"
+         name="q"
+         placeholder="Search the docs ..."
+         aria-label="Search the docs ..."
+         autocomplete="off"
+         autocorrect="off"
+         autocapitalize="off"
+         spellcheck="false"/>
+  <span class="search-button__kbd-shortcut"><kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd></span>
+</form>
+  </dialog>
+
+  <div class="pst-async-banner-revealer d-none">
+  <aside id="bd-header-version-warning" class="d-none d-print-none" aria-label="Version warning"></aside>
+</div>
+
+  
+  
+    <header id="pst-header" class="bd-header navbar navbar-expand-lg bd-navbar d-print-none">
+<div class="bd-header__inner bd-page-width">
+  <button class="pst-navbar-icon sidebar-toggle primary-toggle" aria-label="Site navigation">
+    <span class="fa-solid fa-bars"></span>
+  </button>
+  
+  
+  <div class="col-lg-3 navbar-header-items__start">
+    
+      <div class="navbar-item">
+
+  
+    
+  
+
+<a class="navbar-brand logo" href="../index.html">
+  
+  
+  
+  
+  
+    
+    
+      
+    
+    
+    <img src="../_static/solutions_logo_light.png" class="logo__image only-light" alt="VISOR documentation |version| - Home"/>
+    <img src="../_static/solutions_logo_dark.png" class="logo__image only-dark pst-js-only" alt="VISOR documentation |version| - Home"/>
+  
+  
+</a></div>
+    
+  </div>
+  
+  <div class="col-lg-9 navbar-header-items">
+    
+    <div class="me-auto navbar-header-items__center">
+      
+        <div class="navbar-item">
+
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../index.html" title="VISOR documentation |version| home">Home</a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../getting_started/index.html">
+    Getting started
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../user_guide/index.html">
+    User guide
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../python_api_reference.html">
+    API reference
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../http_api_reference/index.html">
+    HTTP API reference
+  </a>
+</li>
+
+            <li class="nav-item dropdown">
+                <button class="btn dropdown-toggle nav-item" type="button"
+                data-bs-toggle="dropdown" aria-expanded="false"
+                aria-controls="pst-nav-more-links">
+                    More
+                </button>
+                <ul id="pst-nav-more-links" class="dropdown-menu">
+                    
+<li class=" ">
+  <a class="nav-link dropdown-item nav-internal" href="../examples/index.html">
+    Examples
+  </a>
+</li>
+
+
+<li class=" current active">
+  <a class="nav-link dropdown-item nav-internal" href="#">
+    Contributing to VISOR
+  </a>
+</li>
+
+
+<li class=" ">
+  <a class="nav-link dropdown-item nav-internal" href="../changelog.html">
+    Release notes
+  </a>
+</li>
+
+                </ul>
+            </li>
+            
+  </ul>
+</nav>
+</div>
+      
+    </div>
+    
+    
+    <div class="navbar-header-items__end">
+      
+      
+        <div class="navbar-item">
+<div class="search-bar pst-js-only" id="search-bar">
+  <form class="bd-search d-flex align-items-center" action="../search.html" method="get">
+    <i class="fa-solid fa-magnifying-glass"></i>
+    <input type="search" class="form-control" name="q" placeholder="Search the docs ..."
+      aria-label="Search the docs ..." autocomplete="off" autocorrect="off"
+      autocapitalize="off" spellcheck="false" />
+    <span class="search-button__kbd-shortcut">
+      <kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd>
+    </span>
+  </form>
+  
+  <div id="static-search-results" class="static-search-results" style="display:none;" tabindex="0"></div>
+  
+</div></div>
+      
+        <div class="navbar-item">
+<div class="version-switcher__container dropdown pst-js-only">
+  <button id="pst-version-switcher-button-2"
+    type="button"
+    class="version-switcher__button btn btn-sm dropdown-toggle"
+    data-bs-toggle="dropdown"
+    aria-haspopup="listbox"
+    aria-controls="pst-version-switcher-list-2"
+    aria-label="Version switcher list"
+  >
+    Choose version  <!-- this text may get changed later by javascript -->
+    <span class="caret"></span>
+  </button>
+  <div id="pst-version-switcher-list-2"
+    class="version-switcher__menu dropdown-menu list-group-flush py-0"
+    role="listbox" aria-labelledby="pst-version-switcher-button-2">
+    <!-- dropdown will be populated by javascript on page load -->
+  </div>
+</div></div>
+      
+        <div class="navbar-item">
+
+<div class="theme-switch-container dropdown pst-js-only" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Color mode">
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button dropdown-toggle" aria-label="Color mode" data-bs-toggle="dropdown">
+    <i class="theme-switch fa-solid fa-sun fa-lg fa-fw" data-mode="light" title="Light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg fa-fw" data-mode="dark" title="Dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg fa-fw" data-mode="auto" title="System Settings"></i>
+  </button>
+  <ul class="dropdown-menu dropdown-menu-end">
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg fa-fw me-1"></i>System Settings</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="light"><i class="fa-solid fa-sun fa-lg fa-fw me-1"></i>Light</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="dark"><i class="fa-solid fa-moon fa-lg fa-fw me-1"></i>Dark</button></li>
+  </ul>
+</div></div>
+      
+        <div class="navbar-item"><ul class="navbar-icon-links"
+    aria-label="Icon Links">
+        <li class="nav-item">
+          
+          
+          
+          
+          
+          
+          
+          
+          <a href="https://github.com/ansys/visor/" title="GitHub" class="nav-link pst-navbar-icon" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><i class="fa-brands fa-github fa-lg" aria-hidden="true"></i><span class="visually-hidden">GitHub</span></a>
+        </li>
+</ul></div>
+      
+    </div>
+    
+  </div>
+  
+  
+
+  
+    <button class="pst-navbar-icon sidebar-toggle secondary-toggle" aria-label="On this page">
+      <span class="fa-solid fa-outdent"></span>
+    </button>
+  
+</div>
+
+    </header>
+  
+  
+    
+<!--
+  Announcement Version Loader
+  Dynamically loads the announcement.html content into the announcement_msg div.
+-->
+<div id="announcement_msg" aria-live="polite"></div>
+<script>
+  // Fetch and inject the announcement HTML content
+  fetch("announcement.html")
+    .then((response) => {
+      if (!response.ok) {
+        throw new Error(`HTTP error: ${response.status} Announcement.html file not found, Please ignore this, if you are in dev/stable documentation`);
+      }
+      return response.text();
+    })
+    .then((text) => {
+      var msgDiv = document.getElementById("announcement_msg");
+      if (msgDiv) {
+        msgDiv.innerHTML = text;
+      }
+    })
+    .catch((error) => {
+      // Log only unexpected fetch errors
+      if (!(error.message && error.message.startsWith("HTTP error: 404"))) {
+        console.error(`Fetch problem: ${error.message} Announcement.html could not be loaded.`);
+      }
+    });
+</script>
+  
+
+
+  <div class="bd-container">
+    <div class="bd-container__inner bd-page-width">
+      
+      
+      
+      <dialog id="pst-primary-sidebar-modal"></dialog>
+      <div id="pst-primary-sidebar" class="bd-sidebar-primary bd-sidebar">
+        
+
+  
+  <div class="sidebar-header-items sidebar-primary__section">
+    
+    
+      <div class="sidebar-header-items__center">
+        
+          
+          
+            <div class="navbar-item">
+
+<nav>
+  <ul class="bd-navbar-elements navbar-nav">
+    
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../index.html" title="VISOR documentation |version| home">Home</a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../getting_started/index.html">
+    Getting started
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../user_guide/index.html">
+    User guide
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../python_api_reference.html">
+    API reference
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../http_api_reference/index.html">
+    HTTP API reference
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../examples/index.html">
+    Examples
+  </a>
+</li>
+
+
+<li class="nav-item current active">
+  <a class="nav-link nav-internal" href="#">
+    Contributing to VISOR
+  </a>
+</li>
+
+
+<li class="nav-item ">
+  <a class="nav-link nav-internal" href="../changelog.html">
+    Release notes
+  </a>
+</li>
+
+  </ul>
+</nav>
+</div>
+          
+        
+      </div>
+    
+    
+    
+      <div class="sidebar-header-items__end">
+        
+          <div class="navbar-item">
+<div class="search-bar pst-js-only" id="search-bar">
+  <form class="bd-search d-flex align-items-center" action="../search.html" method="get">
+    <i class="fa-solid fa-magnifying-glass"></i>
+    <input type="search" class="form-control" name="q" placeholder="Search the docs ..."
+      aria-label="Search the docs ..." autocomplete="off" autocorrect="off"
+      autocapitalize="off" spellcheck="false" />
+    <span class="search-button__kbd-shortcut">
+      <kbd class="kbd-shortcut__modifier">Ctrl</kbd>+<kbd>K</kbd>
+    </span>
+  </form>
+  
+  <div id="static-search-results" class="static-search-results" style="display:none;" tabindex="0"></div>
+  
+</div></div>
+        
+          <div class="navbar-item">
+<div class="version-switcher__container dropdown pst-js-only">
+  <button id="pst-version-switcher-button-3"
+    type="button"
+    class="version-switcher__button btn btn-sm dropdown-toggle"
+    data-bs-toggle="dropdown"
+    aria-haspopup="listbox"
+    aria-controls="pst-version-switcher-list-3"
+    aria-label="Version switcher list"
+  >
+    Choose version  <!-- this text may get changed later by javascript -->
+    <span class="caret"></span>
+  </button>
+  <div id="pst-version-switcher-list-3"
+    class="version-switcher__menu dropdown-menu list-group-flush py-0"
+    role="listbox" aria-labelledby="pst-version-switcher-button-3">
+    <!-- dropdown will be populated by javascript on page load -->
+  </div>
+</div></div>
+        
+          <div class="navbar-item">
+
+<div class="theme-switch-container dropdown pst-js-only" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Color mode">
+  <button class="btn btn-sm nav-link pst-navbar-icon theme-switch-button dropdown-toggle" aria-label="Color mode" data-bs-toggle="dropdown">
+    <i class="theme-switch fa-solid fa-sun fa-lg fa-fw" data-mode="light" title="Light"></i>
+    <i class="theme-switch fa-solid fa-moon fa-lg fa-fw" data-mode="dark" title="Dark"></i>
+    <i class="theme-switch fa-solid fa-circle-half-stroke fa-lg fa-fw" data-mode="auto" title="System Settings"></i>
+  </button>
+  <ul class="dropdown-menu dropdown-menu-end">
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="auto"><i class="fa-solid fa-circle-half-stroke fa-lg fa-fw me-1"></i>System Settings</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="light"><i class="fa-solid fa-sun fa-lg fa-fw me-1"></i>Light</button></li>
+    <li><button class="dropdown-item d-flex align-items-center theme-change-button" data-mode="dark"><i class="fa-solid fa-moon fa-lg fa-fw me-1"></i>Dark</button></li>
+  </ul>
+</div></div>
+        
+          <div class="navbar-item"><ul class="navbar-icon-links"
+    aria-label="Icon Links">
+        <li class="nav-item">
+          
+          
+          
+          
+          
+          
+          
+          
+          <a href="https://github.com/ansys/visor/" title="GitHub" class="nav-link pst-navbar-icon" rel="noopener" target="_blank" data-bs-toggle="tooltip" data-bs-placement="bottom"><i class="fa-brands fa-github fa-lg" aria-hidden="true"></i><span class="visually-hidden">GitHub</span></a>
+        </li>
+</ul></div>
+        
+      </div>
+    
+  </div>
+  
+    <div class="sidebar-primary-items__start sidebar-primary__section">
+        <div class="sidebar-primary-item pst-sidebar-collapse"><button id="pst-collapse-sidebar-button" aria-expanded="true" aria-controls="pst-primary-sidebar"><svg class="pst-icon svg-inline--fa" role="img" aria-hidden="true" focusable="false" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+    <path fill="currentColor" d="M3 15.5C2.36232 15.5 1.74874 15.2564 1.28478 14.8189C0.820828 14.3815 0.541576 13.7832 0.504167 13.1467L0.5 13L0.5 3C0.499965 2.36232 0.743605 1.74874 1.18107 1.28478C1.61854 0.820828 2.21676 0.541576 2.85333 0.504167L3 0.5L13 0.5C13.6377 0.499965 14.2513 0.743605 14.7152 1.18107C15.1792 1.61854 15.4584 2.21676 15.4958 2.85333L15.5 3L15.5 13C15.5 13.6377 15.2564 14.2513 14.8189 14.7152C14.3815 15.1792 13.7832 15.4584 13.1467 15.4958L13 15.5L3 15.5ZM3 13.8333L10.5 13.8333L10.5 2.16667L3 2.16667C2.79589 2.16669 2.59889 2.24163 2.44636 2.37726C2.29383 2.5129 2.19638 2.69979 2.1725 2.9025L2.16667 3L2.16667 13C2.16669 13.2041 2.24163 13.4011 2.37726 13.5536C2.5129 13.7062 2.69979 13.8036 2.9025 13.8275L3 13.8333ZM6.65583 10.325L6.5775 10.2558L4.91083 8.58917C4.76735 8.44567 4.68116 8.25476 4.66843 8.05223C4.65569 7.84971 4.71729 7.6495 4.84167 7.48917L4.91083 7.41083L6.5775 5.74417C6.72747 5.59471 6.9287 5.50794 7.14032 5.50148C7.35194 5.49502 7.55809 5.56935 7.7169 5.70937C7.8757 5.8494 7.97525 6.04463 7.99533 6.25539C8.01541 6.46616 7.95451 6.67667 7.825 6.84417L7.75583 6.9225L6.67917 8L7.75583 9.0775C7.89931 9.22099 7.98551 9.41191 7.99824 9.61443C8.01097 9.81695 7.94938 10.0172 7.825 10.1775L7.75583 10.2558C7.61234 10.3993 7.42142 10.4855 7.2189 10.4982C7.01638 10.511 6.81617 10.4494 6.65583 10.325Z"/>
+  </svg>
+  <span class="pst-collapse-sidebar-label">Collapse Sidebar</span>
+  <span class="pst-expand-sidebar-label">Expand Sidebar</span>
+</button></div>
+        <div class="sidebar-primary-item">
+
+
+<nav class="bd-docs-nav bd-links"
+     aria-label="Section Navigation">
+  <p class="bd-links__title" role="heading" aria-level="1">Section Navigation</p>
+  <div class="bd-toc-item navbar-nav"></div>
+</nav></div>
+    </div>
+  
+  
+  <div class="sidebar-primary-items__end sidebar-primary__section">
+      <div class="sidebar-primary-item">
+<div id="ethical-ad-placement"
+      class="flat"
+      data-ea-publisher="readthedocs"
+      data-ea-type="readthedocs-sidebar"
+      data-ea-manual="true">
+</div></div>
+  </div>
+
+
+      </div>
+      
+      <main id="main-content" class="bd-main" role="main">
+        
+        
+          <div class="bd-content">
+            <div class="bd-article-container">
+              
+              <div class="bd-header-article d-print-none">
+<div class="header-article-items header-article__inner">
+  
+    <div class="header-article-items__start">
+      
+        <div class="header-article-item">
+<nav aria-label="Breadcrumb">
+  <ul class="bd-breadcrumbs">
+     
+    <li class="breadcrumb-item breadcrumb-home">
+      <a
+        href="../index.html"
+        class="nav-link"
+        aria-label="Home"
+      >
+        <i class="fa-solid fa-home"></i>
+      </a>
+    </li>
+      
+    <li class="breadcrumb-item active" aria-current="page"><span class="ellipsis">Contributing to VISOR</span></li>
+    
+  </ul>
+</nav>
+</div>
+      
+    </div>
+  
+  
+</div>
+</div>
+              
+              
+              
+                
+<div id="searchbox"></div>
+                <article class="bd-article">
+                  
+  <section id="contributing-to-visor">
+<span id="contributing-index"></span><h1>Contributing to VISOR<a class="headerlink" href="#contributing-to-visor" title="Link to this heading">#</a></h1>
+<p>Use this guide to contribute to <code class="docutils literal notranslate"><span class="pre">VISOR</span></code>.</p>
+<p>Ansys, part of Synopsys, maintains <code class="docutils literal notranslate"><span class="pre">VISOR</span></code> and reviews every submission before merging.
+You can also help other users, answer questions, and contribute features that make the software more useful.</p>
+<p>Before you contribute to <code class="docutils literal notranslate"><span class="pre">VISOR</span></code>, read the
+<a class="reference external" href="https://dev.docs.pyansys.com/how-to/contributing.html">Contributing</a> topic
+in the <strong>PyAnsys developer’s guide</strong>.</p>
+<section id="clone-the-repository">
+<h2>Clone the repository<a class="headerlink" href="#clone-the-repository" title="Link to this heading">#</a></h2>
+<p>Follow the steps in the installation section of the <a class="reference internal" href="../getting_started/installation.html#installation-index"><span class="std std-ref">Installation</span></a> to set up VISOR in development mode.</p>
+</section>
+<section id="commit-message-guidelines">
+<h2>Commit message guidelines<a class="headerlink" href="#commit-message-guidelines" title="Link to this heading">#</a></h2>
+<p>This project follows the <a class="reference external" href="https://www.conventionalcommits.org">Conventional Commits</a> specification.</p>
+<section id="commit-format">
+<h3>Commit format<a class="headerlink" href="#commit-format" title="Link to this heading">#</a></h3>
+<p>Use these prefixes in your commit messages:</p>
+<ul class="simple">
+<li><p>Use <code class="docutils literal notranslate"><span class="pre">feat:</span></code> for a new feature.</p></li>
+<li><p>Use <code class="docutils literal notranslate"><span class="pre">fix:</span></code> for a bug fix.</p></li>
+<li><p>Use <code class="docutils literal notranslate"><span class="pre">docs:</span></code> for documentation updates only.</p></li>
+<li><p>Use <code class="docutils literal notranslate"><span class="pre">chore:</span></code> for maintenance tasks that do not affect production code.</p></li>
+<li><p>Use <code class="docutils literal notranslate"><span class="pre">refactor:</span></code> for code restructuring that does not change behavior.</p></li>
+<li><p>Use <code class="docutils literal notranslate"><span class="pre">style:</span></code> for formatting or style changes that do not affect logic.</p></li>
+<li><p>Use <code class="docutils literal notranslate"><span class="pre">test:</span></code> for adding or modifying tests.</p></li>
+<li><p>Use <code class="docutils literal notranslate"><span class="pre">ci:</span></code> for CI configuration changes.</p></li>
+<li><p>Use <code class="docutils literal notranslate"><span class="pre">build:</span></code> for build script or dependency changes.</p></li>
+</ul>
+</section>
+<section id="branch-naming-conventions">
+<h3>Branch naming conventions<a class="headerlink" href="#branch-naming-conventions" title="Link to this heading">#</a></h3>
+<p>Use these branch name prefixes:</p>
+<ul class="simple">
+<li><p>Use <code class="docutils literal notranslate"><span class="pre">fix</span></code> for minor bug fixes, patches, or experiments.</p></li>
+<li><p>Use <code class="docutils literal notranslate"><span class="pre">feat</span></code> for a new feature or significant addition.</p></li>
+<li><p>Use <code class="docutils literal notranslate"><span class="pre">junk</span></code> for experimental changes that you can delete if they go stale.</p></li>
+<li><p>Use <code class="docutils literal notranslate"><span class="pre">maint</span></code> for general repository or CI maintenance.</p></li>
+<li><p>Use <code class="docutils literal notranslate"><span class="pre">doc</span></code> for documentation-only changes.</p></li>
+<li><p>Use <code class="docutils literal notranslate"><span class="pre">no-ci</span></code> for low-impact work that should not trigger CI.</p></li>
+<li><p>Use <code class="docutils literal notranslate"><span class="pre">testing</span></code> for test improvements or test-related changes.</p></li>
+<li><p>Use <code class="docutils literal notranslate"><span class="pre">release</span></code> for release work.</p></li>
+</ul>
+</section>
+</section>
+<section id="run-tests">
+<h2>Run tests<a class="headerlink" href="#run-tests" title="Link to this heading">#</a></h2>
+<p>Install the development packages that you need to run tests:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>poetry<span class="w"> </span>install<span class="w"> </span>--with<span class="w"> </span>dev
+</pre></div>
+</div>
+<section id="run-tests-for-each-layer">
+<h3>Run tests for each layer<a class="headerlink" href="#run-tests-for-each-layer" title="Link to this heading">#</a></h3>
+<p>Use the following test layers in the <code class="docutils literal notranslate"><span class="pre">tests/</span></code> directory:</p>
+<div class="pst-scrollable-table-container"><table class="table">
+<thead>
+<tr class="row-odd"><th class="head"><p>Layer</p></th>
+<th class="head"><p>Location</p></th>
+<th class="head"><p>Description</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Unit</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">tests/unit/</span></code></p></td>
+<td><p>Fast, isolated component tests</p></td>
+</tr>
+<tr class="row-odd"><td><p>Frontend unit</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">src/ansys/visor/visor-client/</span></code></p></td>
+<td><p>TypeScript/React component tests (Jest)</p></td>
+</tr>
+<tr class="row-even"><td><p>Integration</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">tests/integration/</span></code></p></td>
+<td><p>Multi-component interaction tests</p></td>
+</tr>
+<tr class="row-odd"><td><p>Smoke</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">tests/e2e/smoke/</span></code></p></td>
+<td><p>WebGL render and interaction sanity checks (Playwright)</p></td>
+</tr>
+<tr class="row-even"><td><p>Regression</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">tests/e2e/regressions/</span></code></p></td>
+<td><p>Visual snapshot and component state validation (Playwright)</p></td>
+</tr>
+<tr class="row-odd"><td><p>SAF integration</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">tests/e2e/smoke/test_smoke_saf_visor*.py</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">saf</span></code>-marked smoke tests against a real <code class="docutils literal notranslate"><span class="pre">saf-visor-poc</span></code> solution (Playwright)</p></td>
+</tr>
+<tr class="row-even"><td><p>Notebooks</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">tests/notebooks/</span></code></p></td>
+<td><p>Jupyter</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>When you run <code class="docutils literal notranslate"><span class="pre">pytest</span></code> from the project root, it discovers only <code class="docutils literal notranslate"><span class="pre">unit</span></code> and <code class="docutils literal notranslate"><span class="pre">integration</span></code> tests by default.
+Run smoke, regression, and Notebook tests explicitly, as shown in the next sections.</p>
+</div>
+<p>Run unit and integration tests:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="c1"># Unit and integration (default discovery)</span>
+poetry<span class="w"> </span>run<span class="w"> </span>pytest<span class="w"> </span>tests/unit<span class="w"> </span>tests/integration
+
+<span class="c1"># With verbose output</span>
+poetry<span class="w"> </span>run<span class="w"> </span>pytest<span class="w"> </span>tests/unit<span class="w"> </span>tests/integration<span class="w"> </span>-v
+
+<span class="c1"># Filter by marker</span>
+poetry<span class="w"> </span>run<span class="w"> </span>pytest<span class="w"> </span>tests<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;unit&quot;</span>
+poetry<span class="w"> </span>run<span class="w"> </span>pytest<span class="w"> </span>tests<span class="w"> </span>-m<span class="w"> </span><span class="s2">&quot;not e2e&quot;</span>
+
+<span class="c1"># With coverage report</span>
+poetry<span class="w"> </span>run<span class="w"> </span>pytest<span class="w"> </span>tests/unit<span class="w"> </span>tests/integration<span class="w"> </span>--cov<span class="o">=</span>src<span class="w"> </span>--cov-report<span class="o">=</span>html
+</pre></div>
+</div>
+</section>
+<section id="run-end-to-end-tests-playwright">
+<h3>Run end-to-end tests (Playwright)<a class="headerlink" href="#run-end-to-end-tests-playwright" title="Link to this heading">#</a></h3>
+<p>Install Playwright before you run end-to-end (e2e) tests:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>poetry<span class="w"> </span>run<span class="w"> </span>playwright<span class="w"> </span>install<span class="w"> </span>chromium
+</pre></div>
+</div>
+<p>Run smoke and regression tests:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>poetry<span class="w"> </span>run<span class="w"> </span>pytest<span class="w"> </span>tests/e2e/smoke
+poetry<span class="w"> </span>run<span class="w"> </span>pytest<span class="w"> </span>tests/e2e/regressions
+</pre></div>
+</div>
+<p>In <strong>Linux headless environments</strong>, e2e tests require a virtual display. Set these variables before you run e2e tests:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>Xvfb<span class="w"> </span>:99<span class="w"> </span>-screen<span class="w"> </span><span class="m">0</span><span class="w"> </span>1920x1080x24<span class="w"> </span><span class="p">&amp;</span>
+<span class="nb">export</span><span class="w"> </span><span class="nv">DISPLAY</span><span class="o">=</span>:99
+<span class="nb">export</span><span class="w"> </span><span class="nv">VTK_DEFAULT_RENDER_WINDOW_OFFSCREEN</span><span class="o">=</span><span class="m">1</span>
+</pre></div>
+</div>
+<p>If a test fails, Playwright saves traces as ZIP files in the <code class="docutils literal notranslate"><span class="pre">tests/artifacts/traces/</span></code> directory.</p>
+</section>
+<section id="run-saf-integration-smoke-tests">
+<h3>Run SAF integration smoke tests<a class="headerlink" href="#run-saf-integration-smoke-tests" title="Link to this heading">#</a></h3>
+<p><code class="docutils literal notranslate"><span class="pre">tests/e2e/smoke/test_smoke_saf_visor.py</span></code> verify that <code class="docutils literal notranslate"><span class="pre">saf-visor-poc</span></code> correctly loads and visualizes
+VTK files through VISOR when run as a SAF/Glow solution.
+These tests are marked <code class="docutils literal notranslate"><span class="pre">saf</span></code> and are skipped automatically when the
+<code class="docutils literal notranslate"><span class="pre">saf</span></code> CLI is not available on <code class="docutils literal notranslate"><span class="pre">PATH</span></code>.</p>
+<p>They also require a local clone of <code class="docutils literal notranslate"><span class="pre">saf-visor-poc</span></code>, pointed to via the <code class="docutils literal notranslate"><span class="pre">--saf-project-dir</span></code>
+option or the <code class="docutils literal notranslate"><span class="pre">SAF_VISOR_POC_DIR</span></code> environment variable:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>poetry<span class="w"> </span>run<span class="w"> </span>pytest<span class="w"> </span>tests/e2e/smoke<span class="w"> </span>-m<span class="w"> </span>saf<span class="w"> </span>--saf-project-dir<span class="w"> </span><span class="s2">&quot;/path/to/saf-visor-poc&quot;</span>
+
+<span class="c1"># or, using the environment variable</span>
+<span class="nb">export</span><span class="w"> </span><span class="nv">SAF_VISOR_POC_DIR</span><span class="o">=</span><span class="s2">&quot;/path/to/saf-visor-poc&quot;</span>
+poetry<span class="w"> </span>run<span class="w"> </span>pytest<span class="w"> </span>tests/e2e/smoke<span class="w"> </span>-m<span class="w"> </span>saf
+</pre></div>
+</div>
+<p>The test launches its own <code class="docutils literal notranslate"><span class="pre">saf</span> <span class="pre">run</span></code> subprocess (module-scoped fixture) against a fresh
+port pair and tears it down afterward. Notes:</p>
+<ul class="simple">
+<li><p>SAF server startup (including SAF/Glow log noise and the VISOR launch alert) can take up to
+~2 minutes; do not lower the fixture’s timeouts without reproducing locally first.</p></li>
+<li><p>The test retries the file upload a few times if it hits the transient
+“shared product instance … has not been initialized” GLOW error, which can occur briefly
+after the VISOR launch alert appears.</p></li>
+<li><p>If tests hang or fail with a <code class="docutils literal notranslate"><span class="pre">500</span></code> error or a launch-alert timeout, check for orphaned
+<code class="docutils literal notranslate"><span class="pre">saf</span></code>/<code class="docutils literal notranslate"><span class="pre">dotnet</span></code> (PIM Light Server) processes left over from a previous interrupted run
+and stop them before retrying.</p></li>
+</ul>
+</section>
+<section id="run-notebook-tests">
+<h3>Run Notebook tests<a class="headerlink" href="#run-notebook-tests" title="Link to this heading">#</a></h3>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>poetry<span class="w"> </span>run<span class="w"> </span>pytest<span class="w"> </span>--nbval<span class="w"> </span>tests/notebooks/
+</pre></div>
+</div>
+</section>
+<section id="run-frontend-unit-tests-jest">
+<h3>Run frontend unit tests (Jest)<a class="headerlink" href="#run-frontend-unit-tests-jest" title="Link to this heading">#</a></h3>
+<p>Run the TypeScript/React frontend test suite with Jest. You do not need the Python environment for these tests.</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nb">cd</span><span class="w"> </span>src/ansys/visor/visor-client
+npm<span class="w"> </span>run<span class="w"> </span><span class="nb">test</span>
+</pre></div>
+</div>
+<p>To generate a JUnit XML report for CI:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nv">JEST_JUNIT_OUTPUT_DIR</span><span class="o">=</span>../../../../tests/artifacts/unit<span class="w"> </span><span class="se">\</span>
+<span class="nv">JEST_JUNIT_OUTPUT_NAME</span><span class="o">=</span>frontend-junit.xml<span class="w"> </span><span class="se">\</span>
+npx<span class="w"> </span>jest<span class="w"> </span>--ci<span class="w"> </span>--reporters<span class="o">=</span>default<span class="w"> </span>--reporters<span class="o">=</span>jest-junit<span class="w"> </span>--verbose
+</pre></div>
+</div>
+<p>Jest writes report files to the <code class="docutils literal notranslate"><span class="pre">tests/artifacts/unit/</span></code> directory alongside the Python unit test reports:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">frontend-junit.xml</span></code>: JUnit XML result file</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">frontend-result.log</span></code>: Console output log</p></li>
+</ul>
+</section>
+<section id="set-testing-options">
+<h3>Set testing options<a class="headerlink" href="#set-testing-options" title="Link to this heading">#</a></h3>
+<section id="update-canonicals">
+<h4>Update canonicals<a class="headerlink" href="#update-canonicals" title="Link to this heading">#</a></h4>
+<p>If you change UI elements or example models, smoke and regression tests that use image comparison might fail.
+Update the canonical images either by replacing the baseline image manually or by running <code class="docutils literal notranslate"><span class="pre">pytest</span></code> with the
+<code class="docutils literal notranslate"><span class="pre">--update-baseline</span></code> option:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>poetry<span class="w"> </span>run<span class="w"> </span>pytest<span class="w"> </span>./tests/e2e/smoke<span class="w"> </span>--update-baseline
+poetry<span class="w"> </span>run<span class="w"> </span>pytest<span class="w"> </span>./tests/e2e/regressions<span class="w"> </span>--update-baseline
+</pre></div>
+</div>
+<p>If no canonical image is found, <code class="docutils literal notranslate"><span class="pre">pytest</span></code> uses this option by default and skips the test on the first run.</p>
+</section>
+<section id="use-a-different-location-for-canon-images">
+<h4>Use a different location for canon images<a class="headerlink" href="#use-a-different-location-for-canon-images" title="Link to this heading">#</a></h4>
+<p>By default, canonical images are stored in the <code class="docutils literal notranslate"><span class="pre">tests/references</span></code> directory. Use the <code class="docutils literal notranslate"><span class="pre">--baseline-dir</span></code> option to
+change this path:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>poetry<span class="w"> </span>run<span class="w"> </span>pytest<span class="w"> </span>./tests/e2e/smoke<span class="w"> </span>--baseline-dir<span class="w"> </span><span class="s2">&quot;tests/new_ref_loc&quot;</span>
+</pre></div>
+</div>
+<p>If the directory does not exist, <code class="docutils literal notranslate"><span class="pre">pytest</span></code> creates it and generates a new baseline image on the first run.</p>
+</section>
+<section id="set-a-different-pixel-threshold">
+<h4>Set a different pixel threshold<a class="headerlink" href="#set-a-different-pixel-threshold" title="Link to this heading">#</a></h4>
+<p>When you create new tests for visual elements, you might need to adjust the pixel threshold.
+The RMS difference is usually 0, but some models or mappings can introduce small session-to-session variations.
+The default threshold is 2.55 RMS.</p>
+<p>To set a different pixel threshold:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>poetry<span class="w"> </span>run<span class="w"> </span>pytest<span class="w"> </span>./tests/e2e/smoke<span class="w"> </span>--pixel-threshold<span class="w"> </span><span class="m">5</span>
+</pre></div>
+</div>
+<p>This does not update the default value.</p>
+</section>
+<section id="use-a-different-host">
+<h4>Use a different host<a class="headerlink" href="#use-a-different-host" title="Link to this heading">#</a></h4>
+<p>By default, <code class="docutils literal notranslate"><span class="pre">VISOR</span></code> launches on <code class="docutils literal notranslate"><span class="pre">127.0.0.1</span></code>. To test against a different host, use the <code class="docutils literal notranslate"><span class="pre">--host</span></code> option:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>poetry<span class="w"> </span>run<span class="w"> </span>pytest<span class="w"> </span>./tests/e2e/smoke<span class="w"> </span>--host<span class="w"> </span><span class="m">0</span>.0.0.0
+</pre></div>
+</div>
+</section>
+</section>
+</section>
+<section id="build-and-view-documentation-locally">
+<h2>Build and view documentation locally<a class="headerlink" href="#build-and-view-documentation-locally" title="Link to this heading">#</a></h2>
+<p>Sphinx generates the <code class="docutils literal notranslate"><span class="pre">VISOR</span></code> documentation. The source files are in the <code class="docutils literal notranslate"><span class="pre">doc</span></code> directory.
+The <code class="docutils literal notranslate"><span class="pre">.github/workflows/nightly-docs.yml</span></code> workflow rebuilds the documentation nightly.</p>
+<section id="build-documentation">
+<h3>Build documentation<a class="headerlink" href="#build-documentation" title="Link to this heading">#</a></h3>
+<p>To build the documentation locally, perform the following steps:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="c1"># navigate to the docs directory</span>
+<span class="nb">cd</span><span class="w"> </span>docs
+
+<span class="c1"># Install the documentation dependencies</span>
+poetry<span class="w"> </span>install<span class="w"> </span>--with<span class="w"> </span>doc
+
+<span class="c1"># Build the documentation</span>
+<span class="c1"># on Windows:</span>
+make.bat<span class="w"> </span>html
+<span class="c1"># on Linux:</span>
+make<span class="w"> </span>html
+</pre></div>
+</div>
+<p>After the build completes, open the <code class="docutils literal notranslate"><span class="pre">index.html</span></code> file in the <code class="docutils literal notranslate"><span class="pre">_build/html</span></code> directory in a web browser.</p>
+<p>For example, if you cloned the <code class="docutils literal notranslate"><span class="pre">VISOR</span></code> repository to <code class="docutils literal notranslate"><span class="pre">file:///C:/SYNOPSYSDev/NoBackup/visor</span></code>, open
+the <code class="docutils literal notranslate"><span class="pre">file:///C:/SYNOPSYSDev/NoBackup/visor/doc/_build/html/index.html</span></code> file in a web browser.</p>
+</section>
+<section id="set-up-the-documentation-version-switcher-optional">
+<h3>Set up the documentation version switcher (optional)<a class="headerlink" href="#set-up-the-documentation-version-switcher-optional" title="Link to this heading">#</a></h3>
+<p>The documentation version switcher lets you toggle between documentation versions. The <code class="docutils literal notranslate"><span class="pre">doc/source/conf.py</span></code> file
+configures it. During the release process, the build generates a <code class="docutils literal notranslate"><span class="pre">versions.json</span></code> file and commits it to the
+<code class="docutils literal notranslate"><span class="pre">gh-pages</span></code> branch, which is not present in <code class="docutils literal notranslate"><span class="pre">main</span></code>.</p>
+<p>The version switcher works only on the live documentation site or when you serve the documentation from a
+local web server. If you open <code class="docutils literal notranslate"><span class="pre">index.html</span></code> directly from the filesystem, the version switcher is disabled.</p>
+<p>To enable the version switcher while serving the documentation locally, follow these steps:</p>
+<ol class="arabic simple">
+<li><p>Create a GitHub Personal Access Token (PAT).</p></li>
+</ol>
+<p>The version switcher fetches the <code class="docutils literal notranslate"><span class="pre">versions.json</span></code> file from the private VISOR repository,
+which requires authentication.</p>
+<ul class="simple">
+<li><p>Go to <a class="reference external" href="https://github.com/settings/tokens">Personal access tokens (classic)</a> in the GitHub developer settings.</p></li>
+<li><p>Click <strong>Generate new token</strong> and select the <strong>Generate new token (classic)</strong> option.</p></li>
+<li><p>Check the <code class="docutils literal notranslate"><span class="pre">repo</span></code> scope only.</p></li>
+<li><p>Click <strong>Generate token</strong> and copy the value.</p></li>
+<li><p>Activate the token for use in the Ansys and Ansys-internal organizations.</p></li>
+<li><p>Set the token as an environment variable named <code class="docutils literal notranslate"><span class="pre">GITHUB_TOKEN</span></code>.</p></li>
+</ul>
+<p>Note: The documentation deployment GitHub workflow generates a PAT automatically.</p>
+<ol class="arabic simple" start="2">
+<li><p>Serve with a local web server.</p></li>
+</ol>
+<p>Because of browser security restrictions, serve the documentation over HTTP for the version switcher to work:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nb">cd</span><span class="w"> </span>doc
+python<span class="w"> </span>-m<span class="w"> </span>http.server<span class="w"> </span><span class="m">8000</span>
+</pre></div>
+</div>
+<p>Then open the <a class="reference external" href="http://localhost:8000/_build/html/index.html">http://localhost:8000/_build/html/index.html</a> file.</p>
+</section>
+</section>
+</section>
+
+
+                </article>
+              
+              
+              
+              
+              
+            </div>
+            
+            
+              
+                <dialog id="pst-secondary-sidebar-modal"></dialog>
+                <div id="pst-secondary-sidebar" class="bd-sidebar-secondary bd-toc"><div class="sidebar-secondary-items sidebar-secondary__inner">
+
+
+  <div class="sidebar-secondary-item">
+<div
+    id="pst-page-navigation-heading-2"
+    class="page-toc tocsection onthispage">
+    <i class="fa-solid fa-list"></i> On this page
+  </div>
+  <nav id="pst-page-toc-nav" class="page-toc" aria-labelledby="pst-page-navigation-heading-2">
+    <ul class="pst-show_toc_level nav section-nav flex-column">
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#clone-the-repository">Clone the repository</a></li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#commit-message-guidelines">Commit message guidelines</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#commit-format">Commit format</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#branch-naming-conventions">Branch naming conventions</a></li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#run-tests">Run tests</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#run-tests-for-each-layer">Run tests for each layer</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#run-end-to-end-tests-playwright">Run end-to-end tests (Playwright)</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#run-saf-integration-smoke-tests">Run SAF integration smoke tests</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#run-notebook-tests">Run Notebook tests</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#run-frontend-unit-tests-jest">Run frontend unit tests (Jest)</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#set-testing-options">Set testing options</a><ul class="nav section-nav flex-column">
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#update-canonicals">Update canonicals</a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#use-a-different-location-for-canon-images">Use a different location for canon images</a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#set-a-different-pixel-threshold">Set a different pixel threshold</a></li>
+<li class="toc-h4 nav-item toc-entry"><a class="reference internal nav-link" href="#use-a-different-host">Use a different host</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toc-h2 nav-item toc-entry"><a class="reference internal nav-link" href="#build-and-view-documentation-locally">Build and view documentation locally</a><ul class="nav section-nav flex-column">
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#build-documentation">Build documentation</a></li>
+<li class="toc-h3 nav-item toc-entry"><a class="reference internal nav-link" href="#set-up-the-documentation-version-switcher-optional">Set up the documentation version switcher (optional)</a></li>
+</ul>
+</li>
+</ul>
+  </nav></div>
+
+  <div class="sidebar-secondary-item">
+
+
+  
+  <nav class="tocsection editthispage" aria-label="Edit this page">
+    <a href="https://github.com/ansys/visor/edit/main/doc/source/contributing/index.rst" rel="noopener noreferrer">
+      <i class="fa-solid fa-pencil" aria-hidden="true"></i>
+      
+      
+        
+          Edit on GitHub
+        
+      
+    </a>
+  </nav>
+</div>
+
+  <div class="sidebar-secondary-item">
+  <div role="note" aria-label="source link">
+    <ul class="this-page-menu">
+      <li><a href="../_sources/contributing/index.rst.txt"
+            rel="nofollow">Show Source</a></li>
+    </ul>
+   </div></div>
+
+</div></div>
+              
+            
+          </div>
+          <footer class="bd-footer-content">
+            
+          </footer>
+        
+      </main>
+    </div>
+  </div>
+  
+  
+  <!-- Scripts loaded after <body> so the DOM is not blocked -->
+  <script defer src="../_static/scripts/bootstrap.js?digest=0790524f97105ba85085"></script>
+<script defer src="../_static/scripts/pydata-sphinx-theme.js?digest=0790524f97105ba85085"></script>
+
+
+  <!-- Include desired assets -->
+  
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.7/require.min.js"></script>
+
+<script>
+// Passing the search options to the search.js file
+const SEARCH_OPTIONS = JSON.parse('{"keys": ["title", "text", "objectID"], "limit": 10, "threshold": 0.2}');
+const SEARCH_FILE = "../_static/search.json";
+const ADVANCE_SEARCH_PATH = "../search.html";
+const EXTRA_SOURCES = JSON.parse('""');
+</script>
+
+
+<script src="../_static/js/search.js"></script>
+
+  
+  <footer class="bd-footer">
+<div class="bd-footer__inner bd-page-width">
+  
+    <div class="footer-items__start">
+      
+        <div class="footer-item">
+
+  <p class="copyright">
+    
+      © Copyright 2026 Synopsys, Inc. and ANSYS, Inc. All rights reserved.
+      <br/>
+    
+  </p>
+</div>
+      
+        <div class="footer-item">
+
+  <p class="sphinx-version">
+    Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 8.2.3.
+    <br/>
+  </p>
+</div>
+      
+    </div>
+  
+  
+  
+    <div class="footer-items__end">
+      
+        <div class="footer-item">
+<!--
+  Theme Version Footer
+  Displays the Sphinx theme version and the last updated date.
+  Accessibility and semantic improvements included.
+-->
+<footer class="theme-version" aria-label="Theme version and last update">
+  <span>
+    
+      Built with the
+      <a href="https://sphinxdocs.ansys.com/version/stable/index.html" target="_blank" rel="noopener noreferrer">
+        Ansys Sphinx Theme
+      </a>
+      1.9.0.
+    
+  </span>
+  <br />
+  <span>Last updated on <time id="ast_build_date"></time></span>
+</footer>
+<script>
+  // Set the last updated date in a readable format
+  (function() {
+    var options = { day: "numeric", month: "long", year: "numeric" };
+    var ast_lastModifiedDate = new Date(document.lastModified);
+    var ast_build_date = ast_lastModifiedDate.toLocaleDateString("en-US", options);
+    var dateElem = document.getElementById("ast_build_date");
+    if (dateElem) {
+      dateElem.textContent = ast_build_date;
+    }
+  })();
+</script></div>
+      
+    </div>
+  
+</div>
+
+  </footer>
+  </body>
+</html>

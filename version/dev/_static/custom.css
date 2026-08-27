@@ -1,0 +1,9 @@
+/* Box around the whole tab enclosure with a muted blue-gray border and more obvious grey background */
+.sd-tab-set {
+    border: 3px solid #b0b8c1;
+    border-radius: 10px;
+    padding: 1.2em 1em 1em 1em;
+    background: #eceff1;
+    box-shadow: 0 2px 12px rgba(108,122,137,0.07);
+    margin-bottom: 2em;
+}
