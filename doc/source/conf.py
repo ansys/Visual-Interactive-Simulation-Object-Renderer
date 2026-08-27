@@ -11,9 +11,7 @@ from sphinx_gallery.sorting import FileNameSortKey
 
 from ansys.visor.viewer import __version__
 
-# TODO: Set up namespace for VISOR docs and update here
-# visor_cname = "visor.docs.solutions.ansys.com"
-visor_cname = "vigilant-lamp-162kw9z.pages.github.io"
+visor_cname = "visor.docs.pyansys.com"
 
 cname = os.getenv("DOCUMENTATION_CNAME", visor_cname)
 """The canonical name of the webpage hosting the documentation."""
