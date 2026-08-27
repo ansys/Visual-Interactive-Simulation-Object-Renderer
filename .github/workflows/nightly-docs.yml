@@ -9,7 +9,7 @@ on:
     tags: [ 'v*' ]
 
 env:
-  DOCUMENTATION_CNAME: 'supreme-fiesta-v6v17mm.pages.github.io'
+  DOCUMENTATION_CNAME: 'visor.docs.pyansys.com'
   MAIN_PYTHON_VERSION: '3.11'
   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -92,7 +92,7 @@ jobs:
           import json
           from pathlib import Path
 
-          BASE_URL = "https://supreme-fiesta-v6v17mm.pages.github.io"
+          BASE_URL = "https://visor.docs.pyansys.com"
           ROOT = Path(".")
 
           versions = []

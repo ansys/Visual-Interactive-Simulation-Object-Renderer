@@ -9,7 +9,7 @@ from sphinx_gallery.sorting import FileNameSortKey
 
 from ansys.visor.viewer import __version__
 
-fallback_cname = "supreme-fiesta-v6v17mm.pages.github.io"
+fallback_cname = "visor.docs.pyansys.com"
 cname = os.getenv("DOCUMENTATION_CNAME", fallback_cname)
 """The canonical name of the webpage hosting the documentation."""
 
