@@ -200,7 +200,7 @@ def test_update_unit_matches_keeps_unit(registry):
 
 
 # ================================================================== #
-# Per-part write path (Story 3.1, increment I1)
+# Per-part write path
 # ================================================================== #
 
 def test_find_dataset_id_for_part_selects_between_multiple_datasets(registry):
