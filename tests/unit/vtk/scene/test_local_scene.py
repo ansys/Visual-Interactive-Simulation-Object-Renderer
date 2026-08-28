@@ -1,4 +1,5 @@
 import json
+import threading
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -720,6 +721,10 @@ class DummyScene(VisorSceneBase):
         # do not call super().__init__ to avoid VTK setup
         # set only the attributes used by finalize_scene
         self._dataset_registry = SimpleNamespace(count=0)
+        # DummyScene skips super().__init__, so it mirrors VisorSceneBase.__init__ state by
+        # hand; any state added to the base constructor must be mirrored here too.  RLock,
+        # not Lock, to match production re-entrancy.
+        self._vtk_lock = threading.RLock()
         self._populate_called = False
         self._reset_called = False
         self._render_called = False
