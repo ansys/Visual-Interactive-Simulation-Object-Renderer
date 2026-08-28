@@ -400,7 +400,8 @@ class VisorSceneBase(ABC):
                 logger.debug("set_part_visibility: no dataset owns node %s; skipping.", node_id)
                 return
             self._renderer.apply_visibility(node_id, visible)
-            self._renderer.flush_wasm_state()
+            # TODO: uncomment when adding round trips
+            # self._renderer.flush_wasm_state()
 
     def set_part_opacity(self, node_id: int, opacity: float) -> None:
         """Set the opacity of the part identified by *node_id*."""
@@ -409,7 +410,8 @@ class VisorSceneBase(ABC):
                 logger.debug("set_part_opacity: no dataset owns node %s; skipping.", node_id)
                 return
             self._renderer.apply_opacity(node_id, opacity)
-            self._renderer.flush_wasm_state()
+            # TODO: uncomment when adding round trips
+            # self._renderer.flush_wasm_state()
 
     def set_part_diffuse_color(self, node_id: int, diffuse_rgb: list[float] | None) -> None:
         """
@@ -431,7 +433,8 @@ class VisorSceneBase(ABC):
             self._renderer.apply_diffuse_color(
                 node_id, applied_rgb[0], applied_rgb[1], applied_rgb[2]
             )
-            self._renderer.flush_wasm_state()
+            # TODO: uncomment when adding round trips
+            # self._renderer.flush_wasm_state()
 
     def set_part_selected(self, node_id: int, selected: bool) -> None:
         """
@@ -453,7 +456,8 @@ class VisorSceneBase(ABC):
                 stored_rgb if stored_rgb is not None else list(VisorColors.DefaultMeshColor)
             )
             self._renderer.apply_selected(node_id, selected, diffuse_rgb)
-            self._renderer.flush_wasm_state()
+            # TODO: uncomment when adding round trips
+            # self._renderer.flush_wasm_state()
 
     def set_part_color_variable(
             self,
@@ -481,7 +485,8 @@ class VisorSceneBase(ABC):
             self._renderer.apply_color_variable(
                 node_id, variable_id, association, array_name, component, min_val, max_val
             )
-            self._renderer.flush_wasm_state()
+            # TODO: uncomment when adding round trips
+            # self._renderer.flush_wasm_state()
 
     def clear_part_color_variable(self, node_id: int) -> None:
         """
@@ -497,7 +502,8 @@ class VisorSceneBase(ABC):
                 )
                 return
             self._renderer.clear_color_variable(node_id)
-            self._renderer.flush_wasm_state()
+            # TODO: uncomment when adding round trips
+            # self._renderer.flush_wasm_state()
 
     # ------------------------------------------------------------------
     # Internal helpers
