@@ -160,6 +160,10 @@ export const CreateVisorSceneGraph = (() => {
                     customDiffuseColor.rgbNormalized,
                     _selected
                 );
+                // A reset is "no custom colour", sent as an explicit null --
+                // not as the default colour's value, and not by omitting the
+                // key. Absence is absence.
+                await renderer!.sendPartDiffuseColorAsync(nodeId, null);
             },
             async setDiffuseColorHexAsync(hex) {
                 customDiffuseColor.setHex(hex);
@@ -171,6 +175,7 @@ export const CreateVisorSceneGraph = (() => {
                     rgbNormalized[2],
                     _selected
                 );
+                await renderer!.sendPartDiffuseColorAsync(nodeId, rgbNormalized);
             },
             async setDiffuseColorRgbAsync(r, g, b) {
                 customDiffuseColor.setRgb(r, g, b);
@@ -182,6 +187,7 @@ export const CreateVisorSceneGraph = (() => {
                     rgbNormalized[2],
                     _selected
                 );
+                await renderer!.sendPartDiffuseColorAsync(nodeId, rgbNormalized);
             },
             async clearColorVariableAsync() {
                 _spectrumId = null;
@@ -189,6 +195,7 @@ export const CreateVisorSceneGraph = (() => {
                 _spectrumMin = -1;
                 _spectrumMax = -1;
                 await renderer!.clearColorVariableAsync(nodeId);
+                await renderer!.sendClearPartColorVariableAsync(nodeId);
             },
             async setColorVariableAsync(id, component) {
                 if (_spectrumId === id && _spectrumComponent === component) {
@@ -210,14 +217,16 @@ export const CreateVisorSceneGraph = (() => {
                 _spectrumComponent = component;
                 _spectrumMin = min;
                 _spectrumMax = max;
-                await renderer!.setColorVariableAsync(nodeId, {
+                const descriptor = {
                     spectrumId: id,
                     spectrumType: spectrum.type,
                     spectrumName: spectrum.name,
                     component,
                     min,
                     max,
-                });
+                };
+                await renderer!.setColorVariableAsync(nodeId, descriptor);
+                await renderer!.sendPartColorVariableAsync(nodeId, descriptor);
             },
             async setScalarRangeAsync(min, max) {
                 await renderer!.setScalarRangeAsync(nodeId, min, max);
@@ -236,6 +245,7 @@ export const CreateVisorSceneGraph = (() => {
                     return;
                 }
                 await renderer!.setVisibilityAsync(nodeId, visible);
+                await renderer!.sendPartVisibilityAsync(nodeId, visible);
             },
             async setSelectedAsync(selected) {
                 if (_selected === selected) {
@@ -255,6 +265,9 @@ export const CreateVisorSceneGraph = (() => {
                     _selected,
                     customDiffuseColor.rgbNormalized
                 );
+                // The trigger carries no colour: the server reads the part's
+                // stored colour from its own record.
+                await renderer!.sendPartSelectedAsync(nodeId, _selected);
             },
             async setEdgeVisibilityAsync(edgeVisibility: boolean) {
                 if (_edgeVisibility === edgeVisibility) {
@@ -287,6 +300,7 @@ export const CreateVisorSceneGraph = (() => {
                     return;
                 }
                 await renderer!.setOpacityAsync(nodeId, opacity);
+                await renderer!.sendPartOpacityAsync(nodeId, opacity);
             },
             get spectrumId() {
                 return _spectrumId;
