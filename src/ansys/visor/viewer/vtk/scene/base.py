@@ -150,10 +150,36 @@ class VisorSceneBase(ABC):
         Capture the current viewer state and return it as a
         :class:`PersistedViewerStateV1`.
 
-        The renderer-specific part of state capture is handled by
-        :meth:`_get_runtime_state_async`.
+        The frontend round trip (:meth:`_get_runtime_state_async`) remains the
+        only source for everything the browser owns — UI panels, unit, the
+        display toggles, camera, cross-section and the per-variable ranges.
+        **Per-part state is not taken from it.**  The dataset registry is the
+        server-side authority for that, so ``scene.dataset_states`` is replaced
+        wholesale with the registry's own runtime state before the persisted
+        mapping runs.  The browser is no longer consulted for per-part state.
+
+        The registry is read under ``_vtk_lock`` and each dataset state is
+        deep-copied out of it.  The registry hands out its live
+        ``RuntimeDatasetState`` objects by reference, and the per-part setters
+        mutate the records they contain in place from the trame daemon thread;
+        without the snapshot the persist mapper would be an unlocked reader of
+        records that are being written concurrently.  The lock is taken *after*
+        the ``await`` has completed and released before the mapping, so it is
+        never held across an ``await``.  Named cost: this is the only place a
+        coroutine acquires ``_vtk_lock``, so a save issued while a long
+        main-thread VTK call holds the lock waits for that call.  It cannot
+        deadlock: the outbound bridge call made under the lock reaches
+        ``loop.call_later`` and returns without waiting on the event loop.
         """
         runtime_state = await self._get_runtime_state_async(timeout)
+
+        with self._vtk_lock:
+            registry_dataset_states = {
+                dataset_id: dataset_state.model_copy(deep=True)
+                for dataset_id, dataset_state in self._dataset_registry.runtime_state_dict.items()
+            }
+        runtime_state.scene.dataset_states = registry_dataset_states
+
         persisted = self._state_mapper.runtime_to_persisted(runtime_state)
         return persisted
 
@@ -166,7 +192,9 @@ class VisorSceneBase(ABC):
         :meth:`_apply_runtime_state_to_render`.
 
         Holds ``_vtk_lock`` for the whole body: the delegated step mutates
-        VTK and pushes to the frontend.
+        VTK and pushes to the frontend.  The critical section deliberately
+        spans the outbound bridge call and the flush that follows it — the
+        unit the lock protects is the compound sequence, not the VTK work.
         """
         with self._vtk_lock:
             # Apply UI settings
@@ -175,9 +203,17 @@ class VisorSceneBase(ABC):
             # Transform the frontend PersistedViewerStateV1 -> RuntimeAppState
             runtime_app_state = self._state_mapper.persisted_to_runtime(state)
 
+            # Restore per-part state server-side: write the registry, then apply
+            # every part to this process's VTK pipeline.  The browser is not
+            # asked to do this, and is not trusted to have done it.
+            self._restore_part_states_from_runtime(runtime_app_state)
+
             # Renderer-specific: flush VTK window and notify frontend (wasm), or
             # push camera to vtkCamera (RCA), or no-op (headless).
             self._apply_runtime_state_to_render(runtime_app_state)
+
+            # Note: There is intentionally no wasm flush here: the bridge call is fire-and-forget, so a flush
+            # at this point races the client's rebuild against a half-written object graph.
 
     def get_scene_details(self) -> VisorSceneDetails:
         """Return the VisorState."""
@@ -494,6 +530,233 @@ class VisorSceneBase(ABC):
                 )
                 return
             self._renderer.clear_color_variable(node_id)
+
+    def _restore_part_states_from_runtime(self, runtime_app_state: "RuntimeAppState") -> None:
+        """
+        Restore per-part state from a runtime app state, on the load path.
+
+        Two halves, in this order: the registry is replaced wholesale from the
+        supplied dataset states (``replace_part_states``), then every part is
+        applied to this process's VTK pipeline through ``IRenderer.apply_*``.
+        Either half can silently do nothing while the other succeeds, which is
+        why they are separate steps and separately asserted.
+
+        Takes no lock of its own: it is only ever called from inside
+        :meth:`apply_state`'s critical section, and acquiring here would read
+        as though the method were independently safe to call.
+
+        Every failure is a logged no-op, per the posture used at every other
+        layer: an unregistered dataset id, an unresolvable part, a malformed
+        colour, a half-set variable reference, an unknown variable identifier,
+        an unknown array, and an array whose width disagrees with the stored
+        one are each skipped without raising.
+        """
+        dataset_states = runtime_app_state.scene.dataset_states or {}
+        variable_states = runtime_app_state.scene.spectrum_states or {}
+
+        # Store half.  Unknown dataset ids are skipped by the registry.
+        self._dataset_registry.replace_part_states(dataset_states)
+
+        # Apply half.  The dataset id is resolved once per dataset, from the
+        # loop key, and the skip is explicit and logged: replace_part_states
+        # skips unknown ids silently, so without this the store half and the
+        # apply half could disagree about which datasets exist.
+        for dataset_id, dataset_state in dataset_states.items():
+            dataset = self._dataset_registry.datasets.get(dataset_id)
+            if dataset is None:
+                logger.warning(
+                    "_restore_part_states_from_runtime: dataset %s is not registered; "
+                    "its part state was not applied to the pipeline.", dataset_id
+                )
+                continue
+
+            # Per-part variable metadata, keyed by part id — one entry per
+            # non-empty leaf.  Built once per dataset rather than per part.
+            variables_by_part = {
+                entry.part_id: entry.variables for entry in dataset.list_variables()
+            }
+
+            for part_id, part_state in dataset_state.part_states.items():
+                self._restore_one_part_state(
+                    part_id, part_state, variable_states, variables_by_part.get(part_id)
+                )
+
+    def _restore_one_part_state(
+            self,
+            part_id: int,
+            part_state,
+            variable_states: dict,
+            part_variables,
+    ) -> None:
+        """
+        Apply one restored part record to the pipeline.
+
+        Absent fields are absent: a ``None`` is "this record says nothing about
+        that property", not "reset it to the default", so nothing is applied
+        for it.  **Recorded divergence:** :meth:`apply_state` does not
+        guarantee freshly built pipelines — ``load_state`` rebuilds datasets
+        only when the scene is empty — so a part whose stored ``diffuse_rgb``
+        is ``None`` keeps whatever colour the pipeline already carries while
+        the registry records no custom colour.
+
+        The colour is validated to exactly three elements here; a malformed
+        colour is a logged no-op and the same guard covers the colour the
+        selection branch reads.  The registry keeps the malformed value it was
+        loaded with — requiring on load would make the next save silently
+        rewrite the user's file.
+        """
+        if part_state.visible is not None:
+            self._renderer.apply_visibility(part_id, part_state.visible)
+
+        if part_state.opacity is not None:
+            self._renderer.apply_opacity(part_id, part_state.opacity)
+
+        stored_rgb = part_state.diffuse_rgb
+        valid_rgb = None
+        if stored_rgb is not None:
+            if len(stored_rgb) == 3:
+                valid_rgb = stored_rgb
+            else:
+                logger.warning(
+                    "_restore_one_part_state: part %s has a diffuse colour of %s elements, "
+                    "not 3; leaving the pipeline colour unchanged.", part_id, len(stored_rgb)
+                )
+
+        if valid_rgb is not None:
+            self._renderer.apply_diffuse_color(part_id, valid_rgb[0], valid_rgb[1], valid_rgb[2])
+
+        if part_state.selected is not None:
+            selection_rgb = (
+                valid_rgb if valid_rgb is not None else list(VisorColors.DefaultMeshColor)
+            )
+            self._renderer.apply_selected(part_id, part_state.selected, selection_rgb)
+
+        self._restore_part_color_variable(part_id, part_state, variable_states, part_variables)
+
+    def _restore_part_color_variable(
+            self,
+            part_id: int,
+            part_state,
+            variable_states: dict,
+            part_variables,
+    ) -> None:
+        """
+        Restore one part's colour-variable reference, or clear it.
+
+        The variable reference is a compound value that is only ever set or
+        cleared atomically, so a half-set pair — an identifier with no
+        component, or a component with no identifier — is not a state this can
+        act on and is a logged no-op in both directions.  A component with no
+        identifier in particular must not fall through to the clear branch.
+
+        The range is resolved from the persisted variable entry, whose index
+        convention is the opposite of the client's internal table: a stored
+        component of ``-1`` reads ``magnitude_range`` and a component of 0 or
+        greater reads ``ranges[component]``.  The branch is three-way with no
+        fallthrough — a negative component other than ``-1`` is neither the
+        magnitude sentinel nor an index, and returns before any mutation.
+
+        The array is resolved against the server's **per-part** variable
+        metadata and its component count is checked against the stored one:
+        two parts can carry same-named arrays of different widths, which the
+        application treats as different quantities, so name and association
+        alone could colour a part by the wrong quantity with no error anywhere.
+        """
+        variable_id = part_state.spectrum_id
+        component = part_state.spectrum_component
+
+        if variable_id is None:
+            if component is not None:
+                logger.warning(
+                    "_restore_part_color_variable: part %s stores component %s with no variable "
+                    "identifier; not clearing and not applying.", part_id, component
+                )
+                return
+            self._renderer.clear_color_variable(part_id)
+            return
+
+        if component is None:
+            logger.warning(
+                "_restore_part_color_variable: part %s stores variable '%s' with no component; "
+                "skipping.", part_id, variable_id
+            )
+            return
+
+        variable_state = variable_states.get(variable_id)
+        if variable_state is None:
+            logger.warning(
+                "_restore_part_color_variable: no variable entry for '%s' (part %s); skipping.",
+                variable_id, part_id
+            )
+            return
+
+        if component == -1:
+            value_range = variable_state.magnitude_range
+        elif component >= 0:
+            if component >= len(variable_state.ranges):
+                logger.warning(
+                    "_restore_part_color_variable: component %s is outside the %s stored ranges "
+                    "for '%s' (part %s); skipping.",
+                    component, len(variable_state.ranges), variable_id, part_id
+                )
+                return
+            value_range = variable_state.ranges[component]
+        else:
+            logger.warning(
+                "_restore_part_color_variable: component %s for '%s' (part %s) is neither the "
+                "magnitude sentinel (-1) nor a component index; skipping.",
+                component, variable_id, part_id
+            )
+            return
+
+        if value_range is None:
+            logger.warning(
+                "_restore_part_color_variable: no stored range for component %s of '%s' "
+                "(part %s); skipping.", component, variable_id, part_id
+            )
+            return
+
+        if part_variables is None:
+            logger.warning(
+                "_restore_part_color_variable: no variable metadata for part %s; skipping.",
+                part_id
+            )
+            return
+
+        resolved = next(
+            (
+                variable for variable in part_variables
+                if variable.name == variable_state.array_name
+                and variable.type is variable_state.type
+            ),
+            None,
+        )
+        if resolved is None:
+            logger.warning(
+                "_restore_part_color_variable: array '%s' (%s) not found on part %s; skipping.",
+                variable_state.array_name, variable_state.type, part_id
+            )
+            return
+
+        if resolved.num_components != variable_state.num_components:
+            logger.warning(
+                "_restore_part_color_variable: array '%s' on part %s has %s components, the "
+                "stored variable has %s; the part does not participate in this variable.",
+                variable_state.array_name, part_id,
+                resolved.num_components, variable_state.num_components
+            )
+            return
+
+        min_val, max_val = value_range
+        self._renderer.apply_color_variable(
+            part_id,
+            variable_id,
+            variable_state.type,
+            variable_state.array_name,
+            component,
+            min_val,
+            max_val,
+        )
 
     # ------------------------------------------------------------------
     # Internal helpers
