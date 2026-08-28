@@ -207,7 +207,21 @@ class VisorLocalRenderer(IRenderer):
     def apply_selected(
         self, node_id: int, selected: bool, diffuse_rgb: list
     ) -> None:
-        """No-op in Story 1.2. Phase 3 populates."""
+        """See :meth:`IRenderer.apply_selected`.
+
+        Resolves the pipeline and delegates to
+        :meth:`VtkNodePipeline.set_selected`.  *diffuse_rgb* is passed
+        through as given; supplying a default when the part has no stored
+        colour is the coordinator's job, not the renderer's.  An unknown
+        *node_id* is a logged no-op, never a raise.
+        """
+        pipe = self._pipelines.get(node_id)
+        if pipe is None:
+            logger.debug(
+                "apply_selected: no pipeline for node %s; skipping.", node_id
+            )
+            return
+        pipe.set_selected(selected, diffuse_rgb)
 
     def apply_color_variable(
         self,
@@ -219,10 +233,39 @@ class VisorLocalRenderer(IRenderer):
         min_val: float,
         max_val: float,
     ) -> None:
-        """No-op in Story 1.2. Phase 3 populates."""
+        """See :meth:`IRenderer.apply_color_variable`.
+
+        Resolves the pipeline and delegates to
+        :meth:`VtkNodePipeline.set_color_variable`.  *array_type* must
+        already be a :class:`VisorVtkVariableType`; it is parsed at the
+        trigger boundary, never here, and the pipeline compares it by
+        identity, so any other value is a logged no-op there.
+        *spectrum_id* is not forwarded -- it is stored opaquely by the
+        registry and is not needed to configure the mapper.  An unknown
+        *node_id* is a logged no-op, never a raise.
+        """
+        pipe = self._pipelines.get(node_id)
+        if pipe is None:
+            logger.debug(
+                "apply_color_variable: no pipeline for node %s; skipping.", node_id
+            )
+            return
+        pipe.set_color_variable(array_type, array_name, component, min_val, max_val)
 
     def clear_color_variable(self, node_id: int) -> None:
-        """No-op in Story 1.2. Phase 3 populates."""
+        """See :meth:`IRenderer.clear_color_variable`.
+
+        Resolves the pipeline and delegates to
+        :meth:`VtkNodePipeline.clear_color_variable`.  An unknown
+        *node_id* is a logged no-op, never a raise.
+        """
+        pipe = self._pipelines.get(node_id)
+        if pipe is None:
+            logger.debug(
+                "clear_color_variable: no pipeline for node %s; skipping.", node_id
+            )
+            return
+        pipe.clear_color_variable()
 
     def refresh_color_variable_range(
         self,

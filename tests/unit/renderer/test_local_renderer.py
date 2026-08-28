@@ -7,8 +7,10 @@ Coverage targets
 2.  Interface conformance -- NullRenderer and VisorLocalRenderer both satisfy
     IRenderer's abstract contract.
 3.  Per-part visual mutations -- visibility, opacity and diffuse colour
-    mutate the resolved pipeline's VTK objects; the remaining methods are
-    still no-ops and are asserted to accept their arguments and return None.
+    mutate the resolved pipeline's VTK objects directly; selection and
+    colour variable resolve the pipeline and delegate to VtkNodePipeline
+    (their VTK effects are asserted in tests/unit/vtk/test_node_pipeline.py);
+    edge visibility and the colour-variable range refresh stay no-ops.
 4.  Camera round-trip -- reset_camera, sync_camera / get_camera_state.
 5.  Render / flush delegation.
 6.  pick_geometry -- vertex, edge, face modes.
@@ -21,6 +23,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from vtkmodules.vtkRenderingCore import vtkActor
 
+from ansys.visor.viewer.core.visor_enums import VisorVtkVariableType
 from ansys.visor.viewer.renderer.base import IRenderer
 from ansys.visor.viewer.renderer.local_renderer import VisorLocalRenderer
 from ansys.visor.viewer.renderer.null_renderer import NullRenderer
@@ -102,10 +105,18 @@ class _DummyPipeline:
     ``GetProperty().GetDiffuseColor()``) rather than merely recording that
     some call was made -- a MagicMock would pass even if the production
     code mutated the wrong object or the wrong field.
+
+    The three delegated mutations are MagicMocks, because from this module
+    the behaviour under test is *that the renderer resolved and delegated*.
+    Their VTK effects are asserted against real objects in
+    ``tests/unit/vtk/test_node_pipeline.py``.
     """
 
     def __init__(self):
         self.actor = vtkActor()
+        self.set_selected = MagicMock(name="set_selected")
+        self.set_color_variable = MagicMock(name="set_color_variable")
+        self.clear_color_variable = MagicMock(name="clear_color_variable")
 
 
 # ---------------------------------------------------------------------------
@@ -352,22 +363,15 @@ class TestNodeLifecycle:
 # ===========================================================================
 
 class TestPerPartMutations:
-    """The methods still un-implemented accept their arguments and return None."""
+    """The two permanently un-implemented methods accept their arguments.
+
+    Both stay no-ops beyond this story: edge visibility is a global display
+    toggle, and the colour-variable range is not held per part.
+    """
 
     def test_apply_edge_visibility(self, renderer):
         assert renderer.apply_edge_visibility(1, False) is None
 
-    def test_apply_selected(self, renderer):
-        assert renderer.apply_selected(1, True, [1.0, 0.0, 0.0]) is None
-
-    def test_apply_color_variable(self, renderer):
-        assert (
-            renderer.apply_color_variable(1, "sp-1", "POINT", "pressure", -1, 0.0, 1.0)
-            is None
-        )
-
-    def test_clear_color_variable(self, renderer):
-        assert renderer.clear_color_variable(1) is None
 
     def test_refresh_color_variable_range(self, renderer):
         assert (
@@ -510,6 +514,101 @@ class TestInlineApplyBodies:
         assert pipe.actor.GetProperty().GetDiffuseColor() == pytest.approx(
             (0.25, 0.5, 0.75)
         )
+
+
+# ===========================================================================
+# 3c.  Delegated apply bodies: selection, colour variable
+#
+#      The VTK effects of these live on VtkNodePipeline and are asserted in
+#      tests/unit/vtk/test_node_pipeline.py.  What is asserted here is that
+#      the renderer resolved the pipeline and delegated with the arguments
+#      it was given, and that an unknown node id is a logged no-op.
+# ===========================================================================
+
+class TestDelegatedApplyBodies:
+
+    # ------------------------------------------------------------------
+    # apply_selected
+    # ------------------------------------------------------------------
+
+    def test_apply_selected_delegates_to_pipeline(self, renderer):
+        """Selection state and the given colour are passed straight through."""
+        pipe = _DummyPipeline()
+        renderer._pipelines[4] = pipe
+
+        renderer.apply_selected(4, True, [1.0, 0.0, 0.0])
+
+        pipe.set_selected.assert_called_once_with(True, [1.0, 0.0, 0.0])
+
+    def test_apply_selected_unknown_node_id_is_logged_no_op(self, renderer):
+        """An unregistered node id logs at debug, does not raise, delegates nothing."""
+        pipe = _DummyPipeline()
+        renderer._pipelines[4] = pipe
+
+        with patch(
+            "ansys.visor.viewer.renderer.local_renderer.logger"
+        ) as mock_logger:
+            renderer.apply_selected(9999, True, [1.0, 0.0, 0.0])  # must not raise
+
+        mock_logger.debug.assert_called_once()
+        pipe.set_selected.assert_not_called()
+
+    # ------------------------------------------------------------------
+    # apply_color_variable
+    # ------------------------------------------------------------------
+
+    def test_apply_color_variable_delegates_with_given_arguments(self, renderer):
+        """The association is forwarded unchanged; spectrum_id is not forwarded."""
+        pipe = _DummyPipeline()
+        renderer._pipelines[4] = pipe
+
+        renderer.apply_color_variable(
+            4, "sp-1", VisorVtkVariableType.POINT, "pressure", 1, 0.0, 7.5
+        )
+
+        pipe.set_color_variable.assert_called_once_with(
+            VisorVtkVariableType.POINT, "pressure", 1, 0.0, 7.5
+        )
+
+    def test_apply_color_variable_unknown_node_id_is_logged_no_op(self, renderer):
+        """An unregistered node id logs at debug, does not raise, delegates nothing."""
+        pipe = _DummyPipeline()
+        renderer._pipelines[4] = pipe
+
+        with patch(
+            "ansys.visor.viewer.renderer.local_renderer.logger"
+        ) as mock_logger:
+            renderer.apply_color_variable(
+                9999, "sp-1", VisorVtkVariableType.POINT, "pressure", 1, 0.0, 7.5
+            )  # must not raise
+
+        mock_logger.debug.assert_called_once()
+        pipe.set_color_variable.assert_not_called()
+
+    # ------------------------------------------------------------------
+    # clear_color_variable
+    # ------------------------------------------------------------------
+
+    def test_clear_color_variable_delegates_to_pipeline(self, renderer):
+        pipe = _DummyPipeline()
+        renderer._pipelines[4] = pipe
+
+        renderer.clear_color_variable(4)
+
+        pipe.clear_color_variable.assert_called_once_with()
+
+    def test_clear_color_variable_unknown_node_id_is_logged_no_op(self, renderer):
+        """An unregistered node id logs at debug, does not raise, delegates nothing."""
+        pipe = _DummyPipeline()
+        renderer._pipelines[4] = pipe
+
+        with patch(
+            "ansys.visor.viewer.renderer.local_renderer.logger"
+        ) as mock_logger:
+            renderer.clear_color_variable(9999)  # must not raise
+
+        mock_logger.debug.assert_called_once()
+        pipe.clear_color_variable.assert_not_called()
 
 
 # ===========================================================================
