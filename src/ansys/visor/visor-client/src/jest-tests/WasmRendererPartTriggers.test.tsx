@@ -128,8 +128,7 @@ async function makeRenderer(sender: TrameTriggerSender | null) {
 
 /** A sender that records its calls and resolves. */
 function makeSender() {
-    return jest.fn(async () => undefined) as unknown as jest.Mock &
-        TrameTriggerSender;
+    return jest.fn(async () => undefined) as unknown as jest.Mock & TrameTriggerSender;
 }
 
 describe('WasmRenderer per-part sends: trigger name and payload', () => {
@@ -362,9 +361,7 @@ describe('WasmRenderer sends when no sender is injected', () => {
 
         await expect(renderer.sendPartVisibilityAsync(7, true)).resolves.toBeUndefined();
         await expect(renderer.sendPartOpacityAsync(7, 0.5)).resolves.toBeUndefined();
-        await expect(
-            renderer.sendPartDiffuseColorAsync(7, [1, 0, 0])
-        ).resolves.toBeUndefined();
+        await expect(renderer.sendPartDiffuseColorAsync(7, [1, 0, 0])).resolves.toBeUndefined();
         await expect(renderer.sendPartSelectedAsync(7, true)).resolves.toBeUndefined();
         await expect(
             renderer.sendPartColorVariableAsync(7, {
@@ -442,4 +439,3 @@ describe('WasmRenderer sends when the sender rejects', () => {
         consoleError.mockRestore();
     });
 });
-

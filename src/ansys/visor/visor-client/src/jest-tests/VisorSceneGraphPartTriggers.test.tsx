@@ -184,13 +184,7 @@ describe('custom colour, set by hex', () => {
 
         await partA.setDiffuseColorHexAsync('#ff0000');
 
-        expect(renderer.setDiffuseColorRgbAsync).toHaveBeenCalledWith(
-            PART_A_ID,
-            1,
-            0,
-            0,
-            false
-        );
+        expect(renderer.setDiffuseColorRgbAsync).toHaveBeenCalledWith(PART_A_ID, 1, 0, 0, false);
     });
 });
 
@@ -208,11 +202,7 @@ describe('custom colour, reset', () => {
 
         await partA.resetDiffuseColorAsync();
 
-        expect(renderer.resetDiffuseColorAsync).toHaveBeenCalledWith(
-            PART_A_ID,
-            [1, 1, 1],
-            false
-        );
+        expect(renderer.resetDiffuseColorAsync).toHaveBeenCalledWith(PART_A_ID, [1, 1, 1], false);
     });
 });
 
@@ -312,4 +302,3 @@ describe('group fan-out', () => {
         expect(ids).not.toContain(ROOT_ID);
     });
 });
-

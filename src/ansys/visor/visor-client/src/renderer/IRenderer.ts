@@ -180,10 +180,7 @@ export interface IRenderer {
     sendPartDiffuseColorAsync(nodeId: NodeId, diffuseRgb: readonly number[] | null): Promise<void>;
     /** Carries no colour: the server reads the part's stored colour from its own record. */
     sendPartSelectedAsync(nodeId: NodeId, selected: boolean): Promise<void>;
-    sendPartColorVariableAsync(
-        nodeId: NodeId,
-        descriptor: ColorVariableDescriptor
-    ): Promise<void>;
+    sendPartColorVariableAsync(nodeId: NodeId, descriptor: ColorVariableDescriptor): Promise<void>;
     sendClearPartColorVariableAsync(nodeId: NodeId): Promise<void>;
 
     // ---- View-level widgets (state is renderer-owned; see arch rule (a)) ---
