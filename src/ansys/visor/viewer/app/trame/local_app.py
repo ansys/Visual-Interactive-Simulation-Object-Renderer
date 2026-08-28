@@ -1,7 +1,9 @@
+import functools
 import urllib.parse
 from logging import Logger
 from typing import List, Optional, Protocol
 
+from pydantic import BaseModel, Field, ValidationError
 from trame.app.core import Server
 from trame.decorators import TrameApp, trigger
 from vtk import vtkObject
@@ -46,6 +48,111 @@ class ScenePartStateApi(Protocol):
 
     def clear_part_color_variable(self, node_id: int) -> None: ...
 
+
+# ----------------------------------------------------------------------
+# Trigger payload models
+#
+# One model per per-part trigger.  Field names are snake_case; the
+# camelCase wire keys the client sends are carried as pydantic aliases.
+## ----------------------------------------------------------------------
+
+
+class SetPartVisibilityPayload(BaseModel):
+    """Payload of the ``set_part_visibility`` trigger."""
+
+    node_id: int = Field(alias="nodeId")
+    visible: bool
+
+
+class SetPartOpacityPayload(BaseModel):
+    """Payload of the ``set_part_opacity`` trigger."""
+
+    node_id: int = Field(alias="nodeId")
+    opacity: float = Field(ge=0.0, le=1.0)
+
+
+class SetPartDiffuseColorPayload(BaseModel):
+    """Payload of the ``set_part_diffuse_color`` trigger."""
+
+    node_id: int = Field(alias="nodeId")
+    diffuse_rgb: Optional[List[float]] = Field(min_length=3, max_length=3, alias="diffuseRgb")
+
+
+class SetPartSelectedPayload(BaseModel):
+    """Payload of the ``set_part_selected`` trigger.
+
+    No colour crosses this trigger: the server reads the part's stored
+    diffuse colour from its own record.
+    """
+
+    node_id: int = Field(alias="nodeId")
+    selected: bool
+
+
+class SetPartColorVariablePayload(BaseModel):
+    """Payload of the ``set_part_color_variable`` trigger."""
+
+    node_id: int = Field(alias="nodeId")
+    variable_id: str = Field(alias="variableId")
+    association: VisorVtkVariableType
+    array_name: str = Field(alias="arrayName")
+    component: int
+    min_val: float = Field(alias="min")
+    max_val: float = Field(alias="max")
+
+
+class ClearPartColorVariablePayload(BaseModel):
+    """Payload of the ``clear_part_color_variable`` trigger."""
+
+    node_id: int = Field(alias="nodeId")
+
+
+def parse_payload(model: type[BaseModel]):
+    """Validate a trigger payload into *model*, or make the call a logged no-op.
+
+    The wrapped handler receives the parsed model in place of the raw
+    ``dict``.  A payload that does not validate never reaches the handler
+    body: it is logged at warning and the trigger returns ``None``.
+
+    Posture.  This applies the same logged-no-op posture the whole per-part
+    path uses for an unresolvable node id, extended to a malformed payload.
+    The reasoning transfers because it is about the *thread*, not about the
+    kind of badness: trigger handlers run on trame's daemon event-loop
+    thread, where a raise surfaces to no caller who can act on it.  Before
+    this decorator the handlers indexed their payloads directly and a
+    missing key raised ``KeyError`` there.
+
+    ``model_validate``, never ``model(**payload)``.  A payload that is not
+    a mapping at all -- a bare string, a number, a list -- raises
+    ``TypeError`` from ``**`` but a well-formed ``ValidationError`` from
+    ``model_validate``.  Only the latter lets one guard catch every
+    malformed shape instead of most of them.
+
+    Decorator order.  ``@trigger(...)`` goes **outermost**, above this one.
+    Both orders happen to work: trame's ``@trigger`` stamps
+    ``_trame_trigger_names`` on whatever function it is handed, and
+    ``functools.wraps`` copies ``__dict__`` outward, so an inner
+    ``@trigger`` is still found by ``TrameApp``'s registration loop.
+    Outermost is the order whose correctness does not depend on that
+    copying behaviour, so it is the one that is correct by design rather
+    than by accident.
+    """
+
+    def decorate(handler):
+        @functools.wraps(handler)
+        def wrapper(self, payload):
+            try:
+                parsed = model.model_validate(payload)
+            except ValidationError as exc:
+                logger.warning(
+                    "%s: invalid payload; ignoring. %s", handler.__name__, exc
+                )
+                return None
+            return handler(self, parsed)
+
+        return wrapper
+
+    return decorate
 
 
 @TrameApp()
@@ -201,14 +308,20 @@ class LocalApp:
     # ------------------------------------------------------------------
     # Per-part visual state triggers
     #
-    # Frontend -> Backend.  Each takes a single ``payload: dict`` argument and
-    # returns ``None``; each delegates to the identically-named method on the
-    # injected coordinator.  Every payload carries the absolute target value,
-    # never a toggle or a delta, so a message the client suppresses as
-    # redundant is indistinguishable from one that set a value a part already
-    # had.  Required payload keys are read directly: a missing key raises
-    # KeyError on the trame event-loop thread, which is accepted because the
-    # only caller is the client written against this contract.
+    # Frontend -> Backend.  Each takes a single ``payload: dict`` argument
+    # and returns ``None``; each delegates to the identically-named method
+    # on the injected coordinator.  Every payload carries the absolute
+    # target value, never a toggle or a delta, so a message the client
+    # suppresses as redundant is indistinguishable from one that set a
+    # value a part already had.
+    #
+    # Payloads are validated at this boundary by ``@parse_payload``, which
+    # hands the handler a parsed model instead of the raw dict.  A payload
+    # that does not validate -- a missing key, a wrong-typed value, an
+    # association that is not an enum member, a diffuse colour that is not
+    # three components, an opacity outside [0, 1], or a payload that is not
+    # a mapping at all -- is a logged no-op and never reaches a handler
+    # body.
     # ------------------------------------------------------------------
 
     def _part_state_api(self, trigger_name: str) -> ScenePartStateApi | None:
@@ -219,35 +332,45 @@ class LocalApp:
         return self._scene_part_state_api
 
     @trigger("set_part_visibility")
-    def set_part_visibility(self, payload: dict) -> None:
+    @parse_payload(SetPartVisibilityPayload)
+    def set_part_visibility(self, payload) -> None:
         """Frontend -> Backend: set whether one part is visible."""
         api = self._part_state_api("set_part_visibility")
         if api is None:
             return
-        api.set_part_visibility(payload["nodeId"], payload["visible"])
+        api.set_part_visibility(payload.node_id, payload.visible)
 
     @trigger("set_part_opacity")
-    def set_part_opacity(self, payload: dict) -> None:
-        """Frontend -> Backend: set one part's opacity."""
+    @parse_payload(SetPartOpacityPayload)
+    def set_part_opacity(self, payload) -> None:
+        """Frontend -> Backend: set one part's opacity.
+
+        An opacity outside ``[0.0, 1.0]`` fails validation and is a logged
+        no-op; it does not reach VTK to be clamped.
+        """
         api = self._part_state_api("set_part_opacity")
         if api is None:
             return
-        api.set_part_opacity(payload["nodeId"], payload["opacity"])
+        api.set_part_opacity(payload.node_id, payload.opacity)
 
     @trigger("set_part_diffuse_color")
-    def set_part_diffuse_color(self, payload: dict) -> None:
+    @parse_payload(SetPartDiffuseColorPayload)
+    def set_part_diffuse_color(self, payload) -> None:
         """Frontend -> Backend: set one part's custom diffuse colour.
 
         ``diffuseRgb`` of ``None`` clears the custom colour and is forwarded
-        as ``None``; no default colour is substituted here.
+        as ``None``; no default colour is substituted here.  An absent key,
+        or a colour that is not exactly three components, is a logged
+        no-op -- nothing is delegated, so nothing is written to the store.
         """
         api = self._part_state_api("set_part_diffuse_color")
         if api is None:
             return
-        api.set_part_diffuse_color(payload["nodeId"], payload["diffuseRgb"])
+        api.set_part_diffuse_color(payload.node_id, payload.diffuse_rgb)
 
     @trigger("set_part_selected")
-    def set_part_selected(self, payload: dict) -> None:
+    @parse_payload(SetPartSelectedPayload)
+    def set_part_selected(self, payload) -> None:
         """Frontend -> Backend: select or deselect one part.
 
         No colour crosses this trigger: the server reads the part's stored
@@ -256,47 +379,42 @@ class LocalApp:
         api = self._part_state_api("set_part_selected")
         if api is None:
             return
-        api.set_part_selected(payload["nodeId"], payload["selected"])
+        api.set_part_selected(payload.node_id, payload.selected)
 
     @trigger("set_part_color_variable")
-    def set_part_color_variable(self, payload: dict) -> None:
+    @parse_payload(SetPartColorVariablePayload)
+    def set_part_color_variable(self, payload) -> None:
         """Frontend -> Backend: colour one part by a scalar variable.
 
-        ``association`` is parsed here, at the boundary, into a
-        :class:`VisorVtkVariableType` by exact value lookup -- never
-        upper-cased, never passed on as a bare string.  A value that is not a
-        member is a logged no-op, matching the posture the pipeline takes on an
-        unknown array name.  ``variableId`` is forwarded verbatim and is never
-        parsed by the server.
+        ``association`` is resolved at this boundary into a
+        :class:`VisorVtkVariableType` by the payload model, which matches by
+        exact value -- never upper-cased, never passed on as a bare string.
+        A value that is not a member fails validation and is a logged
+        no-op, matching the posture the pipeline takes on an unknown array
+        name.  ``variableId`` is forwarded verbatim and is never parsed by
+        the server.
         """
         api = self._part_state_api("set_part_color_variable")
         if api is None:
             return
-        try:
-            association = VisorVtkVariableType(payload["association"])
-        except ValueError:
-            logger.warning(
-                "set_part_color_variable: %r is not a VisorVtkVariableType; ignoring.",
-                payload["association"],
-            )
-            return
         api.set_part_color_variable(
-            payload["nodeId"],
-            payload["variableId"],
-            association,
-            payload["arrayName"],
-            payload["component"],
-            payload["min"],
-            payload["max"],
+            payload.node_id,
+            payload.variable_id,
+            payload.association,
+            payload.array_name,
+            payload.component,
+            payload.min_val,
+            payload.max_val,
         )
 
     @trigger("clear_part_color_variable")
-    def clear_part_color_variable(self, payload: dict) -> None:
+    @parse_payload(ClearPartColorVariablePayload)
+    def clear_part_color_variable(self, payload) -> None:
         """Frontend -> Backend: stop colouring one part by a scalar variable."""
         api = self._part_state_api("clear_part_color_variable")
         if api is None:
             return
-        api.clear_part_color_variable(payload["nodeId"])
+        api.clear_part_color_variable(payload.node_id)
 
     def set_only_cookie(self, key: str, value: str):
         """
