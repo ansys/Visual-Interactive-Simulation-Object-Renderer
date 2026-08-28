@@ -158,15 +158,48 @@ class VisorLocalRenderer(IRenderer):
     # ------------------------------------------------------------------
 
     def apply_visibility(self, node_id: int, visible: bool) -> None:
-        """No-op in Story 1.2. Phase 3 populates."""
+        """See :meth:`IRenderer.apply_visibility`.
+
+        Mutates the actor itself, not its property.  An unknown *node_id*
+        is a logged no-op, never a raise.
+        """
+        pipe = self._pipelines.get(node_id)
+        if pipe is None:
+            logger.debug(
+                "apply_visibility: no pipeline for node %s; skipping.", node_id
+            )
+            return
+        pipe.actor.SetVisibility(1 if visible else 0)
 
     def apply_opacity(self, node_id: int, opacity: float) -> None:
-        """No-op in Story 1.2. Phase 3 populates."""
+        """See :meth:`IRenderer.apply_opacity`.
+
+        Mutates the actor's property.  An unknown *node_id* is a logged
+        no-op, never a raise.
+        """
+        pipe = self._pipelines.get(node_id)
+        if pipe is None:
+            logger.debug(
+                "apply_opacity: no pipeline for node %s; skipping.", node_id
+            )
+            return
+        pipe.actor.GetProperty().SetOpacity(opacity)
 
     def apply_diffuse_color(
         self, node_id: int, r: float, g: float, b: float
     ) -> None:
-        """No-op in Story 1.2. Phase 3 populates."""
+        """See :meth:`IRenderer.apply_diffuse_color`.
+
+        Mutates the actor property's diffuse colour only.  An unknown
+        *node_id* is a logged no-op, never a raise.
+        """
+        pipe = self._pipelines.get(node_id)
+        if pipe is None:
+            logger.debug(
+                "apply_diffuse_color: no pipeline for node %s; skipping.", node_id
+            )
+            return
+        pipe.actor.GetProperty().SetDiffuseColor(r, g, b)
 
     def apply_edge_visibility(self, node_id: int, edge_visible: bool) -> None:
         """No-op in Story 1.2. Phase 3 populates."""

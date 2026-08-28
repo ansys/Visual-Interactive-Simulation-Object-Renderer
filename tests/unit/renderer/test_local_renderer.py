@@ -6,8 +6,9 @@ Coverage targets
 1.  Node lifecycle  -- register_node / deregister_node (the non-trivial seam).
 2.  Interface conformance -- NullRenderer and VisorLocalRenderer both satisfy
     IRenderer's abstract contract.
-3.  Per-part visual mutations -- one focused test per property;
-    tests assert they accept their arguments and return None.
+3.  Per-part visual mutations -- visibility, opacity and diffuse colour
+    mutate the resolved pipeline's VTK objects; the remaining methods are
+    still no-ops and are asserted to accept their arguments and return None.
 4.  Camera round-trip -- reset_camera, sync_camera / get_camera_state.
 5.  Render / flush delegation.
 6.  pick_geometry -- vertex, edge, face modes.
@@ -18,6 +19,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import pytest
+from vtkmodules.vtkRenderingCore import vtkActor
 
 from ansys.visor.viewer.renderer.base import IRenderer
 from ansys.visor.viewer.renderer.local_renderer import VisorLocalRenderer
@@ -90,6 +92,20 @@ class _DummyActors:
         a = self._actors[self._idx]
         self._idx += 1
         return a
+
+
+class _DummyPipeline:
+    """VtkNodePipeline stand-in holding a *real* vtkActor.
+
+    The actor is real so that a test can read the mutated value back off
+    the VTK object (``GetVisibility``, ``GetProperty().GetOpacity()``,
+    ``GetProperty().GetDiffuseColor()``) rather than merely recording that
+    some call was made -- a MagicMock would pass even if the production
+    code mutated the wrong object or the wrong field.
+    """
+
+    def __init__(self):
+        self.actor = vtkActor()
 
 
 # ---------------------------------------------------------------------------
@@ -336,16 +352,7 @@ class TestNodeLifecycle:
 # ===========================================================================
 
 class TestPerPartMutations:
-    """Each method accepts its contract arguments and returns None without raising."""
-
-    def test_apply_visibility(self, renderer):
-        assert renderer.apply_visibility(1, True) is None
-
-    def test_apply_opacity(self, renderer):
-        assert renderer.apply_opacity(1, 0.5) is None
-
-    def test_apply_diffuse_color(self, renderer):
-        assert renderer.apply_diffuse_color(1, 1.0, 0.0, 0.0) is None
+    """The methods still un-implemented accept their arguments and return None."""
 
     def test_apply_edge_visibility(self, renderer):
         assert renderer.apply_edge_visibility(1, False) is None
@@ -366,6 +373,142 @@ class TestPerPartMutations:
         assert (
             renderer.refresh_color_variable_range(1, "sp-1", "CELL", "temp", 0)
             is None
+        )
+
+
+# ===========================================================================
+# 3b.  Inline apply bodies: visibility, opacity, diffuse colour
+#
+#      Each mutation is read back off a real vtkActor, and each miss branch
+#      (unknown node id) is asserted separately.
+# ===========================================================================
+
+class TestInlineApplyBodies:
+
+    # ------------------------------------------------------------------
+    # visibility -- mutates the actor itself
+    # ------------------------------------------------------------------
+
+    def test_apply_visibility_shows_actor(self, renderer):
+        """apply_visibility(True) leaves the actor's visibility flag set."""
+        pipe = _DummyPipeline()
+        pipe.actor.SetVisibility(0)
+        renderer._pipelines[4] = pipe
+
+        renderer.apply_visibility(4, True)
+
+        assert pipe.actor.GetVisibility() == 1
+
+    def test_apply_visibility_hides_actor(self, renderer):
+        """apply_visibility(False) leaves the actor's visibility flag clear."""
+        pipe = _DummyPipeline()
+        pipe.actor.SetVisibility(1)
+        renderer._pipelines[4] = pipe
+
+        renderer.apply_visibility(4, False)
+
+        assert pipe.actor.GetVisibility() == 0
+
+    def test_apply_visibility_unknown_node_id_is_logged_no_op(self, renderer):
+        """An unregistered node id logs at debug, does not raise, mutates nothing."""
+        pipe = _DummyPipeline()
+        pipe.actor.SetVisibility(1)
+        renderer._pipelines[4] = pipe
+
+        with patch(
+            "ansys.visor.viewer.renderer.local_renderer.logger"
+        ) as mock_logger:
+            renderer.apply_visibility(9999, False)  # must not raise
+
+        mock_logger.debug.assert_called_once()
+        assert pipe.actor.GetVisibility() == 1
+
+    # ------------------------------------------------------------------
+    # opacity -- mutates the actor's property
+    # ------------------------------------------------------------------
+
+    def test_apply_opacity_sets_property_opacity(self, renderer):
+        """apply_opacity writes the requested value onto the actor property."""
+        pipe = _DummyPipeline()
+        renderer._pipelines[4] = pipe
+
+        renderer.apply_opacity(4, 0.25)
+
+        assert pipe.actor.GetProperty().GetOpacity() == pytest.approx(0.25)
+
+    def test_apply_opacity_does_not_touch_visibility_or_diffuse_color(self, renderer):
+        """Opacity lands on the property's opacity field and nothing else."""
+        pipe = _DummyPipeline()
+        pipe.actor.SetVisibility(0)
+        pipe.actor.GetProperty().SetDiffuseColor(0.25, 0.5, 0.75)
+        renderer._pipelines[4] = pipe
+
+        renderer.apply_opacity(4, 0.25)
+
+        assert pipe.actor.GetVisibility() == 0
+        assert pipe.actor.GetProperty().GetDiffuseColor() == pytest.approx(
+            (0.25, 0.5, 0.75)
+        )
+
+    def test_apply_opacity_unknown_node_id_is_logged_no_op(self, renderer):
+        """An unregistered node id logs at debug, does not raise, mutates nothing."""
+        pipe = _DummyPipeline()
+        pipe.actor.GetProperty().SetOpacity(0.75)
+        renderer._pipelines[4] = pipe
+
+        with patch(
+            "ansys.visor.viewer.renderer.local_renderer.logger"
+        ) as mock_logger:
+            renderer.apply_opacity(9999, 0.25)  # must not raise
+
+        mock_logger.debug.assert_called_once()
+        assert pipe.actor.GetProperty().GetOpacity() == pytest.approx(0.75)
+
+    # ------------------------------------------------------------------
+    # diffuse colour -- mutates the actor property's DiffuseColor
+    # ------------------------------------------------------------------
+
+    def test_apply_diffuse_color_sets_property_diffuse_color(self, renderer):
+        """apply_diffuse_color writes r, g, b onto the property's diffuse colour."""
+        pipe = _DummyPipeline()
+        renderer._pipelines[4] = pipe
+
+        renderer.apply_diffuse_color(4, 1.0, 0.0, 0.0)
+
+        assert pipe.actor.GetProperty().GetDiffuseColor() == pytest.approx(
+            (1.0, 0.0, 0.0)
+        )
+
+    def test_apply_diffuse_color_does_not_touch_ambient_color_or_opacity(
+        self, renderer
+    ):
+        """SetDiffuseColor, not SetColor or SetAmbientColor, and opacity is left alone."""
+        pipe = _DummyPipeline()
+        pipe.actor.GetProperty().SetAmbientColor(0.25, 0.5, 0.75)
+        pipe.actor.GetProperty().SetOpacity(0.75)
+        renderer._pipelines[4] = pipe
+
+        renderer.apply_diffuse_color(4, 1.0, 0.0, 0.0)
+
+        assert pipe.actor.GetProperty().GetAmbientColor() == pytest.approx(
+            (0.25, 0.5, 0.75)
+        )
+        assert pipe.actor.GetProperty().GetOpacity() == pytest.approx(0.75)
+
+    def test_apply_diffuse_color_unknown_node_id_is_logged_no_op(self, renderer):
+        """An unregistered node id logs at debug, does not raise, mutates nothing."""
+        pipe = _DummyPipeline()
+        pipe.actor.GetProperty().SetDiffuseColor(0.25, 0.5, 0.75)
+        renderer._pipelines[4] = pipe
+
+        with patch(
+            "ansys.visor.viewer.renderer.local_renderer.logger"
+        ) as mock_logger:
+            renderer.apply_diffuse_color(9999, 1.0, 0.0, 0.0)  # must not raise
+
+        mock_logger.debug.assert_called_once()
+        assert pipe.actor.GetProperty().GetDiffuseColor() == pytest.approx(
+            (0.25, 0.5, 0.75)
         )
 
 
