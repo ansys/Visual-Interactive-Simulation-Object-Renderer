@@ -1,5 +1,5 @@
-VISOR
-=====
+Visual Interactive Simulation Object Renderer (VISOR)
+=====================================================
 
 .. toctree::
    :hidden:
