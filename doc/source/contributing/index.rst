@@ -290,7 +290,7 @@ To build the documentation locally, perform the following steps:
 .. code-block:: bash
 
     # navigate to the docs directory
-    cd docs
+    cd doc
 
     # Install the documentation dependencies
     poetry install --with doc
