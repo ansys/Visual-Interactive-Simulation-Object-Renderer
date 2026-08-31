@@ -1,6 +1,6 @@
 
-VISOR
-=====
+Visual Interactive Simulation Object Renderer (VISOR)
+=====================================================
 
 |pyansys|
 
