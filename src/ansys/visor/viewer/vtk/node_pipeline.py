@@ -127,6 +127,9 @@ class VtkNodePipeline:
             The part's diffuse colour, re-applied unconditionally on both
             branches -- selection changes the ambient/diffuse lighting
             terms, it does not replace the part's colour.
+
+        Note: :meth:`set_diffuse_color` also writes ``SetDiffuseColor``;
+        this method is not a substitute for it and vice versa.
         """
         prop = self.actor.GetProperty()
         if selected:
@@ -137,6 +140,46 @@ class VtkNodePipeline:
             prop.SetDiffuse(1.0)
             prop.SetAmbient(0.0)
         prop.SetDiffuseColor(*diffuse_rgb)
+
+    def set_visibility(self, visible: bool) -> None:
+        """Show or hide this part.
+
+        Mutates the actor itself, not its property.
+
+        Parameters
+        ----------
+        visible:
+            Target state.  Absolute, never a toggle.
+        """
+        self.actor.SetVisibility(1 if visible else 0)
+
+    def set_opacity(self, opacity: float) -> None:
+        """Set this part's opacity.
+
+        Mutates the actor's property.
+
+        Parameters
+        ----------
+        opacity:
+            The opacity value to apply, passed through unchanged.
+        """
+        self.actor.GetProperty().SetOpacity(opacity)
+
+    def set_diffuse_color(self, r: float, g: float, b: float) -> None:
+        """Set this part's diffuse colour.
+
+        Mutates the actor property's diffuse colour only.
+
+        Parameters
+        ----------
+        r, g, b:
+            The diffuse colour components, passed through unchanged.
+
+        Note: :meth:`set_selected` also writes ``SetDiffuseColor`` on both
+        of its branches; this method is not a substitute for it and vice
+        versa.
+        """
+        self.actor.GetProperty().SetDiffuseColor(r, g, b)
 
     def set_color_variable(
         self,

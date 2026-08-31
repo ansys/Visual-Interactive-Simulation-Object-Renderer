@@ -6,11 +6,11 @@ Coverage targets
 1.  Node lifecycle  -- register_node / deregister_node (the non-trivial seam).
 2.  Interface conformance -- NullRenderer and VisorLocalRenderer both satisfy
     IRenderer's abstract contract.
-3.  Per-part visual mutations -- visibility, opacity and diffuse colour
-    mutate the resolved pipeline's VTK objects directly; selection and
-    colour variable resolve the pipeline and delegate to VtkNodePipeline
-    (their VTK effects are asserted in tests/unit/vtk/test_node_pipeline.py);
-    edge visibility and the colour-variable range refresh stay no-ops.
+3.  Per-part visual mutations -- visibility, opacity, diffuse colour,
+    selection and colour variable all resolve the pipeline and delegate to
+    VtkNodePipeline (their VTK effects are asserted in
+    tests/unit/vtk/test_node_pipeline.py); edge visibility and the
+    colour-variable range refresh stay no-ops.
 4.  Camera round-trip -- reset_camera, sync_camera / get_camera_state.
 5.  Render / flush delegation.
 6.  pick_geometry -- vertex, edge, face modes.
@@ -21,7 +21,6 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import pytest
-from vtkmodules.vtkRenderingCore import vtkActor
 
 from ansys.visor.viewer.core.visor_enums import VisorVtkVariableType
 from ansys.visor.viewer.renderer.base import IRenderer
@@ -96,27 +95,6 @@ class _DummyActors:
         self._idx += 1
         return a
 
-
-class _DummyPipeline:
-    """VtkNodePipeline stand-in holding a *real* vtkActor.
-
-    The actor is real so that a test can read the mutated value back off
-    the VTK object (``GetVisibility``, ``GetProperty().GetOpacity()``,
-    ``GetProperty().GetDiffuseColor()``) rather than merely recording that
-    some call was made -- a MagicMock would pass even if the production
-    code mutated the wrong object or the wrong field.
-
-    The three delegated mutations are MagicMocks, because from this module
-    the behaviour under test is *that the renderer resolved and delegated*.
-    Their VTK effects are asserted against real objects in
-    ``tests/unit/vtk/test_node_pipeline.py``.
-    """
-
-    def __init__(self):
-        self.actor = vtkActor()
-        self.set_selected = MagicMock(name="set_selected")
-        self.set_color_variable = MagicMock(name="set_color_variable")
-        self.clear_color_variable = MagicMock(name="clear_color_variable")
 
 
 # ---------------------------------------------------------------------------
@@ -381,143 +359,8 @@ class TestPerPartMutations:
 
 
 # ===========================================================================
-# 3b.  Inline apply bodies: visibility, opacity, diffuse colour
-#
-#      Each mutation is read back off a real vtkActor, and each miss branch
-#      (unknown node id) is asserted separately.
-# ===========================================================================
-
-class TestInlineApplyBodies:
-
-    # ------------------------------------------------------------------
-    # visibility -- mutates the actor itself
-    # ------------------------------------------------------------------
-
-    def test_apply_visibility_shows_actor(self, renderer):
-        """apply_visibility(True) leaves the actor's visibility flag set."""
-        pipe = _DummyPipeline()
-        pipe.actor.SetVisibility(0)
-        renderer._pipelines[4] = pipe
-
-        renderer.apply_visibility(4, True)
-
-        assert pipe.actor.GetVisibility() == 1
-
-    def test_apply_visibility_hides_actor(self, renderer):
-        """apply_visibility(False) leaves the actor's visibility flag clear."""
-        pipe = _DummyPipeline()
-        pipe.actor.SetVisibility(1)
-        renderer._pipelines[4] = pipe
-
-        renderer.apply_visibility(4, False)
-
-        assert pipe.actor.GetVisibility() == 0
-
-    def test_apply_visibility_unknown_node_id_is_logged_no_op(self, renderer):
-        """An unregistered node id logs at debug, does not raise, mutates nothing."""
-        pipe = _DummyPipeline()
-        pipe.actor.SetVisibility(1)
-        renderer._pipelines[4] = pipe
-
-        with patch(
-            "ansys.visor.viewer.renderer.local_renderer.logger"
-        ) as mock_logger:
-            renderer.apply_visibility(9999, False)  # must not raise
-
-        mock_logger.debug.assert_called_once()
-        assert pipe.actor.GetVisibility() == 1
-
-    # ------------------------------------------------------------------
-    # opacity -- mutates the actor's property
-    # ------------------------------------------------------------------
-
-    def test_apply_opacity_sets_property_opacity(self, renderer):
-        """apply_opacity writes the requested value onto the actor property."""
-        pipe = _DummyPipeline()
-        renderer._pipelines[4] = pipe
-
-        renderer.apply_opacity(4, 0.25)
-
-        assert pipe.actor.GetProperty().GetOpacity() == pytest.approx(0.25)
-
-    def test_apply_opacity_does_not_touch_visibility_or_diffuse_color(self, renderer):
-        """Opacity lands on the property's opacity field and nothing else."""
-        pipe = _DummyPipeline()
-        pipe.actor.SetVisibility(0)
-        pipe.actor.GetProperty().SetDiffuseColor(0.25, 0.5, 0.75)
-        renderer._pipelines[4] = pipe
-
-        renderer.apply_opacity(4, 0.25)
-
-        assert pipe.actor.GetVisibility() == 0
-        assert pipe.actor.GetProperty().GetDiffuseColor() == pytest.approx(
-            (0.25, 0.5, 0.75)
-        )
-
-    def test_apply_opacity_unknown_node_id_is_logged_no_op(self, renderer):
-        """An unregistered node id logs at debug, does not raise, mutates nothing."""
-        pipe = _DummyPipeline()
-        pipe.actor.GetProperty().SetOpacity(0.75)
-        renderer._pipelines[4] = pipe
-
-        with patch(
-            "ansys.visor.viewer.renderer.local_renderer.logger"
-        ) as mock_logger:
-            renderer.apply_opacity(9999, 0.25)  # must not raise
-
-        mock_logger.debug.assert_called_once()
-        assert pipe.actor.GetProperty().GetOpacity() == pytest.approx(0.75)
-
-    # ------------------------------------------------------------------
-    # diffuse colour -- mutates the actor property's DiffuseColor
-    # ------------------------------------------------------------------
-
-    def test_apply_diffuse_color_sets_property_diffuse_color(self, renderer):
-        """apply_diffuse_color writes r, g, b onto the property's diffuse colour."""
-        pipe = _DummyPipeline()
-        renderer._pipelines[4] = pipe
-
-        renderer.apply_diffuse_color(4, 1.0, 0.0, 0.0)
-
-        assert pipe.actor.GetProperty().GetDiffuseColor() == pytest.approx(
-            (1.0, 0.0, 0.0)
-        )
-
-    def test_apply_diffuse_color_does_not_touch_ambient_color_or_opacity(
-        self, renderer
-    ):
-        """SetDiffuseColor, not SetColor or SetAmbientColor, and opacity is left alone."""
-        pipe = _DummyPipeline()
-        pipe.actor.GetProperty().SetAmbientColor(0.25, 0.5, 0.75)
-        pipe.actor.GetProperty().SetOpacity(0.75)
-        renderer._pipelines[4] = pipe
-
-        renderer.apply_diffuse_color(4, 1.0, 0.0, 0.0)
-
-        assert pipe.actor.GetProperty().GetAmbientColor() == pytest.approx(
-            (0.25, 0.5, 0.75)
-        )
-        assert pipe.actor.GetProperty().GetOpacity() == pytest.approx(0.75)
-
-    def test_apply_diffuse_color_unknown_node_id_is_logged_no_op(self, renderer):
-        """An unregistered node id logs at debug, does not raise, mutates nothing."""
-        pipe = _DummyPipeline()
-        pipe.actor.GetProperty().SetDiffuseColor(0.25, 0.5, 0.75)
-        renderer._pipelines[4] = pipe
-
-        with patch(
-            "ansys.visor.viewer.renderer.local_renderer.logger"
-        ) as mock_logger:
-            renderer.apply_diffuse_color(9999, 1.0, 0.0, 0.0)  # must not raise
-
-        mock_logger.debug.assert_called_once()
-        assert pipe.actor.GetProperty().GetDiffuseColor() == pytest.approx(
-            (0.25, 0.5, 0.75)
-        )
-
-
-# ===========================================================================
-# 3c.  Delegated apply bodies: selection, colour variable
+# 3b.  Delegated apply bodies: visibility, opacity, diffuse colour,
+#      selection, colour variable
 #
 #      The VTK effects of these live on VtkNodePipeline and are asserted in
 #      tests/unit/vtk/test_node_pipeline.py.  What is asserted here is that
@@ -528,12 +371,90 @@ class TestInlineApplyBodies:
 class TestDelegatedApplyBodies:
 
     # ------------------------------------------------------------------
+    # apply_visibility
+    # ------------------------------------------------------------------
+
+    def test_apply_visibility_delegates_to_pipeline(self, renderer):
+        """The visibility flag is passed straight through."""
+        pipe = MagicMock(name="pipeline")
+        renderer._pipelines[4] = pipe
+
+        renderer.apply_visibility(4, True)
+
+        pipe.set_visibility.assert_called_once_with(True)
+
+    def test_apply_visibility_unknown_node_id_is_logged_no_op(self, renderer):
+        """An unregistered node id logs at debug, does not raise, delegates nothing."""
+        pipe = MagicMock(name="pipeline")
+        renderer._pipelines[4] = pipe
+
+        with patch(
+            "ansys.visor.viewer.renderer.local_renderer.logger"
+        ) as mock_logger:
+            renderer.apply_visibility(9999, False)  # must not raise
+
+        mock_logger.debug.assert_called_once()
+        pipe.set_visibility.assert_not_called()
+
+    # ------------------------------------------------------------------
+    # apply_opacity
+    # ------------------------------------------------------------------
+
+    def test_apply_opacity_delegates_to_pipeline(self, renderer):
+        """The opacity value is passed straight through."""
+        pipe = MagicMock(name="pipeline")
+        renderer._pipelines[4] = pipe
+
+        renderer.apply_opacity(4, 0.25)
+
+        pipe.set_opacity.assert_called_once_with(0.25)
+
+    def test_apply_opacity_unknown_node_id_is_logged_no_op(self, renderer):
+        """An unregistered node id logs at debug, does not raise, delegates nothing."""
+        pipe = MagicMock(name="pipeline")
+        renderer._pipelines[4] = pipe
+
+        with patch(
+            "ansys.visor.viewer.renderer.local_renderer.logger"
+        ) as mock_logger:
+            renderer.apply_opacity(9999, 0.25)  # must not raise
+
+        mock_logger.debug.assert_called_once()
+        pipe.set_opacity.assert_not_called()
+
+    # ------------------------------------------------------------------
+    # apply_diffuse_color
+    # ------------------------------------------------------------------
+
+    def test_apply_diffuse_color_delegates_to_pipeline(self, renderer):
+        """r, g, b are passed straight through."""
+        pipe = MagicMock(name="pipeline")
+        renderer._pipelines[4] = pipe
+
+        renderer.apply_diffuse_color(4, 1.0, 0.0, 0.0)
+
+        pipe.set_diffuse_color.assert_called_once_with(1.0, 0.0, 0.0)
+
+    def test_apply_diffuse_color_unknown_node_id_is_logged_no_op(self, renderer):
+        """An unregistered node id logs at debug, does not raise, delegates nothing."""
+        pipe = MagicMock(name="pipeline")
+        renderer._pipelines[4] = pipe
+
+        with patch(
+            "ansys.visor.viewer.renderer.local_renderer.logger"
+        ) as mock_logger:
+            renderer.apply_diffuse_color(9999, 1.0, 0.0, 0.0)  # must not raise
+
+        mock_logger.debug.assert_called_once()
+        pipe.set_diffuse_color.assert_not_called()
+
+    # ------------------------------------------------------------------
     # apply_selected
     # ------------------------------------------------------------------
 
     def test_apply_selected_delegates_to_pipeline(self, renderer):
         """Selection state and the given colour are passed straight through."""
-        pipe = _DummyPipeline()
+        pipe = MagicMock(name="pipeline")
         renderer._pipelines[4] = pipe
 
         renderer.apply_selected(4, True, [1.0, 0.0, 0.0])
@@ -542,7 +463,7 @@ class TestDelegatedApplyBodies:
 
     def test_apply_selected_unknown_node_id_is_logged_no_op(self, renderer):
         """An unregistered node id logs at debug, does not raise, delegates nothing."""
-        pipe = _DummyPipeline()
+        pipe = MagicMock(name="pipeline")
         renderer._pipelines[4] = pipe
 
         with patch(
@@ -559,7 +480,7 @@ class TestDelegatedApplyBodies:
 
     def test_apply_color_variable_delegates_with_given_arguments(self, renderer):
         """The association is forwarded unchanged; spectrum_id is not forwarded."""
-        pipe = _DummyPipeline()
+        pipe = MagicMock(name="pipeline")
         renderer._pipelines[4] = pipe
 
         renderer.apply_color_variable(
@@ -572,7 +493,7 @@ class TestDelegatedApplyBodies:
 
     def test_apply_color_variable_unknown_node_id_is_logged_no_op(self, renderer):
         """An unregistered node id logs at debug, does not raise, delegates nothing."""
-        pipe = _DummyPipeline()
+        pipe = MagicMock(name="pipeline")
         renderer._pipelines[4] = pipe
 
         with patch(
@@ -590,7 +511,7 @@ class TestDelegatedApplyBodies:
     # ------------------------------------------------------------------
 
     def test_clear_color_variable_delegates_to_pipeline(self, renderer):
-        pipe = _DummyPipeline()
+        pipe = MagicMock(name="pipeline")
         renderer._pipelines[4] = pipe
 
         renderer.clear_color_variable(4)
@@ -599,7 +520,7 @@ class TestDelegatedApplyBodies:
 
     def test_clear_color_variable_unknown_node_id_is_logged_no_op(self, renderer):
         """An unregistered node id logs at debug, does not raise, delegates nothing."""
-        pipe = _DummyPipeline()
+        pipe = MagicMock(name="pipeline")
         renderer._pipelines[4] = pipe
 
         with patch(

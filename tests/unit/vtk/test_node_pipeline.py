@@ -223,6 +223,86 @@ def test_set_selected_false_leaves_ambient_color_untouched(poly_dataset):
 
 
 # ---------------------------------------------------------------------------
+# set_visibility
+# ---------------------------------------------------------------------------
+
+def test_set_visibility_true_shows_actor(poly_dataset):
+    """set_visibility(True) leaves the actor's visibility flag set."""
+    pipe = VtkNodePipeline.from_dataset(poly_dataset)
+    pipe.actor.SetVisibility(0)
+
+    pipe.set_visibility(True)
+
+    assert pipe.actor.GetVisibility() == 1
+
+
+def test_set_visibility_false_hides_actor(poly_dataset):
+    """set_visibility(False) leaves the actor's visibility flag clear."""
+    pipe = VtkNodePipeline.from_dataset(poly_dataset)
+    pipe.actor.SetVisibility(1)
+
+    pipe.set_visibility(False)
+
+    assert pipe.actor.GetVisibility() == 0
+
+
+# ---------------------------------------------------------------------------
+# set_opacity
+# ---------------------------------------------------------------------------
+
+def test_set_opacity_sets_property_opacity(poly_dataset):
+    """set_opacity writes the requested value onto the actor property."""
+    pipe = VtkNodePipeline.from_dataset(poly_dataset)
+
+    pipe.set_opacity(0.25)
+
+    assert pipe.actor.GetProperty().GetOpacity() == pytest.approx(0.25)
+
+
+def test_set_opacity_does_not_touch_visibility_or_diffuse_color(poly_dataset):
+    """Opacity lands on the property's opacity field and nothing else."""
+    pipe = VtkNodePipeline.from_dataset(poly_dataset)
+    pipe.actor.SetVisibility(0)
+    pipe.actor.GetProperty().SetDiffuseColor(0.25, 0.5, 0.75)
+
+    pipe.set_opacity(0.25)
+
+    assert pipe.actor.GetVisibility() == 0
+    assert pipe.actor.GetProperty().GetDiffuseColor() == pytest.approx(
+        (0.25, 0.5, 0.75)
+    )
+
+
+# ---------------------------------------------------------------------------
+# set_diffuse_color
+# ---------------------------------------------------------------------------
+
+def test_set_diffuse_color_sets_property_diffuse_color(poly_dataset):
+    """set_diffuse_color writes r, g, b onto the property's diffuse colour."""
+    pipe = VtkNodePipeline.from_dataset(poly_dataset)
+
+    pipe.set_diffuse_color(1.0, 0.0, 0.0)
+
+    assert pipe.actor.GetProperty().GetDiffuseColor() == pytest.approx(
+        (1.0, 0.0, 0.0)
+    )
+
+
+def test_set_diffuse_color_does_not_touch_ambient_color_or_opacity(poly_dataset):
+    """SetDiffuseColor, not SetColor or SetAmbientColor, and opacity is left alone."""
+    pipe = VtkNodePipeline.from_dataset(poly_dataset)
+    pipe.actor.GetProperty().SetAmbientColor(0.25, 0.5, 0.75)
+    pipe.actor.GetProperty().SetOpacity(0.75)
+
+    pipe.set_diffuse_color(1.0, 0.0, 0.0)
+
+    assert pipe.actor.GetProperty().GetAmbientColor() == pytest.approx(
+        (0.25, 0.5, 0.75)
+    )
+    assert pipe.actor.GetProperty().GetOpacity() == pytest.approx(0.75)
+
+
+# ---------------------------------------------------------------------------
 # set_color_variable
 # ---------------------------------------------------------------------------
 
