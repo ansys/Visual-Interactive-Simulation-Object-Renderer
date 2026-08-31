@@ -94,7 +94,7 @@ class TestTensorComponentColoring:
         component_select.wait_for(state="visible", timeout=10_000)
 
         # Capture a canvas screenshot per component for the representative subset
-        components_to_test = ["Magnitude", "XX", "YY", "ZZ"]
+        components_to_test = ["XX", "YY", "ZZ", "Magnitude"]
         screenshots_root = Path("tests/artifacts/regression/screenshots")
         screenshots_root.mkdir(parents=True, exist_ok=True)
 
