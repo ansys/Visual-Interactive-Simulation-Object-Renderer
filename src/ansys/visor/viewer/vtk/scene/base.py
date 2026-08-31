@@ -385,9 +385,11 @@ class VisorSceneBase(ABC):
     #
     # Each method does both halves of its trigger, in this order and all under
     # ``_vtk_lock``: write the registry record, apply to the server's VTK
-    # pipeline, then push the mutated state to the wasm client with
-    # ``flush_wasm_state()``.  An unresolvable node id is a logged no-op at
-    # every layer: nothing is applied and nothing is flushed.
+    # pipeline.  Nothing is pushed to the client from here.  The client applies
+    # its own change, and a push at this layer rebuilds the client, which
+    # re-delivers state and fires further triggers.  Presenting a server-originated
+    # change is the renderer's, since it is not mode-agnostic.
+    # An unresolvable node id is a logged no-op at the apply layer.
     #
     # Every value that arrives here is absolute, never relative: the caller
     # always supplies the target value, never a toggle or a delta.
@@ -400,8 +402,6 @@ class VisorSceneBase(ABC):
                 logger.debug("set_part_visibility: no dataset owns node %s; skipping.", node_id)
                 return
             self._renderer.apply_visibility(node_id, visible)
-            # TODO: uncomment when adding round trips
-            # self._renderer.flush_wasm_state()
 
     def set_part_opacity(self, node_id: int, opacity: float) -> None:
         """Set the opacity of the part identified by *node_id*."""
@@ -410,8 +410,6 @@ class VisorSceneBase(ABC):
                 logger.debug("set_part_opacity: no dataset owns node %s; skipping.", node_id)
                 return
             self._renderer.apply_opacity(node_id, opacity)
-            # TODO: uncomment when adding round trips
-            # self._renderer.flush_wasm_state()
 
     def set_part_diffuse_color(self, node_id: int, diffuse_rgb: list[float] | None) -> None:
         """
@@ -433,8 +431,6 @@ class VisorSceneBase(ABC):
             self._renderer.apply_diffuse_color(
                 node_id, applied_rgb[0], applied_rgb[1], applied_rgb[2]
             )
-            # TODO: uncomment when adding round trips
-            # self._renderer.flush_wasm_state()
 
     def set_part_selected(self, node_id: int, selected: bool) -> None:
         """
@@ -456,8 +452,6 @@ class VisorSceneBase(ABC):
                 stored_rgb if stored_rgb is not None else list(VisorColors.DefaultMeshColor)
             )
             self._renderer.apply_selected(node_id, selected, diffuse_rgb)
-            # TODO: uncomment when adding round trips
-            # self._renderer.flush_wasm_state()
 
     def set_part_color_variable(
             self,
@@ -485,8 +479,6 @@ class VisorSceneBase(ABC):
             self._renderer.apply_color_variable(
                 node_id, variable_id, association, array_name, component, min_val, max_val
             )
-            # TODO: uncomment when adding round trips
-            # self._renderer.flush_wasm_state()
 
     def clear_part_color_variable(self, node_id: int) -> None:
         """
@@ -502,8 +494,6 @@ class VisorSceneBase(ABC):
                 )
                 return
             self._renderer.clear_color_variable(node_id)
-            # TODO: uncomment when adding round trips
-            # self._renderer.flush_wasm_state()
 
     # ------------------------------------------------------------------
     # Internal helpers
