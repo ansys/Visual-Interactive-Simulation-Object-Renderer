@@ -25,7 +25,7 @@ class PersistedViewerStateV1(BaseModel):
     """
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    version: Literal["1.1"] = Field(default="1.1")
+    version: Literal["1.0"] = Field(default="1.0")
 
     ui: VisorUIState = Field(default_factory=VisorUIState)
     scene: PersistedSceneState = Field(default_factory=PersistedSceneState)

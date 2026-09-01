@@ -125,7 +125,7 @@ class TestSaveLoadState:
         content = json.loads(state_file.read_text())
 
         # Verify top-level structure
-        assert content.get("version") == "1.1", "State version should be 1.1"
+        assert content.get("version") == "1.0", "State version should be 1.0"
         assert "scene" in content, "State should contain scene data"
         assert "dataset_states" in content["scene"], "Scene should contain dataset_states"
         assert len(content["scene"]["dataset_states"]) > 0, (
