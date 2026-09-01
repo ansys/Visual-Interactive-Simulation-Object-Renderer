@@ -112,30 +112,4 @@ Developer installation
       >>> from ansys.visor.viewer import Visor
 
 
-#. Clean the build environment (optional):
-
-   To clean the build environment, run the following command in the root of the VISOR repository:
-
-   .. code:: console
-
-      make clean
-
-   To run this on Windows, you need to install GNU make.  First install Chocolatey as described in
-   `Installing Chocolatey <https://chocolatey.org/install>`_. You do not need this step on other operating systems.
-
-   Then run these commands:
-
-   .. code:: console
-
-      choco install make  # install GNU make on Windows
-      make clean
-
-   If you get a ``find`` command error on Windows, your shell might be calling the Windows version of ``find`` instead
-   of the expected Unix command.
-
-   1. Verify that Git Bash is installed, for example in ``C:\Program Files\Git\usr\bin``.
-
-   2. Add ``C:\Program Files\Git\usr\bin`` to your system ``PATH`` before the ``System32`` path.
-
-
 
