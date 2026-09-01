@@ -144,7 +144,7 @@ jobs:
       - name: When on nightly build, append date to version
         # Run for nightly build only
         if: |
-          (github.event_name == 'pull_request' && github.ref == 'refs/heads/maint/use-dev-version')
+          (github.event_name == 'schedule' && github.ref == 'refs/heads/main')
         run: |
           DATE=$(date +%Y%m%d)
           VERSION=$(poetry version -s)
