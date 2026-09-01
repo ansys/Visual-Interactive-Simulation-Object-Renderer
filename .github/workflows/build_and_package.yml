@@ -148,6 +148,7 @@ jobs:
         run: |
           DATE=$(date +%Y%m%d)
           VERSION=$(poetry version -s)
+          VERSION="${VERSION/_dev/}"
           poetry version "${VERSION}.dev0+${DATE}"
 
       - name: Set package_version output
