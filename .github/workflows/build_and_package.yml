@@ -141,15 +141,14 @@ jobs:
         run: |
           sed -i '/client_bundle\|dash\|GITIGNORE/d' .gitignore
 
-      - name: When on nightly build, append .dev0+date to version
+      - name: When on nightly build, append date to version
         # Run for nightly build only
         if: |
           (github.event_name == 'schedule' && github.ref == 'refs/heads/main')
         run: |
           DATE=$(date +%Y%m%d)
           VERSION=$(poetry version -s)
-          VERSION="${VERSION/_dev/}"
-          poetry version "${VERSION}.dev0+${DATE}"
+          poetry version "${VERSION}+${DATE}"
 
       - name: Set package_version output
         id: set_package_version
