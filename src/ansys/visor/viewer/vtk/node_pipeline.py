@@ -27,6 +27,7 @@ from vtkmodules.vtkFiltersGeometry import vtkGeometryFilter
 from vtkmodules.vtkRenderingCore import vtkActor, vtkPolyDataMapper
 
 from ansys.visor.viewer.core.visor_colors import VisorColors
+from ansys.visor.viewer.core.visor_enums import VisorVtkVariableType
 from ansys.visor.viewer.core.visor_logging import VisorDefaultLogger
 
 logger = VisorDefaultLogger(__name__)
@@ -104,6 +105,145 @@ class VtkNodePipeline:
         if algorithm_filter is not None:
             algorithm = algorithm_filter(algorithm)
         self.mapper.SetInputConnection(algorithm.GetOutputPort())
+
+    # ------------------------------------------------------------------
+    # Per-part visual mutations
+    #
+    # These bodies live here rather than on the renderer because each is
+    # more than one VTK call, and the colour-variable body additionally
+    # reads a pipeline-internal object (``base_algorithm``).  Identity
+    # resolution (node id -> pipeline) and the miss branch stay on the
+    # renderer, which is the only holder of the id -> pipeline map.
+    # ------------------------------------------------------------------
+
+    def set_selected(self, selected: bool, diffuse_rgb: list[float]) -> None:
+        """Apply or remove the selection highlight on this part.
+
+        Parameters
+        ----------
+        selected:
+            Target state.  Absolute, never a toggle.
+        diffuse_rgb:
+            The part's diffuse colour, re-applied unconditionally on both
+            branches -- selection changes the ambient/diffuse lighting
+            terms, it does not replace the part's colour.
+
+        Note: :meth:`set_diffuse_color` also writes ``SetDiffuseColor``;
+        this method is not a substitute for it and vice versa.
+        """
+        prop = self.actor.GetProperty()
+        if selected:
+            prop.SetAmbientColor(0 / 255, 62 / 255, 111 / 255)
+            prop.SetDiffuse(0.5)
+            prop.SetAmbient(0.5)
+        else:
+            prop.SetDiffuse(1.0)
+            prop.SetAmbient(0.0)
+        prop.SetDiffuseColor(*diffuse_rgb)
+
+    def set_visibility(self, visible: bool) -> None:
+        """Show or hide this part.
+
+        Mutates the actor itself, not its property.
+
+        Parameters
+        ----------
+        visible:
+            Target state.  Absolute, never a toggle.
+        """
+        self.actor.SetVisibility(1 if visible else 0)
+
+    def set_opacity(self, opacity: float) -> None:
+        """Set this part's opacity.
+
+        Mutates the actor's property.
+
+        Parameters
+        ----------
+        opacity:
+            The opacity value to apply, passed through unchanged.
+        """
+        self.actor.GetProperty().SetOpacity(opacity)
+
+    def set_diffuse_color(self, r: float, g: float, b: float) -> None:
+        """Set this part's diffuse colour.
+
+        Mutates the actor property's diffuse colour only.
+
+        Parameters
+        ----------
+        r, g, b:
+            The diffuse colour components, passed through unchanged.
+
+        Note: :meth:`set_selected` also writes ``SetDiffuseColor`` on both
+        of its branches; this method is not a substitute for it and vice
+        versa.
+        """
+        self.actor.GetProperty().SetDiffuseColor(r, g, b)
+
+    def set_color_variable(
+        self,
+        association: VisorVtkVariableType,
+        array_name: str,
+        component: int,
+        min_val: float,
+        max_val: float,
+    ) -> None:
+        """Colour this part by a scalar array, over an explicit range.
+
+        Configures the mapper only.  No lookup table is authored here: the
+        table belongs to a later story, and until then a reference resolves
+        against the client-held default table.
+
+        ``association`` is compared by identity against
+        :class:`VisorVtkVariableType`; it is never parsed, upper-cased or
+        string-compared.  A value that is neither member, and an array name
+        that does not exist on the input, are both logged no-ops that
+        mutate nothing.
+        """
+        in_data = self.base_algorithm.GetInput()
+        if association is VisorVtkVariableType.POINT:
+            field = in_data.GetPointData()
+        elif association is VisorVtkVariableType.CELL:
+            field = in_data.GetCellData()
+        else:
+            logger.warning(
+                "set_color_variable: association %r is not a VisorVtkVariableType; "
+                "skipping.",
+                association,
+            )
+            return
+
+        if field.GetArray(array_name) is None:
+            logger.warning(
+                "set_color_variable: array %r not found for association %s; skipping.",
+                array_name,
+                association,
+            )
+            return
+
+        mapper = self.mapper
+        if association is VisorVtkVariableType.POINT:
+            mapper.SetScalarModeToUsePointFieldData()
+        else:
+            mapper.SetScalarModeToUseCellFieldData()
+        mapper.SelectColorArray(array_name)
+        mapper.SetArrayComponent(component)
+        mapper.SetScalarRange(min_val, max_val)
+        mapper.SetColorModeToMapScalars()
+        mapper.SetScalarVisibility(True)
+        # Makes the mapper honour the range set above rather than the
+        # lookup table's own range.
+        mapper.SetUseLookupTableScalarRange(0)
+
+    def clear_color_variable(self) -> None:
+        """Stop colouring this part by a scalar array.
+
+        One call.  Does not touch a lookup table and does not restore a
+        diffuse colour -- the part's colour is whatever was last applied
+        to it.
+        """
+        self.mapper.SetScalarVisibility(False)
 
     # ------------------------------------------------------------------
     # Private helpers
