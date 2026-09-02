@@ -517,3 +517,85 @@ def test_load_state_passes_correct_metadata_to_add_dataset(tmp_path, iface):
     iface._file_io.build_metadata_for_load_state.assert_called_once_with("mesh", "mm", ds_state)
     iface._file_io.read_snapshot.assert_called_once_with(str(snapshot))
     iface._scene.add_dataset.assert_called_once_with(mock_data, built_meta)
+
+
+# ================================================================== #
+# LocalApp injection boundary
+# ================================================================== #
+
+PART_STATE_API_METHODS = [
+    "set_part_visibility",
+    "set_part_opacity",
+    "set_part_diffuse_color",
+    "set_part_selected",
+    "set_part_color_variable",
+    "clear_part_color_variable",
+]
+
+
+@pytest.fixture
+def local_app_call():
+    """Build a VisorVTK with LocalApp patched, and return the LocalApp call.
+
+    The scene is patched too, so the returned call records exactly what
+    _initialize_rendering passed to LocalApp.
+    """
+    with patch("ansys.visor.viewer.app.visor_vtk.TrameServerManager") as mock_mgr, \
+         patch("ansys.visor.viewer.app.visor_vtk_local.LocalApp") as mock_local_app, \
+         patch("ansys.visor.viewer.app.visor_vtk_local.VisorLocalScene") as mock_scene:
+        mock_mgr_inst = MagicMock()
+        mock_mgr_inst.running = True
+        mock_mgr_inst._server = MagicMock()
+        mock_mgr.return_value = mock_mgr_inst
+        mock_scene_inst = MagicMock()
+        mock_scene_inst.datasets = {}
+        mock_scene.return_value = mock_scene_inst
+
+        instance = VisorVTK()
+
+        return mock_local_app.call_args, mock_scene_inst, instance
+
+
+def test_local_app_receives_the_scene_as_the_part_state_api(local_app_call):
+    """The scene itself is injected, not a wrapper or a set of lambdas."""
+    call, scene, instance = local_app_call
+
+    assert call.kwargs["scene_part_state_api"] is scene
+    assert call.kwargs["scene_part_state_api"] is instance._scene
+
+
+def test_local_app_still_receives_the_pre_existing_arguments(local_app_call):
+    """The boundary is extended, not broken: the earlier arguments survive."""
+    call, scene, instance = local_app_call
+
+    server, get_scene_details_json, handle_save_state_response, standalone = call.args
+    assert server is instance.server
+    assert callable(get_scene_details_json)
+    assert callable(handle_save_state_response)
+    assert standalone is True
+    assert callable(call.kwargs["pick_geometry"])
+    assert "trame_logger" in call.kwargs
+
+
+def test_the_pre_existing_lambdas_still_delegate_to_the_scene(local_app_call):
+    """The three original callables are untouched and still reach the scene."""
+    call, scene, _instance = local_app_call
+
+    _server, get_scene_details_json, handle_save_state_response, _standalone = call.args
+    get_scene_details_json()
+    handle_save_state_response(1, {"ok": True})
+    call.kwargs["pick_geometry"](2, 3, "vertex", 0.0, 1.0, 2.0)
+
+    scene.get_scene_details_json.assert_called_once_with()
+    scene.handle_save_state_response.assert_called_once_with(1, {"ok": True})
+    scene.pick_geometry.assert_called_once_with(2, 3, "vertex", 0.0, 1.0, 2.0)
+
+
+@pytest.mark.parametrize("name", PART_STATE_API_METHODS)
+def test_local_scene_satisfies_the_part_state_protocol(name):
+    """VisorLocalScene structurally provides every method the triggers call."""
+    from ansys.visor.viewer.vtk.scene.local_scene import VisorLocalScene
+
+    assert callable(getattr(VisorLocalScene, name))
+
+

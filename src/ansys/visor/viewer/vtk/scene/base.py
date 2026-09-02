@@ -1,6 +1,7 @@
 """VTK scene management for Visor Viewer."""
 
 import json
+import threading
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, List
 
@@ -8,6 +9,8 @@ from trame_server import Server
 
 from ansys.visor.viewer.core.metadata import ExtendedMetadata
 from ansys.visor.viewer.core.perf_timer import PerfTimer
+from ansys.visor.viewer.core.visor_colors import VisorColors
+from ansys.visor.viewer.core.visor_enums import VisorVtkVariableType
 from ansys.visor.viewer.core.visor_logging import VisorDefaultLogger
 from ansys.visor.viewer.core.visor_types import VisorDatasetType
 from ansys.visor.viewer.models.persist.persisted_viewer_state import PersistedViewerStateV1
@@ -73,6 +76,16 @@ class VisorSceneBase(ABC):
         self._server = server
         self._scene_graph = None
         self._pipelines = {}
+
+        # Serialises every server-side VTK mutation and wasm push.
+        #
+        # @trigger handlers run on the trame server's daemon background-thread
+        # event loop, while the VTK objects they mutate are created and also
+        # mutated from the caller's (notebook/main) thread.  Re-entrant because
+        # the locked paths nest: finalize_scene -> populate_scene ->
+        # update_widgets, finalize_scene -> render, and the per-part
+        # coordinator methods -> apply -> flush.
+        self._vtk_lock = threading.RLock()
 
         self._dataset_registry = self._initialize_dataset_registry()
 
@@ -151,16 +164,20 @@ class VisorSceneBase(ABC):
         Shared work (per-part state restoration) is done here; the
         renderer-specific final step is delegated to
         :meth:`_apply_runtime_state_to_render`.
+
+        Holds ``_vtk_lock`` for the whole body: the delegated step mutates
+        VTK and pushes to the frontend.
         """
-        # Apply UI settings
-        self.dark_mode = state.ui.dark_theme
+        with self._vtk_lock:
+            # Apply UI settings
+            self.dark_mode = state.ui.dark_theme
 
-        # Transform the frontend PersistedViewerStateV1 -> RuntimeAppState
-        runtime_app_state = self._state_mapper.persisted_to_runtime(state)
+            # Transform the frontend PersistedViewerStateV1 -> RuntimeAppState
+            runtime_app_state = self._state_mapper.persisted_to_runtime(state)
 
-        # Renderer-specific: flush VTK window and notify frontend (wasm), or
-        # push camera to vtkCamera (RCA), or no-op (headless).
-        self._apply_runtime_state_to_render(runtime_app_state)
+            # Renderer-specific: flush VTK window and notify frontend (wasm), or
+            # push camera to vtkCamera (RCA), or no-op (headless).
+            self._apply_runtime_state_to_render(runtime_app_state)
 
     def get_scene_details(self) -> VisorSceneDetails:
         """Return the VisorState."""
@@ -185,11 +202,15 @@ class VisorSceneBase(ABC):
         self._frontend_bridge.resolve_save_state_response(request_id, response)
 
     def clear(self):
-        """Remove all actors from the renderer and reset the scene."""
-        if self._scene_graph is not None:
-            self._renderer.deregister_all()
-        self._dataset_registry.clear()
-        self._scene_graph = None
+        """Remove all actors from the renderer and reset the scene.
+
+        Holds ``_vtk_lock``: deregistering actors mutates the VTK renderer.
+        """
+        with self._vtk_lock:
+            if self._scene_graph is not None:
+                self._renderer.deregister_all()
+            self._dataset_registry.clear()
+            self._scene_graph = None
 
     def populate_scene(self):
         """Update widgets to reflect the current scene contents.
@@ -197,121 +218,158 @@ class VisorSceneBase(ABC):
         Actor attach is done per-leaf inside :meth:`add_dataset` via
         :meth:`IRenderer.register_node`, so this method only refreshes the
         widget bounds and count.
+
+        Holds ``_vtk_lock``: the widget refresh mutates VTK widget objects.
         """
-        if self._scene_graph is None:
-            self._initialize_scene_graph()
-        self.update_widgets()
+        with self._vtk_lock:
+            if self._scene_graph is None:
+                self._initialize_scene_graph()
+            self.update_widgets()
 
     def finalize_scene(self, skip_reset_camera: bool = False):
-        """Populate the scene, reset the camera if applicable, then render."""
-        self.populate_scene()
+        """Populate the scene, reset the camera if applicable, then render.
 
-        if not skip_reset_camera:
-            # if there is one or zero datasets in the scene, reset the camera
-            if self._dataset_registry.count <= 1:
-                self.reset_camera()
+        Holds ``_vtk_lock`` across all three steps; the nested acquisitions in
+        :meth:`populate_scene`, :meth:`reset_camera` and :meth:`render` are
+        re-entrant on the same thread.
+        """
+        with self._vtk_lock:
+            self.populate_scene()
 
-        self.render()
+            if not skip_reset_camera:
+                # if there is one or zero datasets in the scene, reset the camera
+                if self._dataset_registry.count <= 1:
+                    self.reset_camera()
+
+            self.render()
 
     def update_widgets(self):
-        """Reset the widgets to fit the scene graph bounds."""
-        if self._scene_graph is None:
-            msg = "Scene graph has not been initialized, cannot reset widgets and camera."
-            logger.error(msg)
-            raise RuntimeError(msg)
+        """Reset the widgets to fit the scene graph bounds.
 
-        self._update_widget_bounds()
-        self._update_actor_count()
+        Holds ``_vtk_lock``: the widget bounds update mutates the
+        cross-section representation/plane and the bounding-box outline.
+        """
+        with self._vtk_lock:
+            if self._scene_graph is None:
+                msg = "Scene graph has not been initialized, cannot reset widgets and camera."
+                logger.error(msg)
+                raise RuntimeError(msg)
+
+            self._update_widget_bounds()
+            self._update_actor_count()
 
     def add_dataset(self, input: VisorDatasetType, metadata: ExtendedMetadata) -> int:
-        """Set the input dataset and metadata for the scene graph."""
-        if input is None:
-            msg = "Input dataset is None, cannot load dataset."
-            logger.error(msg)
-            raise ValueError(msg)
+        """Set the input dataset and metadata for the scene graph.
 
-        # Ensure unique dataset name
-        dataset_name = self._dataset_registry.get_sanitized_metadata_name(metadata)
+        Holds ``_vtk_lock``: node registration attaches actors to the VTK
+        renderer.
+        """
+        with self._vtk_lock:
+            if input is None:
+                msg = "Input dataset is None, cannot load dataset."
+                logger.error(msg)
+                raise ValueError(msg)
 
-        # Initialize the scene graph if it does not exist
-        if self._scene_graph is None:
-            self._initialize_scene_graph()
+            # Ensure unique dataset name
+            dataset_name = self._dataset_registry.get_sanitized_metadata_name(metadata)
 
-        # Load the dataset into the scene graph
-        dataset_id = self._scene_graph.load_dataset(input, dataset_name)
+            # Initialize the scene graph if it does not exist
+            if self._scene_graph is None:
+                self._initialize_scene_graph()
 
-        # Register each leaf's pipeline with the renderer.
-        subtree = self._scene_graph.get_descendant_node(dataset_id, include_self=True)
-        if subtree is not None:
-            for leaf in subtree.get_descendant_part_nodes(include_self=True):
-                self._renderer.register_node(leaf, leaf.dataset)
+            # Load the dataset into the scene graph
+            dataset_id = self._scene_graph.load_dataset(input, dataset_name)
 
-        # Seed PartIndex with scene-graph node IDs so that part_id == scene-graph node ID,
-        # which is the contract the frontend relies on to apply per-part state (opacity etc.).
-        part_name_to_id = self._scene_graph.get_part_name_to_id_map(dataset_id)
+            # Register each leaf's pipeline with the renderer.
+            subtree = self._scene_graph.get_descendant_node(dataset_id, include_self=True)
+            if subtree is not None:
+                for leaf in subtree.get_descendant_part_nodes(include_self=True):
+                    self._renderer.register_node(leaf, leaf.dataset)
 
-        self._dataset_registry.add(dataset_id, dataset_name, input, part_name_to_id, metadata)
+            # Seed PartIndex with scene-graph node IDs so that part_id == scene-graph node ID,
+            # which is the contract the frontend relies on to apply per-part state (opacity etc.).
+            part_name_to_id = self._scene_graph.get_part_name_to_id_map(dataset_id)
 
-        return dataset_id
+            self._dataset_registry.add(dataset_id, dataset_name, input, part_name_to_id, metadata)
+
+            return dataset_id
 
     def remove_dataset(self, dataset_id: int):
-        """Remove a dataset from the scene graph."""
-        if self._scene_graph is None:
-            msg = "Scene graph has not been initialized, cannot load dataset."
-            logger.error(msg)
-            raise RuntimeError(msg)
+        """Remove a dataset from the scene graph.
 
-        # Deregister each leaf's pipeline from the renderer before dropping
-        # the subtree from the scene graph.
-        node = self._scene_graph.get_descendant_node(dataset_id)
-        if node is None:
-            msg = f"Dataset with id {dataset_id} not found in scene graph."
-            logger.error(msg)
-            raise ValueError(msg)
+        Holds ``_vtk_lock``: node deregistration detaches actors from the VTK
+        renderer.
+        """
+        with self._vtk_lock:
+            if self._scene_graph is None:
+                msg = "Scene graph has not been initialized, cannot load dataset."
+                logger.error(msg)
+                raise RuntimeError(msg)
 
-        for leaf in node.get_descendant_part_nodes(include_self=True):
-            self._renderer.deregister_node(leaf.id)
+            # Deregister each leaf's pipeline from the renderer before dropping
+            # the subtree from the scene graph.
+            node = self._scene_graph.get_descendant_node(dataset_id)
+            if node is None:
+                msg = f"Dataset with id {dataset_id} not found in scene graph."
+                logger.error(msg)
+                raise ValueError(msg)
 
-        # Remove dataset from the scene graph
-        self._scene_graph.remove_dataset(dataset_id)
+            for leaf in node.get_descendant_part_nodes(include_self=True):
+                self._renderer.deregister_node(leaf.id)
 
-        # Unregister the dataset
-        self._dataset_registry.remove(dataset_id)
+            # Remove dataset from the scene graph
+            self._scene_graph.remove_dataset(dataset_id)
+
+            # Unregister the dataset
+            self._dataset_registry.remove(dataset_id)
 
     def list_variables_for_dataset(self, dataset_id: int) -> List[VisorPartVariables]:
         return self._dataset_registry.list_variables(dataset_id)
 
     def update_variables_for_dataset(self, dataset_id: int, variables: List[VisorVariableUpdate]) -> None:
-        """Update the variables for the dataset in the scene graph."""
-        timer = PerfTimer("update_variables_for_dataset", logger, dataset=dataset_id)
+        """Update the variables for the dataset in the scene graph.
 
-        with timer.phase("dataset_registry.update"):
-            self._dataset_registry.update_variables(dataset_id, variables)
+        Holds ``_vtk_lock``: the registry update writes into VTK arrays in
+        place and the render pushes to wasm.
+        """
+        with self._vtk_lock:
+            timer = PerfTimer("update_variables_for_dataset", logger, dataset=dataset_id)
 
-        # Refresh cached variable metadata on part nodes without re-wiring
-        # the VTK pipeline (which would call SetInputConnection + mark the
-        # mapper Modified, causing unnecessary re-serialisation of geometry
-        # that has not changed).
-        dataset_node = self._scene_graph.get_descendant_node(dataset_id)
-        with timer.phase("update_descendant_parts"):
-            dataset_node.refresh_descendant_variable_metadata(include_self=True)
+            with timer.phase("dataset_registry.update"):
+                self._dataset_registry.update_variables(dataset_id, variables)
 
-        with timer.phase("render"):
-            self.render()
+            # Refresh cached variable metadata on part nodes without re-wiring
+            # the VTK pipeline (which would call SetInputConnection + mark the
+            # mapper Modified, causing unnecessary re-serialisation of geometry
+            # that has not changed).
+            dataset_node = self._scene_graph.get_descendant_node(dataset_id)
+            with timer.phase("update_descendant_parts"):
+                dataset_node.refresh_descendant_variable_metadata(include_self=True)
 
-        timer.log()
+            with timer.phase("render"):
+                self.render()
+
+            timer.log()
 
     def render(self):
-        """Delegate to the renderer backend."""
-        self._renderer.render()
+        """Delegate to the renderer backend.
+
+        Holds ``_vtk_lock``: renders the VTK window and pushes to wasm.
+        """
+        with self._vtk_lock:
+            self._renderer.render()
 
     def reset_camera(self):
-        """Reset the camera to fit the scene graph bounds."""
-        if self._scene_graph is None:
-            logger.debug("Scene graph not initialized; skipping camera reset.")
-            return
+        """Reset the camera to fit the scene graph bounds.
 
-        self._renderer.reset_camera(self._scene_graph.bounds)
+        Holds ``_vtk_lock``: mutates the VTK renderer's camera.
+        """
+        with self._vtk_lock:
+            if self._scene_graph is None:
+                logger.debug("Scene graph not initialized; skipping camera reset.")
+                return
+
+            self._renderer.reset_camera(self._scene_graph.bounds)
 
     def pick_geometry(self, actor_wasm_id, cell_id, mode, world_x, world_y, world_z) -> dict:
         """
@@ -321,6 +379,121 @@ class VisorSceneBase(ABC):
         return self._renderer.pick_geometry(
             actor_wasm_id, cell_id, mode, (world_x, world_y, world_z)
         )
+
+    # =========================================================================
+    # Per-part visual state — coordinator surface
+    #
+    # Each method does both halves of its trigger, in this order and all under
+    # ``_vtk_lock``: write the registry record, apply to the server's VTK
+    # pipeline.  Nothing is pushed to the client from here.  The client applies
+    # its own change, and a push at this layer rebuilds the client, which
+    # re-delivers state and fires further triggers.  Presenting a server-originated
+    # change is the renderer's, since it is not mode-agnostic.
+    # An unresolvable node id is a logged no-op at the apply layer.
+    #
+    # Every value that arrives here is absolute, never relative: the caller
+    # always supplies the target value, never a toggle or a delta.
+    # =========================================================================
+
+    def set_part_visibility(self, node_id: int, visible: bool) -> None:
+        """Set whether the part identified by *node_id* is visible."""
+        with self._vtk_lock:
+            if not self._dataset_registry.set_part_visibility(node_id, visible):
+                logger.debug("set_part_visibility: no dataset owns node %s; skipping.", node_id)
+                return
+            self._renderer.apply_visibility(node_id, visible)
+
+    def set_part_opacity(self, node_id: int, opacity: float) -> None:
+        """Set the opacity of the part identified by *node_id*."""
+        with self._vtk_lock:
+            if not self._dataset_registry.set_part_opacity(node_id, opacity):
+                logger.debug("set_part_opacity: no dataset owns node %s; skipping.", node_id)
+                return
+            self._renderer.apply_opacity(node_id, opacity)
+
+    def set_part_diffuse_color(self, node_id: int, diffuse_rgb: list[float] | None) -> None:
+        """
+        Set the custom diffuse colour of the part identified by *node_id*, or
+        clear it with ``None``.
+
+        The store records the absence as absence: ``diffuse_rgb=None`` is
+        written through as ``None``.  The pipeline needs a concrete colour, so
+        the apply falls back to :attr:`VisorColors.DefaultMeshColor` — "no
+        custom colour" means "the scene-wide default".
+        """
+        with self._vtk_lock:
+            if not self._dataset_registry.set_part_diffuse_color(node_id, diffuse_rgb):
+                logger.debug("set_part_diffuse_color: no dataset owns node %s; skipping.", node_id)
+                return
+            applied_rgb = (
+                diffuse_rgb if diffuse_rgb is not None else list(VisorColors.DefaultMeshColor)
+            )
+            self._renderer.apply_diffuse_color(
+                node_id, applied_rgb[0], applied_rgb[1], applied_rgb[2]
+            )
+
+    def set_part_selected(self, node_id: int, selected: bool) -> None:
+        """
+        Select or deselect the part identified by *node_id*.
+
+        No colour crosses the trigger for this class: the server reads the
+        part's stored ``diffuse_rgb`` from its own record and falls back to
+        :attr:`VisorColors.DefaultMeshColor` when it is ``None``.  The record
+        is guaranteed to exist here — the setter above returned ``True``,
+        which means it either found the record or upserted one — so
+        ``get_part_state`` cannot return ``None`` at this point.
+        """
+        with self._vtk_lock:
+            if not self._dataset_registry.set_part_selected(node_id, selected):
+                logger.debug("set_part_selected: no dataset owns node %s; skipping.", node_id)
+                return
+            stored_rgb = self._dataset_registry.get_part_state(node_id).diffuse_rgb
+            diffuse_rgb = (
+                stored_rgb if stored_rgb is not None else list(VisorColors.DefaultMeshColor)
+            )
+            self._renderer.apply_selected(node_id, selected, diffuse_rgb)
+
+    def set_part_color_variable(
+            self,
+            node_id: int,
+            variable_id: str,
+            association: VisorVtkVariableType,
+            array_name: str,
+            component: int,
+            min_val: float,
+            max_val: float,
+    ) -> None:
+        """
+        Colour the part identified by *node_id* by a scalar variable.
+
+        *variable_id* is stored opaquely and is never parsed here; the
+        association and array name arrive as explicit arguments.  *association*
+        is already a :class:`VisorVtkVariableType` — it is parsed at the
+        trigger boundary, never derived from a string here.  The range travels
+        as a parameter only and is not persisted per part.
+        """
+        with self._vtk_lock:
+            if not self._dataset_registry.set_part_color_variable(node_id, variable_id, component):
+                logger.debug("set_part_color_variable: no dataset owns node %s; skipping.", node_id)
+                return
+            self._renderer.apply_color_variable(
+                node_id, variable_id, association, array_name, component, min_val, max_val
+            )
+
+    def clear_part_color_variable(self, node_id: int) -> None:
+        """
+        Stop colouring the part identified by *node_id* by a scalar variable.
+
+        The variable reference is cleared atomically in the store (id and
+        component together), matching the atomic set.
+        """
+        with self._vtk_lock:
+            if not self._dataset_registry.clear_part_color_variable(node_id):
+                logger.debug(
+                    "clear_part_color_variable: no dataset owns node %s; skipping.", node_id
+                )
+                return
+            self._renderer.clear_color_variable(node_id)
 
     # ------------------------------------------------------------------
     # Internal helpers
