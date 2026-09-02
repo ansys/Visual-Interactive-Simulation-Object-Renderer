@@ -19,8 +19,7 @@ class VisorVariableState(BaseModel):
 
     ``array_name``, ``type`` and ``num_components`` are those same three identifying properties, carried
     explicitly (rather than only opaquely inside ``id``) so a consumer can act on them without parsing the
-    client-built identifier.  They are required: a variable state with no known source array, association, or
-    component count is not a state this model can represent.
+    client-built identifier.
 
     In the future, the backend can own this, but for now we can treat this as passthrough data,
     as the id value is stable across sessions.

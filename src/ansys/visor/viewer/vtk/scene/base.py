@@ -535,32 +535,18 @@ class VisorSceneBase(ABC):
         """
         Restore per-part state from a runtime app state, on the load path.
 
-        Two halves, in this order: the registry is replaced wholesale from the
-        supplied dataset states (``replace_part_states``), then every part is
-        applied to this process's VTK pipeline through ``IRenderer.apply_*``.
-        Either half can silently do nothing while the other succeeds, which is
-        why they are separate steps and separately asserted.
+        Replaces the part states of each dataset named in the supplied states,
+        then applies every part to this process's VTK pipeline through ``IRenderer``.
+        Datasets the registry does not hold are skipped and logged.  Every other failure
+        is a logged no-op.
 
-        Takes no lock of its own: it is only ever called from inside
-        :meth:`apply_state`'s critical section, and acquiring here would read
-        as though the method were independently safe to call.
-
-        Every failure is a logged no-op, per the posture used at every other
-        layer: an unregistered dataset id, an unresolvable part, a malformed
-        colour, a half-set variable reference, an unknown variable identifier,
-        an unknown array, and an array whose width disagrees with the stored
-        one are each skipped without raising.
+        Callers must hold ``_vtk_lock``.
         """
         dataset_states = runtime_app_state.scene.dataset_states or {}
         variable_states = runtime_app_state.scene.spectrum_states or {}
 
-        # Store half.  Unknown dataset ids are skipped by the registry.
         self._dataset_registry.replace_part_states(dataset_states)
 
-        # Apply half.  The dataset id is resolved once per dataset, from the
-        # loop key, and the skip is explicit and logged: replace_part_states
-        # skips unknown ids silently, so without this the store half and the
-        # apply half could disagree about which datasets exist.
         for dataset_id, dataset_state in dataset_states.items():
             dataset = self._dataset_registry.datasets.get(dataset_id)
             if dataset is None:
@@ -570,7 +556,7 @@ class VisorSceneBase(ABC):
                 )
                 continue
 
-            # Per-part variable metadata, keyed by part id — one entry per
+            # Per-part variable metadata, keyed by part id: one entry per
             # non-empty leaf.  Built once per dataset rather than per part.
             variables_by_part = {
                 entry.part_id: entry.variables for entry in dataset.list_variables()
@@ -591,18 +577,13 @@ class VisorSceneBase(ABC):
         """
         Apply one restored part record to the pipeline.
 
-        Absent fields are absent: a ``None`` is "this record says nothing about
-        that property", not "reset it to the default", so nothing is applied
-        for it.  **Recorded divergence:** :meth:`apply_state` does not
-        guarantee freshly built pipelines — ``load_state`` rebuilds datasets
-        only when the scene is empty — so a part whose stored ``diffuse_rgb``
-        is ``None`` keeps whatever colour the pipeline already carries while
-        the registry records no custom colour.
+        A ``None`` field means ""this record says nothing about that property",
+        not "reset it to the default", so nothing is applied for it.
 
-        The colour is validated to exactly three elements here; a malformed
-        colour is a logged no-op and the same guard covers the colour the
+        The color is validated to exactly three elements here; a malformed
+        color is a logged no-op and the same guard covers the color the
         selection branch reads.  The registry keeps the malformed value it was
-        loaded with — requiring on load would make the next save silently
+        loaded with; requiring on load would make the next save silently
         rewrite the user's file.
         """
         if part_state.visible is not None:
@@ -641,26 +622,18 @@ class VisorSceneBase(ABC):
             part_variables,
     ) -> None:
         """
-        Restore one part's colour-variable reference, or clear it.
+        Restore one part's color-variable reference, or clear it.
 
-        The variable reference is a compound value that is only ever set or
-        cleared atomically, so a half-set pair — an identifier with no
-        component, or a component with no identifier — is not a state this can
-        act on and is a logged no-op in both directions.  A component with no
-        identifier in particular must not fall through to the clear branch.
+        The reference is a compound value, set and cleared as a unit, so if
+        either the identifier or component is missing, it is a logged no-op.
 
-        The range is resolved from the persisted variable entry, whose index
-        convention is the opposite of the client's internal table: a stored
-        component of ``-1`` reads ``magnitude_range`` and a component of 0 or
-        greater reads ``ranges[component]``.  The branch is three-way with no
-        fallthrough — a negative component other than ``-1`` is neither the
-        magnitude sentinel nor an index, and returns before any mutation.
+        A stored component of ``-1`` reads ``magnitude_range``; 0 or greater
+        reads ``ranges[component]``.  Any other value is refused.
 
-        The array is resolved against the server's **per-part** variable
-        metadata and its component count is checked against the stored one:
-        two parts can carry same-named arrays of different widths, which the
-        application treats as different quantities, so name and association
-        alone could colour a part by the wrong quantity with no error anywhere.
+        The array is resolved against the server's per-part variable metadata,
+        and its width is checked against the stored component count: two parts
+        can carry same-named arrays of different widths, which the application
+        treats as different quantities.
         """
         variable_id = part_state.spectrum_id
         component = part_state.spectrum_component
