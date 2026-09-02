@@ -1,4 +1,4 @@
-# Copyright 2025 ANSYS, Inc. All Rights Reserved.
+# Copyright 2026 ANSYS, Inc. All Rights Reserved.
 # Restricted Rights Legend: See LICENSE for details.
 
 from ansys.visor.viewer.app.visor import Visor

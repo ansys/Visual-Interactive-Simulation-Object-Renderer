@@ -6,7 +6,10 @@ from typing import Dict, List
 from ansys.visor.viewer.core.metadata import ExtendedMetadata
 from ansys.visor.viewer.core.visor_logging import VisorDefaultLogger
 from ansys.visor.viewer.core.visor_types import VisorDatasetType
-from ansys.visor.viewer.models.runtime.dataset.runtime_dataset_state import RuntimeDatasetState
+from ansys.visor.viewer.models.runtime.dataset.runtime_dataset_state import (
+    RuntimeDatasetState,
+    RuntimePartProperties,
+)
 from ansys.visor.viewer.vtk.datasets.visor_dataset import VisorDataset
 from ansys.visor.viewer.vtk.variables.visor_part_variables import VisorPartVariables
 from ansys.visor.viewer.vtk.variables.visor_variable_update import VisorVariableUpdate
@@ -105,6 +108,181 @@ class VisorDatasetRegistry:
         """
         if dataset_id in self.datasets:
             self.datasets.pop(dataset_id)
+
+    # ------------------------------------------------------------------
+    # Per-part state: write path
+    # ------------------------------------------------------------------
+
+    def find_dataset_id_for_part(self, part_id: int) -> int | None:
+        """
+        Find the ID of the dataset that owns the given part.
+
+        Args:
+            part_id (int): The scene-graph node ID identifying the part.
+
+        Returns:
+            int | None: The dataset ID that owns the part, or None if no
+            dataset in the registry has this part_id in its PartIndex.
+        """
+        for dataset_id, dataset in self.datasets.items():
+            if part_id in dataset.part_index.part_ids:
+                return dataset_id
+        return None
+
+    def get_part_state(self, part_id: int) -> RuntimePartProperties | None:
+        """
+        Get the current runtime state record for a single part.
+
+        This is a read-only lookup: unlike the setters, it does not upsert
+        a record for a part that has no state yet.
+
+        Args:
+            part_id (int): The scene-graph node ID identifying the part.
+
+        Returns:
+            RuntimePartProperties | None: The live state record for the
+            part, or None if part_id resolves to no dataset, or the owning
+            dataset has no recorded state for it.
+        """
+        dataset_id = self.find_dataset_id_for_part(part_id)
+        if dataset_id is None:
+            return None
+        return self.datasets[dataset_id].state.part_states.get(part_id)
+
+    def _get_or_create_part_state(self, part_id: int) -> RuntimePartProperties | None:
+        """
+        Resolve the live part-state record for part_id, upserting if needed.
+
+        If the owning dataset has no part_states entry yet for part_id (e.g.
+        a freshly added dataset with no persisted part state), a
+        RuntimePartProperties(id=part_id) record is created and inserted
+        into the dataset's part_states dict first. This is mandatory: a
+        freshly added dataset has an empty part_states dict, so without
+        this upsert every setter would silently no-op for it.
+
+        Returns:
+            RuntimePartProperties | None: The live state record, or None if
+            part_id resolves to no dataset.
+        """
+        dataset_id = self.find_dataset_id_for_part(part_id)
+        if dataset_id is None:
+            return None
+        dataset = self.datasets[dataset_id]
+        part_state = dataset.state.part_states.get(part_id)
+        if part_state is None:
+            part_state = RuntimePartProperties(id=part_id)
+            dataset.state.part_states[part_id] = part_state
+        return part_state
+
+    def set_part_visibility(self, part_id: int, visible: bool) -> bool:
+        """
+        Set whether a part is visible.
+
+        Returns:
+            bool: True when the record was written, False when part_id
+            resolves to no dataset. Never raises.
+        """
+        part_state = self._get_or_create_part_state(part_id)
+        if part_state is None:
+            return False
+        part_state.visible = visible
+        return True
+
+    def set_part_opacity(self, part_id: int, opacity: float) -> bool:
+        """
+        Set a part's opacity.
+
+        Returns:
+            bool: True when the record was written, False when part_id
+            resolves to no dataset. Never raises.
+        """
+        part_state = self._get_or_create_part_state(part_id)
+        if part_state is None:
+            return False
+        part_state.opacity = opacity
+        return True
+
+    def set_part_diffuse_color(self, part_id: int, diffuse_rgb: list[float] | None) -> bool:
+        """
+        Set a part's custom diffuse colour, or clear it with None.
+
+        Returns:
+            bool: True when the record was written, False when part_id
+            resolves to no dataset. Never raises.
+        """
+        part_state = self._get_or_create_part_state(part_id)
+        if part_state is None:
+            return False
+        part_state.diffuse_rgb = diffuse_rgb
+        return True
+
+    def set_part_selected(self, part_id: int, selected: bool) -> bool:
+        """
+        Set whether a part is selected.
+
+        Returns:
+            bool: True when the record was written, False when part_id
+            resolves to no dataset. Never raises.
+        """
+        part_state = self._get_or_create_part_state(part_id)
+        if part_state is None:
+            return False
+        part_state.selected = selected
+        return True
+
+    def set_part_color_variable(self, part_id: int, variable_id: str, component: int | None) -> bool:
+        """
+        Set the variable a part is coloured by, and its component.
+
+        variable_id and component are set together, atomically, in this one
+        call, mirroring clear_part_color_variable's atomic clear.
+
+        Returns:
+            bool: True when the record was written, False when part_id
+            resolves to no dataset. Never raises.
+        """
+        part_state = self._get_or_create_part_state(part_id)
+        if part_state is None:
+            return False
+        part_state.spectrum_id = variable_id
+        part_state.spectrum_component = component
+        return True
+
+    def clear_part_color_variable(self, part_id: int) -> bool:
+        """
+        Clear the variable a part is coloured by.
+
+        Sets spectrum_id and spectrum_component to None together, in one
+        call — the compound class is only ever set or cleared atomically,
+        never field by field.
+
+        Returns:
+            bool: True when the record was written, False when part_id
+            resolves to no dataset. Never raises.
+        """
+        part_state = self._get_or_create_part_state(part_id)
+        if part_state is None:
+            return False
+        part_state.spectrum_id = None
+        part_state.spectrum_component = None
+        return True
+
+    def replace_part_states(self, dataset_states: Dict[int, RuntimeDatasetState]) -> None:
+        """
+        Replace the runtime state of registered datasets in bulk.
+
+        For each dataset ID present in both dataset_states and the
+        registry, that dataset's .state is replaced directly with the
+        supplied RuntimeDatasetState (already-runtime, id-keyed input).
+        Dataset IDs in dataset_states that are not present in the registry
+        are skipped silently; processing continues for the remaining
+        entries. Never raises.
+        """
+        for dataset_id, runtime_state in dataset_states.items():
+            dataset = self.datasets.get(dataset_id)
+            if dataset is None:
+                continue
+            dataset.state = runtime_state
 
     def _get_unique_dataset_name(self, name: str) -> str:
         """

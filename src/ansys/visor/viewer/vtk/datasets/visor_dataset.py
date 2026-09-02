@@ -88,7 +88,19 @@ class VisorDataset:
         return result
 
     def set_state(self, new_state: PersistedDatasetState) -> None:
-        """Set the state of the dataset."""
+        """
+        Set the state of the dataset from persisted, name-keyed part state.
+
+        This is the persisted-state conversion path: it converts
+        new_state.parts (keyed by part name) into this dataset's runtime
+        state (keyed by part ID) via persisted_to_runtime_state.
+
+        Note: a second, id-keyed replacement path also exists, on the
+        registry rather than here: VisorDatasetRegistry.replace_part_states
+        replaces a dataset's .state directly with an already-runtime,
+        id-keyed RuntimeDatasetState, without going through this method or
+        its name-to-id conversion.
+        """
         self.state = self.persisted_to_runtime_state(new_state.parts)
 
     def mark_clean(self) -> None:

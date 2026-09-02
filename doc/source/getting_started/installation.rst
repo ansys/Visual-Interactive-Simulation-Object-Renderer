@@ -107,41 +107,9 @@ Developer installation
 
 #. Verify your installation by importing the module:
 
-.. code:: pycon
+   .. code:: pycon
 
-    >>> from ansys.visor.viewer import Visor
-
-
-#. Clean the build environment (optional)
-
-If you want to create a production-like installation on Windows, first install Chocolatey as described in
-[Installing Chocolatey](https://chocolatey.org/install). You do not need this step on other operating systems.
-
-Then run these commands:
-
-
-.. code-block::
-
-    choco install make  # install GNU make on Windows
-    make clean  # clean
-
-
-If you get a `find` command error on Windows, your shell might be calling the Windows version of `find` instead
-of the expected Unix command.
-
-1. Verify that Git Bash is installed, for example in `C:\Program Files\Git\usr\bin`.
-
-2. Add `C:\Program Files\Git\usr\bin` to your system `PATH` before the `System32` path.
-
-For example:
-
-.. image:: ../../developer_docs/images/env_vars.png
-   :alt: Environment variables
-   :align: center
-
-.. image:: ../../developer_docs/images/system_env_vars.png
-   :alt: System environment variables
-   :align: center
+      >>> from ansys.visor.viewer import Visor
 
 
 
