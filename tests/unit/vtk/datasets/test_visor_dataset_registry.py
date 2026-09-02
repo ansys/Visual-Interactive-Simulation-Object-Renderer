@@ -63,8 +63,8 @@ def test_add_registers_dataset_and_returns_id(monkeypatch, registry):
     created = {}
 
     class FakeDataset:
-        def __init__(self, dataset_id, dataset_name, input, part_name_to_id, metadata):
-            created["args"] = (dataset_id, dataset_name, input, part_name_to_id, metadata)
+        def __init__(self, dataset_id, dataset_name, input, node_ids, metadata):
+            created["args"] = (dataset_id, dataset_name, input, node_ids, metadata)
             self.name = dataset_name
             self.state = MagicMock()
             self.state.parts = {}
@@ -81,11 +81,11 @@ def test_add_registers_dataset_and_returns_id(monkeypatch, registry):
     mock_metadata = MagicMock()
     mock_metadata.unit = "mm"
 
-    ret = registry.add(5, "test_dataset", mock_input, {}, mock_metadata)
+    ret = registry.add(5, "test_dataset", mock_input, [], mock_metadata)
 
     assert isinstance(ret, FakeDataset)
     assert 5 in registry.datasets
-    assert created["args"] == (5, "test_dataset", mock_input, {}, mock_metadata)
+    assert created["args"] == (5, "test_dataset", mock_input, [], mock_metadata)
     assert registry.unit == "mm"  # verify _update_unit was called
 
 
