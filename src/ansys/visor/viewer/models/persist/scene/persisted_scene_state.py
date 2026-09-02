@@ -105,8 +105,8 @@ class PersistedSceneState(BaseModel):
         if isinstance(entry, VisorVariableState) or not isinstance(entry, Mapping):
             return entry
 
-        # ``populate_by_name`` is set, so either spelling counts as present, and an
-        # explicit null counts as present and is left to fail validation.
+        # A value that is present but null counts as present and is left
+        # to fail validation.
         missing = [
             field
             for field, alias in (

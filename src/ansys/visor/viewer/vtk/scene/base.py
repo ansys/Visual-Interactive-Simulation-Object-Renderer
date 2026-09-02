@@ -150,26 +150,13 @@ class VisorSceneBase(ABC):
         Capture the current viewer state and return it as a
         :class:`PersistedViewerStateV1`.
 
-        The frontend round trip (:meth:`_get_runtime_state_async`) remains the
-        only source for everything the browser owns — UI panels, unit, the
-        display toggles, camera, cross-section and the per-variable ranges.
-        **Per-part state is not taken from it.**  The dataset registry is the
-        server-side authority for that, so ``scene.dataset_states`` is replaced
-        wholesale with the registry's own runtime state before the persisted
-        mapping runs.  The browser is no longer consulted for per-part state.
+        The frontend round trip remains the only source for everything the browser owns.
+        Per-part state is not: ``scene.dataset_states`` is replaced with the registry's
+        own runtime state before the persisted mapping runs.
 
-        The registry is read under ``_vtk_lock`` and each dataset state is
-        deep-copied out of it.  The registry hands out its live
-        ``RuntimeDatasetState`` objects by reference, and the per-part setters
-        mutate the records they contain in place from the trame daemon thread;
-        without the snapshot the persist mapper would be an unlocked reader of
-        records that are being written concurrently.  The lock is taken *after*
-        the ``await`` has completed and released before the mapping, so it is
-        never held across an ``await``.  Named cost: this is the only place a
-        coroutine acquires ``_vtk_lock``, so a save issued while a long
-        main-thread VTK call holds the lock waits for that call.  It cannot
-        deadlock: the outbound bridge call made under the lock reaches
-        ``loop.call_later`` and returns without waiting on the event loop.
+        The registry hands out live ``RuntimeDatasetState`` objects that the per-part
+        setters mutate from teh trame daemon thread, so each one is deep-copied under
+        ``_vtk_lock``.  The lock is taken after the ``await`` and never held across one.
         """
         runtime_state = await self._get_runtime_state_async(timeout)
 
@@ -203,13 +190,8 @@ class VisorSceneBase(ABC):
             # Transform the frontend PersistedViewerStateV1 -> RuntimeAppState
             runtime_app_state = self._state_mapper.persisted_to_runtime(state)
 
-            # Restore per-part state server-side: write the registry, then apply
-            # every part to this process's VTK pipeline.  The browser is not
-            # asked to do this, and is not trusted to have done it.
             self._restore_part_states_from_runtime(runtime_app_state)
 
-            # Renderer-specific: flush VTK window and notify frontend (wasm), or
-            # push camera to vtkCamera (RCA), or no-op (headless).
             self._apply_runtime_state_to_render(runtime_app_state)
 
             # Note: There is intentionally no wasm flush here: the bridge call is fire-and-forget, so a flush

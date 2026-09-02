@@ -74,12 +74,10 @@ class VisorStateMapper:
 
         Logic parity with ``VisorScene._persisted_to_runtime``.
 
-        This is **not**, and never has been, the registry-population path.  It
-        builds runtime dataset states and returns them on the RuntimeAppState;
-        it never assigns its result back onto ``VisorDataset.state``, so no
-        registry record is written by calling it.
-        :meth:`VisorSceneBase._restore_part_states_from_runtime` now populates
-        the registry explicitly, from the state this method returns.
+        Returns the runtime dataset states on the ``RuntimeAppState``; it does not
+        assign them to ``VisorDataset.state``.  The registry is populated by
+        :meth:`VisorSceneBase._restore_part_states_from_runtime`.
+
         """
         # UI settings
         ui_state = state.ui
