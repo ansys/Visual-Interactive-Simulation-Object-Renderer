@@ -29,6 +29,8 @@ Real test files used:
     tests/files/simple_multiblock.vtkhdf — VTK MultiBlockDataSet
 """
 
+import asyncio
+import json
 import os
 from unittest.mock import MagicMock, patch
 
@@ -41,9 +43,15 @@ from vtkmodules.vtkCommonDataModel import (
 
 from ansys.visor.viewer.app.visor_vtk import VisorVTK
 from ansys.visor.viewer.core.metadata import ExtendedMetadata
+from ansys.visor.viewer.models.common.part_properties import PartProperties
 from ansys.visor.viewer.models.common.visor_ui_state import VisorUIState
 from ansys.visor.viewer.models.persist.dataset.persisted_dataset_state import PersistedDatasetState
 from ansys.visor.viewer.models.persist.persisted_viewer_state import PersistedViewerStateV1
+from ansys.visor.viewer.models.runtime.dataset.runtime_dataset_state import (
+    RuntimeDatasetState,
+    RuntimePartProperties,
+)
+from ansys.visor.viewer.models.runtime.scene.runtime_app_state import RuntimeAppState
 from ansys.visor.viewer.vtk.io.file_to_dataset import file_to_dataset
 from ansys.visor.viewer.vtk.io.visor_file_io import VisorFileIO
 
@@ -369,4 +377,115 @@ class TestLoadDatasetsFromState:
 
         assert plate_snap.exists()
         assert not mesh_snap.exists()
+
+
+# ================================================================== #
+# Registry-sourced save, and registry restore on load
+# ================================================================== #
+
+class TestRegistrySourcedPartState:
+    """The server's own registry is the authority for per-part state across a
+    save/load round trip, with the browser never consulted.
+
+    The two directions are separate tests: the save asserts against the raw
+    ``visor.json`` (parts keyed by **name**), the load asserts against the
+    registry.  Neither uses the other's output, so a failure names one side.
+    """
+
+    def test_saved_visor_json_carries_registry_part_state_keyed_by_name(self, iface, tmp_path):
+        """save_state writes the registry's per-part state, not the frontend's."""
+        data = file_to_dataset(_vtp_path())
+        dataset_id = iface._scene.add_dataset(data, ExtendedMetadata(name="plate", unit="m"))
+        part_id = iface._scene.datasets[dataset_id].part_index.part_ids[0]
+
+        # Mutate through the coordinator, i.e. exactly what a trigger does.
+        iface._scene.set_part_opacity(part_id, 0.25)
+        iface._scene.set_part_visibility(part_id, False)
+        iface._scene.set_part_diffuse_color(part_id, [1.0, 0.0, 0.0])
+
+        # The browser answers getState with contradictory per-part values for
+        # the same dataset.  A pass therefore proves the file came from the
+        # registry rather than from the frontend round trip.
+        frontend_state = RuntimeAppState.from_components(
+            dark_mode=False,
+            unit="m",
+            dataset_states={
+                dataset_id: RuntimeDatasetState(
+                    id=dataset_id,
+                    part_states={
+                        part_id: RuntimePartProperties(id=part_id, opacity=0.99, visible=True)
+                    },
+                )
+            },
+        )
+
+        async def _frontend_round_trip(timeout: float = 5.0):
+            return frontend_state
+
+        iface._scene._get_runtime_state_async = _frontend_round_trip
+        iface._server_manager = MagicMock()
+        iface._server_manager.running = True
+
+        asyncio.run(iface.save_state(str(tmp_path)))
+
+        with open(os.path.join(str(tmp_path), "visor.json"), "r") as fh:
+            written = json.load(fh)
+
+        # Parts are keyed by name, not id; a non-composite dataset has one
+        # part, named after the dataset.
+        part = written["scene"]["dataset_states"]["plate"]["parts"]["plate"]
+        assert part["opacity"] == 0.25
+        assert part["visible"] is False
+        assert part["diffuse_rgb"] == [1.0, 0.0, 0.0]
+
+    def test_reloading_the_saved_state_restores_the_registry(self, file_io, iface, tmp_path):
+        """load_state populates the registry itself, with no browser involved."""
+        original = file_to_dataset(_vtp_path())
+        snap = file_io.get_persisted_dataset_path(str(tmp_path), "plate")
+        file_io.write_dataset(snap, original)
+
+        state = PersistedViewerStateV1.from_components(
+            ui_state=VisorUIState(),
+            unit="m",
+            orthographic_enabled=None,
+            cross_section_enabled=None,
+            edges_enabled=None,
+            bounding_box_enabled=None,
+            datasets={
+                "plate": PersistedDatasetState(
+                    serialized_dataset_path=str(snap),
+                    parts={
+                        "plate": PartProperties(
+                            opacity=0.25,
+                            visible=False,
+                            selected=True,
+                            diffuse_rgb=[1.0, 0.0, 0.0],
+                            color_by="POINT::pressure::1",
+                            color_by_component=0,
+                        )
+                    },
+                )
+            },
+        )
+        file_io.write_state(str(tmp_path), state)
+
+        # No browser: the bridge push and the wasm flush are not exercised
+        # in-process.  The registry restore must not depend on either.
+        iface._scene._apply_runtime_state_to_render = MagicMock()
+        iface._scene._renderer.flush_wasm_state = MagicMock()
+
+        assert iface._scene.dataset_count == 0
+        iface.load_state(str(tmp_path))
+
+        dataset = next(iter(iface._scene.datasets.values()))
+        part_id = dataset.part_index.part_ids[0]
+        record = iface._scene._dataset_registry.get_part_state(part_id)
+
+        assert record.opacity == 0.25
+        assert record.visible is False
+        assert record.selected is True
+        assert record.diffuse_rgb == [1.0, 0.0, 0.0]
+        assert record.spectrum_id == "POINT::pressure::1"
+        assert record.spectrum_component == 0
+
 

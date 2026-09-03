@@ -260,6 +260,9 @@ export class VisorFrontend {
             for (const spectrumInfo of spectrumInfos.array) {
                 const spectrumState = new VisorSpectrumState();
                 spectrumState.setId(spectrumInfo.id.toString());
+                spectrumState.setArrayName(spectrumInfo.name);
+                spectrumState.setType(spectrumInfo.type);
+                spectrumState.setNumComponents(spectrumInfo.numComponents);
                 const magnitudeRange = spectrumInfo.getRangeInfo(-1);
                 if (magnitudeRange == null) {
                     throw new Error(`range at component ${-1} not found`);
