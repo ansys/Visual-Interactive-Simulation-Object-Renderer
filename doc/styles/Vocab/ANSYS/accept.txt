@@ -43,6 +43,7 @@ VM
 Autoscaling
 hps
 Synopsys
+synopsys
 repId
 ue
 te
