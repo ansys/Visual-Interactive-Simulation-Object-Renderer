@@ -95,8 +95,7 @@ class PartIndex:
             leaf_count = flat_idx
 
         # A seed that does not cover exactly one position per leaf means the seed
-        # source and this traversal disagree; that is a broken invariant, not a
-        # data quirk.  Log it loudly; positions outside the seed took random IDs.
+        # source and this traversal disagree; that is a broken invariant.
         if self._seed_ids is not None and len(self._seed_ids) != leaf_count:
             logger.error(
                 f"Part ID seed length {len(self._seed_ids)} does not match leaf count {leaf_count} "
