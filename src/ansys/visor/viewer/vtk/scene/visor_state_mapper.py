@@ -73,6 +73,11 @@ class VisorStateMapper:
         """Convert PersistedViewerStateV1 back to runtime RuntimeAppState.
 
         Logic parity with ``VisorScene._persisted_to_runtime``.
+
+        Returns the runtime dataset states on the ``RuntimeAppState``; it does not
+        assign them to ``VisorDataset.state``.  The registry is populated by
+        :meth:`VisorSceneBase._restore_part_states_from_runtime`.
+
         """
         # UI settings
         ui_state = state.ui

@@ -4,6 +4,7 @@ import {
     IRenderer,
     NodeId,
     PickGeometryResult,
+    TrameTriggerSender,
     VisorCameraState,
 } from './IRenderer';
 import VtkScene from '../wasm/VtkScene';
@@ -24,8 +25,13 @@ const SELECTION_TINT_RGB: Readonly<number[]> = [0 / 255, 62 / 255, 111 / 255];
  * this — nothing imports `WasmRenderer` yet.
  */
 export class WasmRenderer implements IRenderer {
-    private constructor(vtkScene: VtkScene, annotation: WasmRendererAnnotation) {
+    private constructor(
+        vtkScene: VtkScene,
+        annotation: WasmRendererAnnotation,
+        triggerSender: TrameTriggerSender | null
+    ) {
         this.#vtkScene = vtkScene;
+        this.#triggerSender = triggerSender;
 
         const wasmPlaneId = annotation.widgets.crossSectionPlaneId;
         const wasmPlaneRepId = annotation.widgets.crossSectionPlaneRepresentationId;
@@ -66,12 +72,14 @@ export class WasmRenderer implements IRenderer {
 
     static async createAsync(
         vtkScene: VtkScene,
-        annotation: WasmRendererAnnotation
+        annotation: WasmRendererAnnotation,
+        triggerSender: TrameTriggerSender | null = null
     ): Promise<WasmRenderer> {
-        return new WasmRenderer(vtkScene, annotation);
+        return new WasmRenderer(vtkScene, annotation, triggerSender);
     }
 
     readonly #vtkScene: VtkScene;
+    readonly #triggerSender: TrameTriggerSender | null;
     readonly #actorIdToNodeId = new Map<number, NodeId>();
     readonly #nodeIdToHandles = new Map<NodeId, WasmNodeHandles>();
     readonly #crossSectionWidget: CrossSectionWidget;
@@ -341,6 +349,102 @@ export class WasmRenderer implements IRenderer {
         }
         const wasmMapper = this.#vtkScene.getVtkObject(handles.mapperId);
         await wasmMapper.SetScalarRange(min, max);
+    }
+
+    // ---- Per-part mutations routed to the server -----------------------------
+    /**
+     * Send one per-part payload to its server trigger.
+     *
+     * No sender injected -> no-op. This is the state every non-browser context
+     * is in, and it is deliberate rather than defensive: the renderer is
+     * constructible without a transport.
+     *
+     * A rejection is logged and swallowed, never rethrown. These sends run
+     * inside UI handlers that behaved a certain way before this call existed,
+     * and both stacks currently apply the same mutation independently, so a
+     * transport failure must not change what the user sees or break an
+     * interaction. The catch is deliberately unnarrowed: any rejection, of any
+     * shape, is a failed send. The log line below is therefore the *only*
+     * signal that a send failed -- the render will look correct either way --
+     * so its prefix is fixed and greppable, and it names both the trigger and
+     * the node so a failure can be attributed without a debugger.
+     */
+    async #sendTriggerAsync(
+        triggerName: string,
+        nodeId: NodeId,
+        payload: Record<string, unknown>
+    ): Promise<void> {
+        if (this.#triggerSender == null) {
+            return;
+        }
+        try {
+            await this.#triggerSender(triggerName, payload);
+        } catch (err) {
+            console.error(
+                `[VISOR] per-part trigger send failed: trigger='${triggerName}' nodeId=${nodeId}`,
+                err
+            );
+        }
+    }
+
+    async sendPartVisibilityAsync(nodeId: NodeId, visible: boolean): Promise<void> {
+        await this.#sendTriggerAsync('set_part_visibility', nodeId, {
+            nodeId,
+            visible,
+        });
+    }
+
+    async sendPartOpacityAsync(nodeId: NodeId, opacity: number): Promise<void> {
+        await this.#sendTriggerAsync('set_part_opacity', nodeId, {
+            nodeId,
+            opacity,
+        });
+    }
+
+    async sendPartDiffuseColorAsync(
+        nodeId: NodeId,
+        diffuseRgb: readonly number[] | null
+    ): Promise<void> {
+        // The key is always present: `diffuseRgb: null` is how a reset is
+        // expressed. Omitting it is a different message, and not a valid one.
+        await this.#sendTriggerAsync('set_part_diffuse_color', nodeId, {
+            nodeId,
+            diffuseRgb,
+        });
+    }
+
+    async sendPartSelectedAsync(nodeId: NodeId, selected: boolean): Promise<void> {
+        // No colour crosses this trigger by design; the server reads the
+        // part's stored colour from its own record.
+        await this.#sendTriggerAsync('set_part_selected', nodeId, {
+            nodeId,
+            selected,
+        });
+    }
+
+    async sendPartColorVariableAsync(
+        nodeId: NodeId,
+        descriptor: ColorVariableDescriptor
+    ): Promise<void> {
+        // `variableId` is the client-built opaque token, forwarded verbatim;
+        // nothing on either side parses it. The association travels as its own
+        // typed 'POINT'|'CELL' field, and the array name as its own field,
+        // precisely so that no one has to.
+        await this.#sendTriggerAsync('set_part_color_variable', nodeId, {
+            nodeId,
+            variableId: descriptor.spectrumId,
+            association: descriptor.spectrumType,
+            arrayName: descriptor.spectrumName,
+            component: descriptor.component,
+            min: descriptor.min,
+            max: descriptor.max,
+        });
+    }
+
+    async sendClearPartColorVariableAsync(nodeId: NodeId): Promise<void> {
+        await this.#sendTriggerAsync('clear_part_color_variable', nodeId, {
+            nodeId,
+        });
     }
 
     // ---- View-level widgets -------------------------------------------------

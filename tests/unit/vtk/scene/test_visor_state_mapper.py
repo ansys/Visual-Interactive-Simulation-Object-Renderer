@@ -11,6 +11,7 @@ class FakeDataset:
     def __init__(self, name, did):
         self.name = name
         self.id = did
+        self.state = "untouched-sentinel"
 
     def runtime_to_persisted_state(self, state):
         return {"converted": state}
@@ -243,3 +244,47 @@ def test_persisted_to_runtime_handles_none_variable_states(monkeypatch):
     mapper.persisted_to_runtime(state)
 
     assert captured["variable_states"] == {}
+
+
+def test_persisted_to_runtime_does_not_write_back_to_dataset_state(monkeypatch):
+    """The mapper is not, and never has been, the registry-population path.
+
+    It builds runtime dataset states and returns them; it never assigns them
+    onto ``VisorDataset.state``.  That is the gap
+    ``VisorSceneBase._restore_part_states_from_runtime`` closes, so the
+    negative is pinned here rather than assumed.
+    """
+
+    dataset = FakeDataset(name="dsA", did=10)
+    registry = FakeRegistry(by_name={"dsA": dataset})
+
+    monkeypatch.setattr(
+        "ansys.visor.viewer.vtk.scene.visor_state_mapper.RuntimeAppState.from_components",
+        lambda **kwargs: kwargs,
+    )
+
+    state = type("Persisted", (), {
+        "ui": type("UI", (), {"dark_theme": False})(),
+        "scene": type("Scene", (), {
+            "unit": "m",
+            "camera": None,
+            "variable_states": {},
+            "dataset_states": {
+                "dsA": type("DS", (), {"parts": {"p": 9}})()
+            },
+            "cross_section": None,
+            "orthographic_enabled": False,
+            "cross_section_enabled": False,
+            "edges_enabled": False,
+            "bounding_box_enabled": False,
+        })(),
+    })()
+
+    mapper = VisorStateMapper(registry)
+    result = mapper.persisted_to_runtime(state)
+
+    # The converted state is returned ...
+    assert result["dataset_states"] == {10: {"rt": {"p": 9}}}
+    # ... and is not written back onto the dataset the registry holds.
+    assert dataset.state == "untouched-sentinel"
+
