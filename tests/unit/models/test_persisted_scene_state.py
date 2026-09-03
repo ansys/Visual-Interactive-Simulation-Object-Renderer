@@ -26,7 +26,6 @@ from ansys.visor.viewer.models.persist.scene.persisted_scene_state import (
     derive_variable_fields_from_identifier,
 )
 
-
 # ------------------------------------------------------------------
 # Helpers
 # ------------------------------------------------------------------

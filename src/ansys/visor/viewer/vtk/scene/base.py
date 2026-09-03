@@ -155,7 +155,7 @@ class VisorSceneBase(ABC):
         own runtime state before the persisted mapping runs.
 
         The registry hands out live ``RuntimeDatasetState`` objects that the per-part
-        setters mutate from teh trame daemon thread, so each one is deep-copied under
+        setters mutate from the trame daemon thread, so each one is deep-copied under
         ``_vtk_lock``.  The lock is taken after the ``await`` and never held across one.
         """
         runtime_state = await self._get_runtime_state_async(timeout)
