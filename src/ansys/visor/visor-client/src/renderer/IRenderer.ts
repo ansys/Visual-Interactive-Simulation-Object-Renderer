@@ -35,6 +35,23 @@ export type ColorVariableDescriptor = Readonly<{
     max: number;
 }>;
 
+/**
+ * The transport a renderer uses to send a per-part mutation to the server.
+ *
+ * This is the existing trame trigger call surface, nothing new:
+ * `RemoteVtkScene.trameTriggerAsync(name, ...args)`, which forwards one
+ * positional argument -- the payload object -- to the named server trigger.
+ * It is *injected* into the concrete renderer at construction rather than
+ * imported by it, so that this module stays types-only and compiles to an
+ * empty module: a value import here would be inherited by every importer,
+ * including the wasm transport, and would drag the scene graph and React
+ * into module graphs that must not have them.
+ *
+ * A renderer constructed without a sender performs no send. It does not
+ * throw and does not queue.
+ */
+export type TrameTriggerSender = (triggerName: string, payload: unknown) => Promise<unknown>;
+
 /** Result returned by pickGeometryAsync. Discriminated by `mode`. */
 export type PickGeometryResult =
     | { found: false }
@@ -139,6 +156,32 @@ export interface IRenderer {
     setColorVariableAsync(nodeId: NodeId, descriptor: ColorVariableDescriptor): Promise<void>;
     clearColorVariableAsync(nodeId: NodeId): Promise<void>;
     setScalarRangeAsync(nodeId: NodeId, min: number, max: number): Promise<void>;
+
+    // ---- Per-part mutations routed to the server -----------------------------
+    /**
+     * These six carry a per-part mutation to the matching server trigger. They
+     * are *not* a second way to render: they neither read nor touch any wasm
+     * object, and they are called in addition to -- never instead of -- the
+     * per-part apply methods above, which keep applying to the client's own
+     * objects for now.
+     *
+     * Each payload is absolute, never relative: it carries the target value,
+     * so a send that is suppressed upstream, duplicated, or reordered is
+     * harmless. `nodeId` is always a part (actor) node; a group node fans out
+     * to its actor descendants before any of these is called.
+     *
+     * A send never rejects. With no sender injected it is a no-op; with one,
+     * a transport failure is logged and swallowed, because these run inside UI
+     * handlers whose behaviour must not change.
+     */
+    sendPartVisibilityAsync(nodeId: NodeId, visible: boolean): Promise<void>;
+    sendPartOpacityAsync(nodeId: NodeId, opacity: number): Promise<void>;
+    /** `null` clears the custom colour; absence of a colour is absence, not a default. */
+    sendPartDiffuseColorAsync(nodeId: NodeId, diffuseRgb: readonly number[] | null): Promise<void>;
+    /** Carries no colour: the server reads the part's stored colour from its own record. */
+    sendPartSelectedAsync(nodeId: NodeId, selected: boolean): Promise<void>;
+    sendPartColorVariableAsync(nodeId: NodeId, descriptor: ColorVariableDescriptor): Promise<void>;
+    sendClearPartColorVariableAsync(nodeId: NodeId): Promise<void>;
 
     // ---- View-level widgets (state is renderer-owned; see arch rule (a)) ---
     setCrossSectionVisibilityAsync(visible?: boolean): Promise<void>;

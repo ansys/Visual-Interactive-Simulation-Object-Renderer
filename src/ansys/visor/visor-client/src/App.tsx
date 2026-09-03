@@ -128,7 +128,8 @@ function App() {
         }
         const renderer = await WasmRenderer.createAsync(
             wasmView.current.vtkScene,
-            requireWasmAnnotation(sceneDetails.vtkInfo.rendererAnnotation)
+            requireWasmAnnotation(sceneDetails.vtkInfo.rendererAnnotation),
+            wasmView.current.trameTriggerAsync
         );
         const newFrontend = new VisorFrontend(renderer, sceneDetails.vtkInfo.sceneGraph);
         if (visorArgs.current.darkMode != null) {

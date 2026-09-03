@@ -1,13 +1,19 @@
 import {
     ensureArray,
     ensureNumberArray,
+    ensureNumber,
+    ensureString,
     JsonDict,
     parseState,
     StateInput,
 } from './VisorStateCommon.tsx';
+import type { FieldAssociation } from './vtkInfo/VisorVtkDataArray.tsx';
 
 export default class VisorSpectrumState {
     private _id: string = '';
+    private _arrayName: string = '';
+    private _type: FieldAssociation | undefined = undefined;
+    private _numComponents: number = 0;
     private _magnitudeRange: number[] | undefined = undefined;
     private _ranges: (number[] | undefined)[] = [];
 
@@ -25,6 +31,36 @@ export default class VisorSpectrumState {
     setId(val: string | number | null | undefined): void {
         if (val != null) {
             this._id = val.toString();
+        }
+    }
+
+    get arrayName(): string {
+        return this._arrayName;
+    }
+
+    setArrayName(val: string | null | undefined): void {
+        if (val != null) {
+            this._arrayName = ensureString(val, 'val');
+        }
+    }
+
+    get type(): FieldAssociation | undefined {
+        return this._type;
+    }
+
+    setType(val: FieldAssociation | null | undefined): void {
+        if (val != null) {
+            this._type = val;
+        }
+    }
+
+    get numComponents(): number {
+        return this._numComponents;
+    }
+
+    setNumComponents(val: number | null | undefined): void {
+        if (val != null) {
+            this._numComponents = ensureNumber(val, 'val');
         }
     }
 
@@ -83,6 +119,11 @@ export default class VisorSpectrumState {
             }
 
             this.setId(thisId);
+            this.setArrayName(data.arrayName === undefined ? this._arrayName : data.arrayName);
+            this.setType(data.type === undefined ? this._type : data.type);
+            this.setNumComponents(
+                data.numComponents === undefined ? this._numComponents : data.numComponents
+            );
             this.setMagnitudeRange(
                 data.magnitudeRange === undefined ? this._magnitudeRange : data.magnitudeRange,
                 replace
@@ -99,6 +140,9 @@ export default class VisorSpectrumState {
     toDict(): JsonDict {
         return {
             id: this.id,
+            arrayName: this.arrayName,
+            type: this.type,
+            numComponents: this.numComponents,
             magnitudeRange: this.magnitudeRange,
             ranges: this.ranges,
         };

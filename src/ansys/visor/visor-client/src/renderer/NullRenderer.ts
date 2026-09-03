@@ -166,6 +166,41 @@ export class NullRenderer implements IRenderer {
         // no-op
     }
 
+    // ---- Per-part mutations routed to the server -----------------------------
+    // A renderer with no server behind it sends nothing. These are no-ops for
+    // the same reason every other method here is: the null renderer has no
+    // transport, exactly as it has no wasm objects.
+
+    async sendPartVisibilityAsync(_nodeId: NodeId, _visible: boolean): Promise<void> {
+        // no-op
+    }
+
+    async sendPartOpacityAsync(_nodeId: NodeId, _opacity: number): Promise<void> {
+        // no-op
+    }
+
+    async sendPartDiffuseColorAsync(
+        _nodeId: NodeId,
+        _diffuseRgb: readonly number[] | null
+    ): Promise<void> {
+        // no-op
+    }
+
+    async sendPartSelectedAsync(_nodeId: NodeId, _selected: boolean): Promise<void> {
+        // no-op
+    }
+
+    async sendPartColorVariableAsync(
+        _nodeId: NodeId,
+        _descriptor: ColorVariableDescriptor
+    ): Promise<void> {
+        // no-op
+    }
+
+    async sendClearPartColorVariableAsync(_nodeId: NodeId): Promise<void> {
+        // no-op
+    }
+
     async setCrossSectionVisibilityAsync(_visible?: boolean): Promise<void> {
         // no-op
     }
