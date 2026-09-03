@@ -40,6 +40,89 @@ TENSOR_COMPONENT_LABELS = ["XX", "XY", "XZ", "YX", "YY", "YZ", "ZX", "ZY", "ZZ"]
 
 
 # ===========================================================================
+# Selecting a tensor component colors the part (screenshot diff)
+# ===========================================================================
+
+@pytest.mark.parametrize("visor_asset_spec", [TENSOR_ASSETS], indirect=True)
+@pytest.mark.regression
+class TestTensorComponentColoring:
+    """
+    Verify that selecting a tensor component updates the rendered
+    view, confirmed by screenshot baseline comparison.
+    """
+
+    def test_initial_render_baseline(self, page: Page, visor_server, baseline_dir, request):
+        """Take a baseline screenshot of the tensor mesh initial render."""
+        target_url = visor_server.url
+        page.set_viewport_size({"width": 1280, "height": 800})
+        page.goto(target_url, wait_until="networkidle")
+        canvas = wait_for_canvas_alive(page, "tensor-initial")
+        settle(page, 300)  # preserve prior render-settle timing before baseline capture
+
+        result = visual.verify_canvas_against_baseline(
+            canvas_locator=canvas,
+            baseline_dir=baseline_dir,
+            pixel_threshold=2.55,
+            request=request,
+            compare_images=compare_images,
+            test_id="e2e02_tensor_initial_render",
+            test_suite="regression",
+        )
+
+        suite_result = visual.make_test_result(result)
+        assert suite_result.passed, "Initial render baseline failed\n" + suite_result.summary()
+
+    def test_component_selection_changes_rendering(self, page: Page, visor_server):
+        """Selecting different tensor components produces visually distinct canvas renders."""
+        target_url = visor_server.url
+        page.set_viewport_size({"width": 1280, "height": 800})
+        page.goto(target_url, wait_until="networkidle")
+        canvas = wait_for_canvas_alive(page, "tensor-coloring")
+
+        # Select the part to activate the variable selection UI
+        part_row = page.locator("div.visor-tree-view td:nth-child(2)").filter(has_text="tensor_test_sphere")
+        part_row.wait_for(state="visible", timeout=10_000)
+        part_row.click()
+
+        # Select the Stress variable
+        variable_select = page.locator("select").filter(has=page.locator("option[data-name='Stress']"))
+        variable_select.wait_for(state="visible", timeout=10_000)
+        variable_select.select_option(value="POINT::Stress::9")
+
+        # Wait for the component dropdown to become visible
+        component_select = page.locator("label").filter(has_text="Component").locator("select")
+        component_select.wait_for(state="visible", timeout=10_000)
+
+        # Capture a canvas screenshot per component for the representative subset
+        components_to_test = ["XX", "YY", "ZZ", "Magnitude"]
+        screenshots_root = Path("tests/artifacts/regression/screenshots")
+        screenshots_root.mkdir(parents=True, exist_ok=True)
+
+        stamp = time.strftime("%Y%m%d-%H%M%S")
+        shot_paths: list[Path] = []
+        for comp in components_to_test:
+            component_select.select_option(label=comp)
+            settle(page, 500)  # Allow renderer time to update
+            shot_path = screenshots_root / f"e2e04_coloring_{comp}_{stamp}.png"
+            canvas.screenshot(path=str(shot_path))
+            shot_paths.append(shot_path)
+
+        # Assert each consecutive pair of screenshots differs (RMS > threshold),
+        # confirming that selecting a different component changes the rendering.
+        min_rms = 1.0
+        for i in range(len(shot_paths) - 1):
+            img_a = Image.open(shot_paths[i])
+            img_b = Image.open(shot_paths[i + 1])
+            img_a, img_b = ensure_same_size_and_mode(img_a, img_b)
+            rms, _ = rms_diff(img_a, img_b)
+            assert rms > min_rms, (
+                f"Switching from '{components_to_test[i]}' to '{components_to_test[i + 1]}' "
+                f"did not change the render (RMS={rms:.3f}, expected > {min_rms}). "
+                f"Screenshots: {shot_paths[i]}, {shot_paths[i + 1]}"
+            )
+
+
+# ===========================================================================
 # Variable dropdown shows all 9 tensor components
 # ===========================================================================
 
@@ -122,89 +205,6 @@ class TestTensorVariableDropdown:
         assert suite_result.passed, (
             "Component dropdown screenshot baseline failed\n" + suite_result.summary()
         )
-
-
-# ===========================================================================
-# Selecting a tensor component colors the part (screenshot diff)
-# ===========================================================================
-
-@pytest.mark.parametrize("visor_asset_spec", [TENSOR_ASSETS], indirect=True)
-@pytest.mark.regression
-class TestTensorComponentColoring:
-    """
-    Verify that selecting a tensor component updates the rendered
-    view, confirmed by screenshot baseline comparison.
-    """
-
-    def test_initial_render_baseline(self, page: Page, visor_server, baseline_dir, request):
-        """Take a baseline screenshot of the tensor mesh initial render."""
-        target_url = visor_server.url
-        page.set_viewport_size({"width": 1280, "height": 800})
-        page.goto(target_url, wait_until="networkidle")
-        canvas = wait_for_canvas_alive(page, "tensor-initial")
-        settle(page, 300)  # preserve prior render-settle timing before baseline capture
-
-        result = visual.verify_canvas_against_baseline(
-            canvas_locator=canvas,
-            baseline_dir=baseline_dir,
-            pixel_threshold=2.55,
-            request=request,
-            compare_images=compare_images,
-            test_id="e2e02_tensor_initial_render",
-            test_suite="regression",
-        )
-
-        suite_result = visual.make_test_result(result)
-        assert suite_result.passed, "Initial render baseline failed\n" + suite_result.summary()
-
-    def test_component_selection_changes_rendering(self, page: Page, visor_server):
-        """Selecting different tensor components produces visually distinct canvas renders."""
-        target_url = visor_server.url
-        page.set_viewport_size({"width": 1280, "height": 800})
-        page.goto(target_url, wait_until="networkidle")
-        canvas = wait_for_canvas_alive(page, "tensor-coloring")
-
-        # Select the part to activate the variable selection UI
-        part_row = page.locator("div.visor-tree-view td:nth-child(2)").filter(has_text="tensor_test_sphere")
-        part_row.wait_for(state="visible", timeout=10_000)
-        part_row.click()
-
-        # Select the Stress variable
-        variable_select = page.locator("select").filter(has=page.locator("option[data-name='Stress']"))
-        variable_select.wait_for(state="visible", timeout=10_000)
-        variable_select.select_option(value="POINT::Stress::9")
-
-        # Wait for the component dropdown to become visible
-        component_select = page.locator("label").filter(has_text="Component").locator("select")
-        component_select.wait_for(state="visible", timeout=10_000)
-
-        # Capture a canvas screenshot per component for the representative subset
-        components_to_test = ["Magnitude", "XX", "YY", "ZZ"]
-        screenshots_root = Path("tests/artifacts/regression/screenshots")
-        screenshots_root.mkdir(parents=True, exist_ok=True)
-
-        stamp = time.strftime("%Y%m%d-%H%M%S")
-        shot_paths: list[Path] = []
-        for comp in components_to_test:
-            component_select.select_option(label=comp)
-            settle(page, 500)  # Allow renderer time to update
-            shot_path = screenshots_root / f"e2e04_coloring_{comp}_{stamp}.png"
-            canvas.screenshot(path=str(shot_path))
-            shot_paths.append(shot_path)
-
-        # Assert each consecutive pair of screenshots differs (RMS > threshold),
-        # confirming that selecting a different component changes the rendering.
-        min_rms = 1.0
-        for i in range(len(shot_paths) - 1):
-            img_a = Image.open(shot_paths[i])
-            img_b = Image.open(shot_paths[i + 1])
-            img_a, img_b = ensure_same_size_and_mode(img_a, img_b)
-            rms, _ = rms_diff(img_a, img_b)
-            assert rms > min_rms, (
-                f"Switching from '{components_to_test[i]}' to '{components_to_test[i + 1]}' "
-                f"did not change the render (RMS={rms:.3f}, expected > {min_rms}). "
-                f"Screenshots: {shot_paths[i]}, {shot_paths[i + 1]}"
-            )
 
 
 # ===========================================================================
