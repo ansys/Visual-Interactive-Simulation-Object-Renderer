@@ -45,6 +45,9 @@ SECOND_NODE_ID = 8
 UNKNOWN_NODE_ID = 999999
 DATASET_ID = 1
 
+NODE_ID = 7
+UNKNOWN_NODE_ID = 999999
+
 
 def test_cannot_instantiate_directly():
     """VisorSceneBase is abstract and must raise TypeError on direct instantiation."""
