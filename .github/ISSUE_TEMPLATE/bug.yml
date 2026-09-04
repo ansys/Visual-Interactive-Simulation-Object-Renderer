@@ -34,7 +34,7 @@ body:
   - type: dropdown
     id: severity
     attributes:
-      label: '🚦 Defines the severity of the bug. In the case of class-3, [specific information must be added](https://github.com/ansys-internal/QP-2-Template/blob/main/.github/ISSUE_TEMPLATE/class3.md)'
+      label: '🚦 Defines the severity of the bug. In the case of class-3, specific information must be added.'
       options:
         - "Class 1 - Crash/Major data loss"
         - "Class 2 - Serious problem"
