@@ -9,7 +9,7 @@ build-system-version = "1.7.0"
 
 [tool.poetry]
 name = "ansys-visor-viewer"
-version = "1.0.0_beta"
+version = "1.0.0_dev"
 description = "\"VISOR 3D visualization web component framework\""
 authors = ["VISOR Team <visor@synopsys.com>"]
 readme = "README.rst"

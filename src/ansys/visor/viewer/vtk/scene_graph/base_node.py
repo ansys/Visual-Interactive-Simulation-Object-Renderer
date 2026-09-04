@@ -179,15 +179,6 @@ class VisorSceneGraphNode(ABC):
         """Return the number of descendant part nodes (optionally including self)."""
         return len(self.get_descendant_part_nodes(include_self=include_self))
 
-    def get_descendant_node_name_to_id_map(self) -> dict[str, int]:
-        """
-        Get a mapping of part names to their corresponding node IDs
-        for a specific dataset.
-
-        Returns:
-            dict[str, int]: A dictionary mapping part names to node IDs.
-        """
-        return {node.name: id for id, node in self._get_descendant_node_dict(include_self=True).items() if node.name is not None}
 
     @staticmethod
     def get_node(

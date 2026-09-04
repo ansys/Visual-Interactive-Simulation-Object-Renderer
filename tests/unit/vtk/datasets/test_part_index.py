@@ -71,7 +71,7 @@ def test_seed_id_is_used_when_available(monkeypatch):
         lambda: 999,
     )
 
-    idx = PartIndex(object(), dataset_name="A", seed_ids={"A": 42})
+    idx = PartIndex(object(), dataset_name="A", seed_ids=[42])
 
     parts = idx.list_parts()
 
@@ -363,3 +363,144 @@ def test_duplicate_names_emit_warning(monkeypatch):
 
     assert len(warnings) == 1
     assert "Duplicate part name 'dup'" in warnings[0]
+
+
+# ------------------------------------------------------------------
+# Positional seed (T1, T4, T5, T6)
+# ------------------------------------------------------------------
+
+def _patch_composite(monkeypatch, names):
+    """Patch part_index so PartIndex traverses a fake composite with *names*."""
+
+    monkeypatch.setattr(
+        "ansys.visor.viewer.vtk.datasets.part_index.is_composite_dataset",
+        lambda data: True,
+    )
+
+    class FakeMeta:
+        def __init__(self, name):
+            self._name = name
+
+        def Has(self, key): # noqa: N802
+            return True
+
+        def Get(self, key): # noqa: N802
+            return self._name
+
+    class FakeIterator:
+        def __init__(self):
+            self.items = list(names)
+            self.index = 0
+
+        def SkipEmptyNodesOn(self): pass # noqa: N802
+
+        def IsDoneWithTraversal(self): # noqa: N802
+            return self.index >= len(self.items)
+
+        def GetCurrentMetaData(self): # noqa: N802
+            return FakeMeta(self.items[self.index])
+
+        def GoToNextItem(self): # noqa: N802
+            self.index += 1
+
+        def GetCurrentDataObject(self): # noqa: N802
+            return self.items[self.index]
+
+    class FakeComposite:
+        def NewIterator(self): # noqa: N802
+            return FakeIterator()
+
+    monkeypatch.setattr(
+        "ansys.visor.viewer.vtk.datasets.part_index.vtkCompositeDataSet",
+        type("X", (), {"NAME": staticmethod(lambda: "NAME")}),
+    )
+
+    return FakeComposite()
+
+
+def _capture_errors(monkeypatch):
+    """Collect logger.error records emitted by part_index."""
+
+    errors = []
+    monkeypatch.setattr(
+        "ansys.visor.viewer.vtk.datasets.part_index.logger.error",
+        lambda msg: errors.append(msg),
+    )
+    return errors
+
+
+def test_colliding_seed_with_duplicate_names_keeps_both_parts(monkeypatch):
+    """Two leaves sharing a name must still get the two seeded IDs, in order.
+
+    This is the production configuration: duplicate names *and* a seed.  The
+    name->id map collapses to one entry; the part index must not.
+    """
+
+    data = _patch_composite(monkeypatch, ["dup", "dup"])
+    monkeypatch.setattr(
+        "ansys.visor.viewer.vtk.datasets.part_index.get_random_javascript_safe_id",
+        lambda: 999,
+    )
+
+    idx = PartIndex(data, dataset_name="ds", seed_ids=[101, 202])
+
+    assert len(idx.part_ids) == 2
+    assert idx.part_ids == [101, 202]
+    assert len(idx.name_to_id_map) == 1
+
+
+def test_seed_id_zero_is_honoured(monkeypatch):
+    """Seed ID 0 is a valid JavaScript-safe integer and must not fall through."""
+
+    monkeypatch.setattr(
+        "ansys.visor.viewer.vtk.datasets.part_index.is_composite_dataset",
+        lambda data: False,
+    )
+    monkeypatch.setattr(
+        "ansys.visor.viewer.vtk.datasets.part_index.get_random_javascript_safe_id",
+        lambda: 999,
+    )
+
+    idx = PartIndex(object(), dataset_name="ds", seed_ids=[0])
+
+    assert idx.part_ids == [0]
+
+
+def test_short_seed_logs_error_and_falls_back(monkeypatch):
+    """A seed shorter than the leaf count logs one error and degrades to random."""
+
+    data = _patch_composite(monkeypatch, ["a", "b", "c"])
+    monkeypatch.setattr(
+        "ansys.visor.viewer.vtk.datasets.part_index.get_random_javascript_safe_id",
+        lambda: 777,
+    )
+    errors = _capture_errors(monkeypatch)
+
+    idx = PartIndex(data, dataset_name="ds", seed_ids=[101, 202])
+
+    assert len(idx.part_ids) == 3
+    assert idx.part_ids[0] == 101
+    assert idx.part_ids[1] == 202
+    assert idx.part_ids[2] == 777
+    assert len(errors) == 1
+    assert "seed length 2" in errors[0]
+    assert "leaf count 3" in errors[0]
+
+
+def test_long_seed_logs_error(monkeypatch):
+    """A seed longer than the leaf count logs the same error: the check is an equality."""
+
+    data = _patch_composite(monkeypatch, ["a", "b"])
+    monkeypatch.setattr(
+        "ansys.visor.viewer.vtk.datasets.part_index.get_random_javascript_safe_id",
+        lambda: 777,
+    )
+    errors = _capture_errors(monkeypatch)
+
+    idx = PartIndex(data, dataset_name="ds", seed_ids=[101, 202, 303])
+
+    assert idx.part_ids == [101, 202]
+    assert len(errors) == 1
+    assert "seed length 3" in errors[0]
+    assert "leaf count 2" in errors[0]
+

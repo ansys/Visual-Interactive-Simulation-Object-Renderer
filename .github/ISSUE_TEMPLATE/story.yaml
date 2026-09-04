@@ -28,7 +28,7 @@ body:
     attributes:
       label: Additional Links
       description: Links to Test Cases / Features / Other User Stories
-      placeholder: "[Issue #1](https://github.com/ansys-internal/QP-2-Template)"
+      placeholder:
     validations:
       required: false
 

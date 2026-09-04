@@ -140,45 +140,6 @@ jobs:
           mkdir -p tests/artifacts/smoke/reports
           poetry run pytest tests/e2e/smoke -m "not saf" --html=tests/artifacts/smoke/reports/smoke-tests.html --self-contained-html --junitxml=tests/artifacts/smoke/reports/smoke-junit.xml --verbose | tee tests/artifacts/smoke/reports/smoke-result.log
 
-      # SAF-related steps temporarily disabled
-      # # saf-visor-poc currently only supports Python 3.11 and 3.12
-      # - name: Install SAF CLI
-      #   if: matrix.python-version == '3.11' || matrix.python-version == '3.12'
-      #   run: pip install ansys-saf-cli
-
-      # - name: Clone saf-visor-poc
-      #   if: matrix.python-version == '3.11' || matrix.python-version == '3.12'
-      #   uses: actions/checkout@v4
-      #   with:
-      #     repository: ansys-internal/saf-visor-poc
-      #     token: ${{ secrets.PYANSYS_CI_BOT_TOKEN }}
-      #     path: saf-visor-poc
-
-      # - name: Install saf-visor-poc dependencies
-      #   if: matrix.python-version == '3.11' || matrix.python-version == '3.12'
-      #   env:
-      #     POETRY_HTTP_BASIC_SOLUTIONS_PRIVATE_PYPI_USERNAME: ${{ secrets.SOLUTIONS_PRIVATE_PYPI_USERNAME }}
-      #     POETRY_HTTP_BASIC_SOLUTIONS_PRIVATE_PYPI_PASSWORD: ${{ secrets.SOLUTIONS_PRIVATE_PYPI_PASSWORD }}
-      #   working-directory: saf-visor-poc
-      #   run: poetry run saf install .
-
-      # - name: Run SAF smoke tests
-      #   if: matrix.python-version == '3.11' || matrix.python-version == '3.12'
-      #   continue-on-error: true
-      #   env:
-      #     DISPLAY: ":99"
-      #     VTK_DEFAULT_RENDER_WINDOW_OFFSCREEN: "1"
-      #   run: |
-      #     set -o pipefail
-      #     mkdir -p tests/artifacts/saf-smoke/reports
-      #     poetry run pytest tests/e2e/smoke/test_smoke_saf_visor.py \
-      #       --saf-project-dir "${{ github.workspace }}/saf-visor-poc" \
-      #       --html=tests/artifacts/saf-smoke/reports/saf-smoke-tests.html \
-      #       --self-contained-html \
-      #       --junitxml=tests/artifacts/saf-smoke/reports/saf-smoke-junit.xml \
-      #       --verbose \
-      #       | tee tests/artifacts/saf-smoke/reports/saf-smoke-result.log
-
       - name: Run Regression tests
         continue-on-error: true
         env:

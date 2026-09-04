@@ -1,6 +1,7 @@
 """Registry for managing multiple Visor datasets within a scene."""
 
 import re
+from collections.abc import Sequence
 from typing import Dict, List
 
 from ansys.visor.viewer.core.metadata import ExtendedMetadata
@@ -85,7 +86,7 @@ class VisorDatasetRegistry:
             dataset_id: int,
             dataset_name: str,
             input: VisorDatasetType,
-            part_name_to_id: Dict[str, int],
+            node_ids: Sequence[int] | None,
             metadata: ExtendedMetadata,
             ) -> VisorDataset:
         """
@@ -94,8 +95,8 @@ class VisorDatasetRegistry:
         self._update_unit(metadata)
 
         # VisorDataset builds its own PartIndex directly from the VTK data object,
-        # seeded with the scene-graph node IDs so part_id == scene-graph node ID.
-        dataset = VisorDataset(dataset_id, dataset_name, input, part_name_to_id, metadata)
+        # seeded positionally with the scene-graph node IDs so part_id == node ID.
+        dataset = VisorDataset(dataset_id, dataset_name, input, node_ids, metadata)
 
         # Store the dataset in the registry
         self.datasets[dataset_id] = dataset
