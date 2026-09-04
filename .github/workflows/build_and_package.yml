@@ -241,18 +241,6 @@ jobs:
     outputs:
       package_version: ${{ steps.set_package_version.outputs.package_version }}
 
-  sbom:
-    name: Generate and Publish SBOM
-    needs: build
-    if: |
-      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
-    uses: ansys-internal/saf-github-workflow-templates/.github/workflows/_sbom.yml@v4
-    with:
-      package_type: poetry
-      sbom-name: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && format('viewer-visor/{0}', github.ref_name) || 'viewer-visor' }}
-      publish: true
-    secrets: inherit
-
   docker:
     needs: build
     if: |
