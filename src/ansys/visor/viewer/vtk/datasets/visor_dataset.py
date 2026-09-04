@@ -1,6 +1,7 @@
 """Class representing a Visor dataset."""
 
 import copy
+from collections.abc import Sequence
 from typing import Dict, List
 
 import numpy as np
@@ -29,15 +30,17 @@ logger = VisorDefaultLogger(__name__)
 class VisorDataset:
     """Base class for Visor datasets."""
 
-    def __init__(self, id: int, name: str, data: vtkDataObject, part_name_to_id: Dict[str, int], metadata: ExtendedMetadata):
+    def __init__(self, id: int, name: str, data: vtkDataObject, node_ids: Sequence[int] | None,
+                 metadata: ExtendedMetadata):
         self.id: int = id
         self.data: vtkDataObject = data
 
         # PartIndex is the single source of truth for part topology and IDs.
         # It is built directly from the VTK data object — no scene graph required.
-        # seed_ids pins part IDs to the scene-graph node IDs so the frontend can
-        # correlate part_states entries with VTK actor properties.
-        self.part_index: PartIndex = PartIndex(data, name, seed_ids=part_name_to_id)
+        # node_ids is the positional seed (scene-graph node IDs in leaf order); it
+        # pins part IDs to those node IDs so the frontend can correlate part_states
+        # entries with VTK actor properties.
+        self.part_index: PartIndex = PartIndex(data, name, seed_ids=node_ids)
 
         # Get the dataset info from metadata
         self.info: VisorDatasetInfo = self._build_dataset_info(id, name, metadata)

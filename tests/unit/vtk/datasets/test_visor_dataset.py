@@ -102,7 +102,7 @@ def dataset_factory(mock_data_object):
             id=123,
             name="dataset_name",
             data=mock_data_object,
-            part_name_to_id={},
+            node_ids=[],
             metadata=mock_metadata
         )
 
@@ -224,7 +224,7 @@ def test_update_variables_on_composite_broadcast_applies_to_all_matching_parts(d
     mock_metadata.state.parts = {}
     mock_data = MagicMock()
 
-    ds = VisorDataset(id=1, name="ds", data=mock_data, part_name_to_id={}, metadata=mock_metadata)
+    ds = VisorDataset(id=1, name="ds", data=mock_data, node_ids=[], metadata=mock_metadata)
 
     broadcast_var = MagicMock()
     broadcast_var.part_id = None  # broadcast
@@ -284,7 +284,7 @@ def test_update_variables_on_composite_broadcast_skips_non_matching_parts(datase
     mock_metadata.metadata_path = None
     mock_metadata.state.parts = {}
 
-    ds = VisorDataset(id=1, name="ds", data=MagicMock(), part_name_to_id={}, metadata=mock_metadata)
+    ds = VisorDataset(id=1, name="ds", data=MagicMock(), node_ids=[], metadata=mock_metadata)
 
     broadcast_var = MagicMock()
     broadcast_var.part_id = None
@@ -424,7 +424,7 @@ def dataset_with_variables(mock_data_object):
         id=1,
         name="dataset_name",
         data=mock_data_object,
-        part_name_to_id={},
+        node_ids=[],
         metadata=mock_metadata
     )
 

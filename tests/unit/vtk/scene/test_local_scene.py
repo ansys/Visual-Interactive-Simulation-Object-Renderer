@@ -150,7 +150,6 @@ def pipeline_instance():
         # Mock scene graph with required APIs
         instance._scene_graph.load_dataset.return_value = 123
         instance._scene_graph.remove_dataset = MagicMock()
-        instance._scene_graph.get_part_name_to_id_map = MagicMock(return_value={})
         instance._scene_graph.get_descendant_part_nodes.return_value = []
         instance._scene_graph.descendant_part_count.return_value = 0
         dataset_node = MagicMock()
@@ -620,12 +619,12 @@ def test_add_dataset_delegates_and_builds_state(pipeline_instance):
     # Assert on public behavior: add() was called with correct arguments
     pipeline_instance._dataset_registry.add.assert_called_once()
     args, _ = pipeline_instance._dataset_registry.add.call_args
-    ds_id, ds_name, ds_input, ds_part_name_to_id, ds_metadata = args
+    ds_id, ds_name, ds_input, ds_node_ids, ds_metadata = args
 
     assert ds_id == 123  # from scene_graph.load_dataset mock
     assert ds_name == "test_model"
     assert ds_input is dataset
-    assert ds_part_name_to_id == {}  # from scene_graph.get_part_name_to_id_map mock
+    assert ds_node_ids == []  # positional seed from the subtree's part nodes (none here)
     assert ds_metadata is metadata
 
 

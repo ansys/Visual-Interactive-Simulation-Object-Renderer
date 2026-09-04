@@ -298,17 +298,22 @@ class VisorSceneBase(ABC):
             # Load the dataset into the scene graph
             dataset_id = self._scene_graph.load_dataset(input, dataset_name)
 
-            # Register each leaf's pipeline with the renderer.
+            # Register each leaf's pipeline with the renderer.  The same list object
+            # is the positional seed below, so the PartIndex entries and the
+            # renderer's pipeline keys are the same node IDs by construction.
+            node_ids: list[int] | None = None
             subtree = self._scene_graph.get_descendant_node(dataset_id, include_self=True)
             if subtree is not None:
-                for leaf in subtree.get_descendant_part_nodes(include_self=True):
+                part_nodes = subtree.get_descendant_part_nodes(include_self=True)
+                for leaf in part_nodes:
                     self._renderer.register_node(leaf, leaf.dataset)
 
-            # Seed PartIndex with scene-graph node IDs so that part_id == scene-graph node ID,
-            # which is the contract the frontend relies on to apply per-part state (opacity etc.).
-            part_name_to_id = self._scene_graph.get_part_name_to_id_map(dataset_id)
+                # Seed PartIndex positionally with scene-graph node IDs so that
+                # part_id == scene-graph node ID, which is the contract the frontend
+                # relies on to apply per-part state (opacity etc.).
+                node_ids = [leaf.id for leaf in part_nodes]
 
-            self._dataset_registry.add(dataset_id, dataset_name, input, part_name_to_id, metadata)
+            self._dataset_registry.add(dataset_id, dataset_name, input, node_ids, metadata)
 
             return dataset_id
 

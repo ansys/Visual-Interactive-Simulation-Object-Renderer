@@ -227,25 +227,6 @@ def test_descendant_part_count(monkeypatch):
 # Mapping + cache behavior
 # ------------------------------------------------------------------
 
-def test_name_to_id_map():
-    """Should map names to IDs, including self."""
-
-    root = DummyNode(None)
-
-    child1 = DummyNode(root)
-    child1._name = "A"
-
-    child2 = DummyNode(root)
-    child2._name = "B"
-
-    root._children = [child1, child2]
-
-    result = root.get_descendant_node_name_to_id_map()
-
-    assert result["A"] == child1.id
-    assert result["B"] == child2.id
-    assert result[root.name] == root.id
-
 
 def test_descendant_cache_reuse(monkeypatch):
     """Cache should be used on repeated calls."""

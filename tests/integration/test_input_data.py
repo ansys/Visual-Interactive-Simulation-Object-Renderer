@@ -426,9 +426,9 @@ def test_vtkhdf_multiblock_block_names_are_preserved():
     root_node.load_dataset(dataset, None)
 
     file_node = root_node.children[0]
-    name_to_id = file_node.get_descendant_node_name_to_id_map()
+    node_names = {node.name for node in file_node.get_descendant_nodes(include_self=True)}
     # simple_multiblock.vtkhdf was written with a block named "sphere"
-    assert "sphere" in name_to_id
+    assert "sphere" in node_names
 
 
 def test_vtkhdf_polydata_scene_graph_bounds_are_non_trivial():
