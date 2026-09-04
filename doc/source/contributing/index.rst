@@ -329,7 +329,7 @@ which requires authentication.
 - Click **Generate new token** and select the **Generate new token (classic)** option.
 - Check the ``repo`` scope only.
 - Click **Generate token** and copy the value.
-- Activate the token for use in the Ansys and Ansys-internal organizations.
+- Activate the token for use in the Ansys organization.
 - Set the token as an environment variable named ``GITHUB_TOKEN``.
 
 
