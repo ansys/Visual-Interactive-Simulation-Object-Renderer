@@ -192,6 +192,22 @@ class VisorSceneBase(ABC):
 
             self._restore_part_states_from_runtime(runtime_app_state)
 
+            # The loaded camera becomes the record, and through the record the
+            # server's pipeline camera.  Before this step the loaded camera
+            # reached the browser and nowhere else, so the server's vtkCamera
+            # stayed at whatever it last held and a refresh -- which rebuilds
+            # the client from the server's serialised VTK state -- discarded
+            # the loaded camera.  The load path takes no reset that would
+            # supply one: it calls finalize_scene(skip_reset_camera=True).
+            #
+            # Ordered before the delegated render step: the pipeline camera
+            # must be correct before render_window_only() flushes it.
+            #
+            # A state with no camera says nothing, rather than saying "reset":
+            # record and pipeline are both left alone.
+            if runtime_app_state.scene.camera is not None:
+                self._renderer.sync_camera(runtime_app_state.scene.camera)
+
             self._apply_runtime_state_to_render(runtime_app_state)
 
             # Note: There is intentionally no wasm flush here: the bridge call is fire-and-forget, so a flush

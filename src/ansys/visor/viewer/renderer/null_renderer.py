@@ -6,12 +6,17 @@ Behaviour-free test double for :class:`IRenderer`.
 Implements every abstract method as a no-op so that the scene coordinator can
 be unit-tested without a VTK environment.  Methods whose return type is
 annotated return the simplest valid empty value for that type; all others are
-``pass``.  No VTK imports, no local view, no side effects, no state.
+``pass``.  No VTK imports, no local view, no side effects.
+
+One exception to "no state": the camera record, ``_last_camera_state``.  The
+record half of the :class:`IRenderer` camera contract is not optional on any
+implementation -- only the projection half is, and here it is a no-op because
+there is no pipeline camera to project onto.
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from ansys.visor.viewer.renderer.base import IRenderer
 
@@ -24,6 +29,12 @@ if TYPE_CHECKING:
 
 class NullRenderer(IRenderer):
     """Null-object implementation of :class:`IRenderer` for use in tests."""
+
+    _last_camera_state: Optional["VisorCameraState"]
+
+    def __init__(self) -> None:
+        """Initialise the camera record, the only state this class holds."""
+        self._last_camera_state = None
 
     # ------------------------------------------------------------------
     # Wire contract
@@ -101,13 +112,30 @@ class NullRenderer(IRenderer):
     # ------------------------------------------------------------------
 
     def reset_camera(self, bounds: list[float]) -> None:
-        pass
+        """See :meth:`IRenderer.reset_camera`.
+
+        No-op, and **deliberately does not write the record**.  With no
+        pipeline camera there is nothing from which to derive a camera for
+        *bounds*.  The record keeps its previous value rather than being
+        cleared, so that a reset cannot destroy a camera the frontend
+        reported -- a silent data loss on the very renderer used to stand in
+        for a second backend.
+
+        Any future backend that inherits this behaviour while having a real
+        camera must override this method.
+        """
 
     def get_camera_state(self) -> "VisorCameraState | None":
-        return None
+        """See :meth:`IRenderer.get_camera_state`."""
+        return self._last_camera_state
 
     def sync_camera(self, camera_state: "VisorCameraState") -> None:
-        pass
+        """See :meth:`IRenderer.sync_camera`.
+
+        Stores the object as given.  The projection half is a no-op: there is
+        no pipeline camera.
+        """
+        self._last_camera_state = camera_state
 
     # ------------------------------------------------------------------
     # Widget control (cross-section, bounding box)

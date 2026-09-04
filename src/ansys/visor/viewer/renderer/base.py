@@ -179,18 +179,42 @@ class IRenderer(ABC):
 
     @abstractmethod
     def reset_camera(self, bounds: list[float]) -> None:
-        """Reset the camera to fit *bounds*."""
+        """Reset the camera to fit *bounds*, and write the resulting camera to
+        the record.
+
+        This is the one place where the pipeline camera is written *first* and
+        the record derived *from* it: VTK computes the framing, so there is
+        nothing to project.  Everywhere else the record is authoritative and
+        the pipeline camera is its projection.
+
+        Implementations diverge here.  A renderer with no pipeline camera has
+        nothing from which to derive a camera for *bounds*; it leaves the
+        record at its previous value rather than clearing it, so that a reset
+        cannot destroy a camera the frontend reported.  See
+        :meth:`NullRenderer.reset_camera`.
+        """
 
     @abstractmethod
     def get_camera_state(self) -> "VisorCameraState | None":
         """
-        Return the last camera state synced from the frontend, or ``None`` if
-        none has been received.
+        Return the camera record, or ``None`` if nothing has written one yet.
+
+        The writers are :meth:`reset_camera` and :meth:`sync_camera`.  There
+        are no others.
         """
 
     @abstractmethod
     def sync_camera(self, camera_state: "VisorCameraState") -> None:
-        """Store the camera state synced back from the frontend."""
+        """
+        Write *camera_state* to the record and project it onto the pipeline
+        camera.
+
+        The record stores the object **as given, without copying**: callers
+        rely on object identity through :meth:`get_camera_state`.
+
+        The projection half is a no-op on a renderer with no pipeline camera.
+        The record half is not optional on any implementation.
+        """
 
     # ------------------------------------------------------------------------
     # Widget control (cross-section, bounding box)

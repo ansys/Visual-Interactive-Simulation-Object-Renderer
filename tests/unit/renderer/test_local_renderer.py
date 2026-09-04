@@ -23,6 +23,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from ansys.visor.viewer.core.visor_enums import VisorVtkVariableType
+from ansys.visor.viewer.models.common.visor_camera_state import VisorCameraState
 from ansys.visor.viewer.renderer.base import IRenderer
 from ansys.visor.viewer.renderer.local_renderer import VisorLocalRenderer
 from ansys.visor.viewer.renderer.null_renderer import NullRenderer
@@ -96,6 +97,91 @@ class _DummyActors:
         return a
 
 
+# ---------------------------------------------------------------------------
+# Camera double
+#
+# Hand-written rather than a MagicMock: reset_camera reads the active camera
+# back into a VisorCameraState, and pydantic rejects Mock attributes.
+#
+# Every literal below is deliberately chosen NOT to coincide with vtkCamera's
+# construction defaults, which are:
+#     position (0.0, 0.0, 1.0)      focal point (0.0, 0.0, 0.0)
+#     view up  (0.0, 1.0, 0.0)      clipping range (0.01, 1000.01)
+#     parallel projection 0         view angle 30.0
+#     parallel scale 1.0
+# If this double is ever pointed at a real vtkRenderer, an assertion against
+# these values must still be able to FAIL; a literal that happened to match a
+# default would pass vacuously and assert nothing.  View angle is the trap:
+# 30.0 is both a natural-looking choice and the VTK default, so it is avoided.
+# ---------------------------------------------------------------------------
+
+CAMERA_DOUBLE_POSITION = [11.0, 12.0, 13.0]
+CAMERA_DOUBLE_FOCAL_POINT = [14.0, 15.0, 16.0]
+CAMERA_DOUBLE_VIEW_UP = [17.0, 18.0, 19.0]
+CAMERA_DOUBLE_CLIPPING_RANGE = [21.0, 22.0]
+CAMERA_DOUBLE_PARALLEL_PROJECTION = 1
+CAMERA_DOUBLE_VIEW_ANGLE = 23.0
+CAMERA_DOUBLE_PARALLEL_SCALE = 24.0
+
+
+class _CameraDouble:
+    """Stand-in for vtkCamera.
+
+    Getters return the literals above, so ``_read_pipeline_camera`` produces a
+    valid VisorCameraState.  Setters append to ``calls`` so
+    ``_apply_to_pipeline_camera`` can be asserted on by value *and* by order.
+    """
+
+    def __init__(self):
+        self.calls = []
+
+    # -- getters, read by _read_pipeline_camera --
+
+    def GetPosition(self): # noqa: N802
+        return tuple(CAMERA_DOUBLE_POSITION)
+
+    def GetFocalPoint(self): # noqa: N802
+        return tuple(CAMERA_DOUBLE_FOCAL_POINT)
+
+    def GetViewUp(self): # noqa: N802
+        return tuple(CAMERA_DOUBLE_VIEW_UP)
+
+    def GetClippingRange(self): # noqa: N802
+        return tuple(CAMERA_DOUBLE_CLIPPING_RANGE)
+
+    def GetParallelProjection(self): # noqa: N802
+        return CAMERA_DOUBLE_PARALLEL_PROJECTION
+
+    def GetViewAngle(self): # noqa: N802
+        return CAMERA_DOUBLE_VIEW_ANGLE
+
+    def GetParallelScale(self): # noqa: N802
+        return CAMERA_DOUBLE_PARALLEL_SCALE
+
+    # -- setters, written by _apply_to_pipeline_camera --
+
+    def SetPosition(self, value): # noqa: N802
+        self.calls.append(("SetPosition", value))
+
+    def SetFocalPoint(self, value): # noqa: N802
+        self.calls.append(("SetFocalPoint", value))
+
+    def SetViewUp(self, value): # noqa: N802
+        self.calls.append(("SetViewUp", value))
+
+    def SetClippingRange(self, value): # noqa: N802
+        self.calls.append(("SetClippingRange", value))
+
+    def SetParallelProjection(self, value): # noqa: N802
+        self.calls.append(("SetParallelProjection", value))
+
+    def SetViewAngle(self, value): # noqa: N802
+        self.calls.append(("SetViewAngle", value))
+
+    def SetParallelScale(self, value): # noqa: N802
+        self.calls.append(("SetParallelScale", value))
+
+
 
 # ---------------------------------------------------------------------------
 # Fixture: VisorLocalRenderer with all VTK infrastructure mocked
@@ -114,6 +200,9 @@ def renderer():
     mock_server.state = {}
 
     vtk_renderer = MagicMock(name="vtk_renderer")
+    # reset_camera reads the active camera back into the record, so the
+    # active camera must return numbers, not Mocks.
+    vtk_renderer.GetActiveCamera.return_value = _CameraDouble()
     render_window = MagicMock(name="render_window")
     interactor = MagicMock(name="interactor")
     local_view = MagicMock(name="local_view")
@@ -548,6 +637,87 @@ class TestCamera:
     def test_sync_camera_stores_state_for_get(self, renderer):
         cam = MagicMock(name="camera_state")
         renderer.sync_camera(cam)
+        assert renderer.get_camera_state() is cam
+
+    def test_reset_camera_writes_the_record(self, renderer):
+        """The reset is authoritative and its result becomes the record.
+
+        Pinned by a presence transition, never by values: what ResetCamera
+        computes is a VTK product, and no assertion may rest on one.
+        """
+        assert renderer.get_camera_state() is None
+
+        renderer.reset_camera([0.0, 1.0, 0.0, 1.0, 0.0, 1.0])
+
+        assert renderer.get_camera_state() is not None
+
+    def test_reset_camera_record_is_read_from_the_active_camera(self, renderer):
+        """The record is read back from the pipeline, not invented.
+
+        The renderer's ``_vtk_renderer`` is a MagicMock, so ResetCamera
+        computes nothing; every expected value here is a hand-written literal
+        carried by the camera double, not a value VTK produced.
+
+        This is the only assertion in the suite that can distinguish "read the
+        pipeline" from "wrote a constant".  A manual refresh check cannot: the
+        refresh reads the pipeline camera, which ResetCamera frames correctly
+        whatever went into the record.
+        """
+        renderer.reset_camera([0.0, 1.0, 0.0, 1.0, 0.0, 1.0])
+
+        record = renderer.get_camera_state()
+        assert record.position == CAMERA_DOUBLE_POSITION
+        assert record.focal_point == CAMERA_DOUBLE_FOCAL_POINT
+        assert record.view_up == CAMERA_DOUBLE_VIEW_UP
+        assert record.clipping_range == CAMERA_DOUBLE_CLIPPING_RANGE
+        assert record.parallel_projection is True
+        assert record.view_angle == CAMERA_DOUBLE_VIEW_ANGLE
+        assert record.parallel_scale == CAMERA_DOUBLE_PARALLEL_SCALE
+
+    def test_sync_camera_projects_onto_the_pipeline_camera(self, renderer):
+        """The record is projected onto the pipeline camera, in setter order.
+
+        Every expected value is a hand-written literal, chosen distinct from
+        the camera double's getters so that a projection reading the pipeline
+        instead of the argument would fail rather than coincide.
+        """
+        camera_state = VisorCameraState(
+            position=[1.0, 2.0, 3.0],
+            focal_point=[4.0, 5.0, 6.0],
+            view_up=[0.0, 0.0, 1.0],
+            clipping_range=[7.0, 8.0],
+            parallel_projection=False,
+            view_angle=31.0,
+            parallel_scale=9.0,
+        )
+
+        renderer.sync_camera(camera_state)
+
+        camera = renderer._vtk_renderer.GetActiveCamera.return_value
+        assert camera.calls == [
+            ("SetPosition", [1.0, 2.0, 3.0]),
+            ("SetFocalPoint", [4.0, 5.0, 6.0]),
+            ("SetViewUp", [0.0, 0.0, 1.0]),
+            ("SetClippingRange", [7.0, 8.0]),
+            ("SetParallelProjection", False),
+            ("SetViewAngle", 31.0),
+            ("SetParallelScale", 9.0),
+        ]
+
+    def test_sync_camera_stores_the_object_without_copying(self, renderer):
+        """Object identity is contractual: no defensive copy on the way in."""
+        cam = VisorCameraState(
+            position=[1.0, 2.0, 3.0],
+            focal_point=[4.0, 5.0, 6.0],
+            view_up=[0.0, 0.0, 1.0],
+            clipping_range=[7.0, 8.0],
+            parallel_projection=False,
+            view_angle=31.0,
+            parallel_scale=9.0,
+        )
+
+        renderer.sync_camera(cam)
+
         assert renderer.get_camera_state() is cam
 
 
