@@ -22,6 +22,12 @@ Bring data into VISOR
 .. include:: /user_guide/convert_data/grid.rst
 
 
+Use VISOR in a SAF solution
+===========================
+
+.. include:: /user_guide/saf_integration/grid.rst
+
+
 Understand the VISOR UI
 =======================
 
@@ -37,6 +43,7 @@ Understand the VISOR UI
    launching_visor/index
    update_scene/index
    convert_data/index
+   saf_integration/index
    visualizer_ui/index
 
 
