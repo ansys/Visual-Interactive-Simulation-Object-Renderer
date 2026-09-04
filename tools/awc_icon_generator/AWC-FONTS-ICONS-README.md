@@ -2,8 +2,6 @@
 
 ## Overview
 
-For the corresponding GitHub discussion, please visit https://github.com/ansys-internal/theia/issues/231
-
 In order to make use of AWC fonts and icons without installing the entire AWC React npm package, we need to import the static assets that the AWC React npm package uses. These assets include the following:
 
 - The default AWC UI font (Source Sans 3) and its corresponding CSS font-family stack

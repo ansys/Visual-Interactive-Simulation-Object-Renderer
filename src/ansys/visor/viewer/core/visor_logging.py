@@ -22,9 +22,7 @@ class VisorLogger(Logger):
         level (int): Logging level. Default is logging.DEBUG.
     """
 
-    # Logging format to comply with Ansys ADR:
-    # https://github.com/ansys-internal/architecture-decision-records/blob/main/content/
-    # docs/adrs/0016-observability-strategy.md
+    # Logging format to comply with Ansys ADR: 0016-observability-strategy.md
     LOGGING_FORMAT = (
         "%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d %(funcName)s()] - %(message)s"
     )
