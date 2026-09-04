@@ -212,58 +212,6 @@ jobs:
           name: test-logs
           path: tests/artifacts/smoke
 
-      # --- SAF smoke tests ---
-      # - name: Install SAF CLI
-      #   run: pip install ansys-saf-cli
-
-      # - name: Clone saf-visor-poc
-      #   uses: actions/checkout@v4
-      #   with:
-      #     repository: ansys-internal/saf-visor-poc
-      #     token: ${{ secrets.PYANSYS_CI_BOT_TOKEN }}
-      #     path: saf-visor-poc
-
-      # - name: Install saf-visor-poc dependencies
-      #   env:
-      #     POETRY_HTTP_BASIC_SOLUTIONS_PRIVATE_PYPI_USERNAME: ${{ secrets.SOLUTIONS_PRIVATE_PYPI_USERNAME }}
-      #     POETRY_HTTP_BASIC_SOLUTIONS_PRIVATE_PYPI_PASSWORD: ${{ secrets.SOLUTIONS_PRIVATE_PYPI_PASSWORD }}
-      #   working-directory: saf-visor-poc
-      #   run: |
-      #     poetry run saf install .
-
-      # - name: Run SAF smoke tests
-      #   continue-on-error: true
-      #   env:
-      #     DISPLAY: ":99"
-      #     VTK_DEFAULT_RENDER_WINDOW_OFFSCREEN: "1"
-      #   run: |
-      #     set -o pipefail
-      #     mkdir -p tests/artifacts/saf-smoke/reports
-      #     poetry run pytest tests/e2e/smoke/test_smoke_saf_visor.py \
-      #       --saf-project-dir "${{ github.workspace }}/saf-visor-poc" \
-      #       --html=tests/artifacts/saf-smoke/reports/saf-smoke-tests.html \
-      #       --self-contained-html \
-      #       --junitxml=tests/artifacts/saf-smoke/reports/saf-smoke-junit.xml \
-      #       --verbose \
-      #       | tee tests/artifacts/saf-smoke/reports/saf-smoke-result.log
-
-      # - name: Check SAF smoke test results
-      #   if: always()
-      #   id: check_saf
-      #   env:
-      #     MISSING_XML_MODE: error
-      #     DETECT_ERRORS: "true"
-      #   run: |
-      #     bash .github/scripts/check_junit_results.sh \
-      #       "saf-smoke:tests/artifacts/saf-smoke/reports/saf-smoke-junit.xml"
-
-      # - name: Upload SAF smoke test logs
-      #   if: always()
-      #   uses: actions/upload-artifact@v4
-      #   with:
-      #     name: saf-smoke-logs
-      #     path: tests/artifacts/saf-smoke
-
       - name: Upload Python package
         uses: actions/upload-artifact@v4
         with:
