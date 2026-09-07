@@ -14,7 +14,7 @@ on:
 env:
   MAIN_PYTHON_VERSION: "3.11"
   POETRY_VERSION: "2.3.2"
-  PACKAGE_NAME: "VISOR"
+  PACKAGE_NAME: "ansys-visor-viewer"
 
   # For Solutions private PyPI:
   POETRY_HTTP_BASIC_SOLUTIONS_PRIVATE_PYPI_USERNAME: "PAT"
