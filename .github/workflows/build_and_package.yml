@@ -216,7 +216,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.PACKAGE_NAME }}
-          path: dist/${{ env.PACKAGE_NAME }}*.whl
+          path: dist/*.whl
 
     outputs:
       package_version: ${{ steps.set_package_version.outputs.package_version }}
