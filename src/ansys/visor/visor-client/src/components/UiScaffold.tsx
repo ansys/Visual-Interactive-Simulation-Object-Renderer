@@ -68,7 +68,6 @@ export const UiScaffold: FC<{
             lastPixelDensity = pixelDensity;
             const scale = pixelDensity > 0 ? scaffoldElem.offsetWidth / pixelDensity : 1;
             // Apply after-scaling to some UI panels.
-            // see https://github.com/ansys-internal/theia/pull/1004
             const afterScale = 0.85;
             setScale(topLeftElem, scale * afterScale);
             setScale(topMiddleElem, scale);

@@ -212,88 +212,15 @@ jobs:
           name: test-logs
           path: tests/artifacts/smoke
 
-      # --- SAF smoke tests ---
-      # - name: Install SAF CLI
-      #   run: pip install ansys-saf-cli
-
-      # - name: Clone saf-visor-poc
-      #   uses: actions/checkout@v4
-      #   with:
-      #     repository: ansys-internal/saf-visor-poc
-      #     token: ${{ secrets.PYANSYS_CI_BOT_TOKEN }}
-      #     path: saf-visor-poc
-
-      # - name: Install saf-visor-poc dependencies
-      #   env:
-      #     POETRY_HTTP_BASIC_SOLUTIONS_PRIVATE_PYPI_USERNAME: ${{ secrets.SOLUTIONS_PRIVATE_PYPI_USERNAME }}
-      #     POETRY_HTTP_BASIC_SOLUTIONS_PRIVATE_PYPI_PASSWORD: ${{ secrets.SOLUTIONS_PRIVATE_PYPI_PASSWORD }}
-      #   working-directory: saf-visor-poc
-      #   run: |
-      #     poetry run saf install .
-
-      # - name: Run SAF smoke tests
-      #   continue-on-error: true
-      #   env:
-      #     DISPLAY: ":99"
-      #     VTK_DEFAULT_RENDER_WINDOW_OFFSCREEN: "1"
-      #   run: |
-      #     set -o pipefail
-      #     mkdir -p tests/artifacts/saf-smoke/reports
-      #     poetry run pytest tests/e2e/smoke/test_smoke_saf_visor.py \
-      #       --saf-project-dir "${{ github.workspace }}/saf-visor-poc" \
-      #       --html=tests/artifacts/saf-smoke/reports/saf-smoke-tests.html \
-      #       --self-contained-html \
-      #       --junitxml=tests/artifacts/saf-smoke/reports/saf-smoke-junit.xml \
-      #       --verbose \
-      #       | tee tests/artifacts/saf-smoke/reports/saf-smoke-result.log
-
-      # - name: Check SAF smoke test results
-      #   if: always()
-      #   id: check_saf
-      #   env:
-      #     MISSING_XML_MODE: error
-      #     DETECT_ERRORS: "true"
-      #   run: |
-      #     bash .github/scripts/check_junit_results.sh \
-      #       "saf-smoke:tests/artifacts/saf-smoke/reports/saf-smoke-junit.xml"
-
-      # - name: Upload SAF smoke test logs
-      #   if: always()
-      #   uses: actions/upload-artifact@v4
-      #   with:
-      #     name: saf-smoke-logs
-      #     path: tests/artifacts/saf-smoke
-
       - name: Upload Python package
         uses: actions/upload-artifact@v4
         with:
           name: visor
           path: dist/*.whl
 
-      - name: Release to Azure Solutions PyPI
-        if: |
-          (github.event_name == 'schedule' && github.ref == 'refs/heads/main') ||
-          (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
-        uses: ansys-internal/solution-applications-actions/release-to-private-pypi@v18
-        with:
-          python-version: ${{ env.MAIN_PYTHON_VERSION }}
-          twine-repository-url: https://pkgs.dev.azure.com/ansys-solutions/_packaging/ansys-solutions/pypi/upload/
-          twine-username: "TOKEN"
-          twine-password: ${{ secrets.SOLUTIONS_PRIVATE_PYPI_UPLOAD_TOKEN }}
-
-  release:
-    name: Release project
-    if: ${{ github.event_name == 'push' && contains(github.ref, 'refs/tags') }}
-    needs:
-      - build
-    runs-on: ubuntu-latest
-    environment: release
-    permissions:
-      id-token: write # Required for PyPI trusted publishing
-      contents: write # Required to create the GitHub release
-    steps:
-      - name: Download artifacts
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - name: "Upload artifacts to PyPI"
+        if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
+        uses: pypa/gh-action-pypi-publish@ba38be9e461d3875417946c167d0b5f3d385a247 # v1.14.1
         with:
           name: ${{ env.PACKAGE_NAME }}-artifacts
           path: ${{ env.PACKAGE_NAME }}-artifacts
@@ -314,18 +241,6 @@ jobs:
 
     outputs:
       package_version: ${{ steps.set_package_version.outputs.package_version }}
-
-  sbom:
-    name: Generate and Publish SBOM
-    needs: build
-    if: |
-      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
-    uses: ansys-internal/saf-github-workflow-templates/.github/workflows/_sbom.yml@v4
-    with:
-      package_type: poetry
-      sbom-name: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && format('viewer-visor/{0}', github.ref_name) || 'viewer-visor' }}
-      publish: true
-    secrets: inherit
 
   docker:
     needs: build

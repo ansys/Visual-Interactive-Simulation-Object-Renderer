@@ -14,6 +14,8 @@ export interface ITreeViewNode<T extends ITreeViewNode<T>> {
     name: string;
     /** Whether the node should currently be visible in the underlying scene. */
     visible: boolean;
+    /** Whether the node is currently selected in the underlying scene. */
+    selected: boolean;
     /** Whether the node acts as a group that may contain child rows. */
     isGroupNode: boolean;
     /** Child nodes rendered beneath this node. */
@@ -177,6 +179,10 @@ export const TreeView = <T extends ITreeViewNode<T>>(props: TreeViewProps<T>) =>
             // IIFE so we don't pollute the outer scope
             const rootRow = createRowUtil(sceneGraph, 0, null);
             treeContainer.appendChild(rootRow.nodeElem);
+            // Rows seed themselves from their node, but group rows are derived
+            // from their descendants, so reconcile once the tree is built.
+            updateVisibleNodesArray(null);
+            updateSelectedNodesArray(null);
             const searchInput = document.createElement('input');
             searchInput.type = 'text';
             searchInput.placeholder = 'Search...';
@@ -297,12 +303,17 @@ export const TreeView = <T extends ITreeViewNode<T>>(props: TreeViewProps<T>) =>
             }
         }
 
-        /** Synchronizes every row's visibility from its source node. */
+        /** Synchronizes every row's visibility and selection from its source node. */
         function synchronize() {
             rowUtilsArr.forEach((u) => {
-                u.node.visible ? u.show() : u.hide();
+                // The node owns the value; the row derives from it. `=== false`
+                // and `=== true` keep a node that omits the field on the
+                // previous defaults (visible, not selected).
+                u.node.visible === false ? u.hide() : u.show();
+                u.node.selected === true ? u.selectRow() : u.deselectRow();
             });
             updateVisibleNodesArray(null);
+            updateSelectedNodesArray(null);
         }
 
         /**
@@ -615,7 +626,13 @@ export const TreeView = <T extends ITreeViewNode<T>>(props: TreeViewProps<T>) =>
                 runVisibilityChangeListeners(visibleNodes);
                 e.stopImmediatePropagation();
             };
-            rowUtil.show();
+            // Seed the row from the node, which owns the value. Testing for
+            // `=== false` / `=== true` rather than truthiness keeps a node that
+            // omits the field on the previous defaults (visible, not selected).
+            node.visible === false ? rowUtil.hide() : rowUtil.show();
+            if (node.selected === true) {
+                rowUtil.selectRow();
+            }
             rowUtilsArr.push(rowUtil);
             cells[1].style.paddingLeft = `${fontSize / 4}px`;
             depth++;

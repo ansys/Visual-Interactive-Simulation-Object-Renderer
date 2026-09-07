@@ -343,7 +343,6 @@ export class VisorFrontend {
                     panelTopRight.selectTab(uiState.panelTopRightTabIndex);
                 }
             })();
-            const selectedNodeIds: number[] = [];
             const promises: Promise<void>[] = [];
             const sceneState = appState.scene;
             if (sceneState.unit !== undefined) {
@@ -425,15 +424,30 @@ export class VisorFrontend {
                         node = sceneGraph.descendantActorNodesOrSelfDictionary[part_state.id];
                     }
                     if (node != null) {
-                        if (part_state.selected === true) {
-                            const idNumber = parseInt(part_state.id);
-                            isNaN(idNumber) || selectedNodeIds.push(idNumber);
-                        }
+                        // Narrow once: `node` is a `let`, so the null check
+                        // above does not survive into the callbacks below.
+                        const partNode = node;
+                        // The diffuse-colour path and the selection path both
+                        // write this actor's ambient/diffuse properties with
+                        // different values, so they must be sequenced for this
+                        // node rather than raced as independent promises.
+                        let partPromise: Promise<void> = Promise.resolve();
                         if (part_state.diffuseRgb !== undefined) {
                             const [r, g, b] = part_state.diffuseRgb;
-                            const promise = node.setDiffuseColorRgbAsync(r, g, b);
-                            promises.push(promise);
+                            partPromise = partPromise.then(() =>
+                                partNode.setDiffuseColorRgbAsync(r, g, b)
+                            );
                         }
+                        // `selected` is applied to the node, like every other
+                        // part field, so the node owns the value and both the
+                        // renderer and the tree read it from there. `=== true`
+                        // holds the current semantics: a part state carrying
+                        // null (never touched) deselects, and the node always
+                        // receives a boolean.
+                        partPromise = partPromise.then(() =>
+                            partNode.setSelectedAsync(part_state.selected === true)
+                        );
+                        promises.push(partPromise);
                         if (part_state.opacity !== undefined) {
                             const promise = node.setOpacityAsync(part_state.opacity);
                             promises.push(promise);
@@ -483,7 +497,8 @@ export class VisorFrontend {
                 await panelTopRightUtilPromise;
                 const treeViewUtil: TreeViewUtil<VisorSceneNodeExtended> =
                     await treeViewUtilPromise;
-                treeViewUtil.setSelection(selectedNodeIds);
+                // Selection and visibility are both applied to the nodes
+                // above; the tree derives its rows from them here.
                 treeViewUtil.synchronize();
             }
             await renderer.resizeAsync();

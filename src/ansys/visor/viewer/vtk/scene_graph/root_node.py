@@ -117,18 +117,3 @@ class VisorSceneGraph(VisorSceneGraphGroupNode):
         self._dataset_bounds.remove(dataset_id)
         logger.debug(f"Removed dataset with ID: {dataset_id}")
 
-    def get_part_name_to_id_map(self, dataset_id: int) -> dict[str, int]:
-        """
-        Get a mapping of part names to their corresponding node IDs
-        for a specific dataset.
-
-        Args:
-            dataset_id (int): The ID of the dataset.
-        Returns:
-            dict[str, int]: A dictionary mapping part names to node IDs.
-        """
-        dataset_node = self.get_descendant_node(dataset_id)
-        if not dataset_node:
-            logger.warning(f"Dataset with ID {dataset_id} not found in scene graph.")
-            return {}
-        return dataset_node.get_descendant_node_name_to_id_map()
