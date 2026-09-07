@@ -215,32 +215,43 @@ jobs:
       - name: Upload Python package
         uses: actions/upload-artifact@v4
         with:
-          name: visor
-          path: dist/*.whl
+          name: ${{ env.PACKAGE_NAME }}
+          path: dist/${{ env.PACKAGE_NAME }}*.whl
 
-      - name: "Upload artifacts to PyPI"
-        if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
-        uses: pypa/gh-action-pypi-publish@ba38be9e461d3875417946c167d0b5f3d385a247 # v1.14.1
+    outputs:
+      package_version: ${{ steps.set_package_version.outputs.package_version }}
+
+  release:
+    name: Release project
+    if: ${{ github.event_name == 'push' && contains(github.ref, 'refs/tags') }}
+    needs: [build]
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      id-token: write # required for release to github
+      contents: write # required to create releases
+    steps:
+      - name: "Download the library artifacts from build-library step"
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: ${{ env.PACKAGE_NAME }}-artifacts
           path: ${{ env.PACKAGE_NAME }}-artifacts
 
-      - name: Release to the public PyPI
+      - name: "Upload artifacts to PyPI using trusted publisher"
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
         with:
-          repository-url: https://upload.pypi.org/legacy/
+          repository-url: "https://upload.pypi.org/legacy/"
           print-hash: true
           packages-dir: ${{ env.PACKAGE_NAME }}-artifacts
           skip-existing: false
 
       - name: Release to GitHub
-        uses: ansys/actions/release-github@3ad3b285bd9b67045477dafc7f9865a3aa39f692 # v11.0.6
+        uses: ansys/actions/release-github@7e89e00c5619374a1da8c2e876309d8b15ff0559 # v11.0.3
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           library-name: ${{ env.PACKAGE_NAME }}
 
-    outputs:
-      package_version: ${{ steps.set_package_version.outputs.package_version }}
+
 
   docker:
     needs: build
