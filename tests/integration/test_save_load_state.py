@@ -44,6 +44,7 @@ from vtkmodules.vtkCommonDataModel import (
 from ansys.visor.viewer.app.visor_vtk import VisorVTK
 from ansys.visor.viewer.core.metadata import ExtendedMetadata
 from ansys.visor.viewer.models.common.part_properties import PartProperties
+from ansys.visor.viewer.models.common.visor_camera_state import VisorCameraState
 from ansys.visor.viewer.models.common.visor_ui_state import VisorUIState
 from ansys.visor.viewer.models.persist.dataset.persisted_dataset_state import PersistedDatasetState
 from ansys.visor.viewer.models.persist.persisted_viewer_state import PersistedViewerStateV1
@@ -98,6 +99,46 @@ def iface():
         instance._scene.cleanup_state()
     except Exception:
         pass
+
+
+# ------------------------------------------------------------------ #
+# Camera literals
+#
+# Hand-written, and different in every field between the two, so the saved
+# file names its source by value rather than by a recorded call.  No value
+# here originates from VTK.
+# ------------------------------------------------------------------ #
+
+RECORD_CAMERA_POSITION = [11.0, 12.0, 13.0]
+RECORD_CAMERA_CLIPPING_RANGE = [17.0, 18.0]
+REPLY_CAMERA_POSITION = [21.0, 22.0, 23.0]
+REPLY_CAMERA_CLIPPING_RANGE = [27.0, 28.0]
+
+
+def _record_camera() -> VisorCameraState:
+    """The camera the server's record holds at save time."""
+    return VisorCameraState(
+        position=RECORD_CAMERA_POSITION,
+        focal_point=[14.0, 15.0, 16.0],
+        view_up=[0.0, 1.0, 0.0],
+        clipping_range=RECORD_CAMERA_CLIPPING_RANGE,
+        parallel_projection=True,
+        view_angle=31.0,
+        parallel_scale=19.0,
+    )
+
+
+def _reply_camera() -> VisorCameraState:
+    """The camera the browser answers getState with."""
+    return VisorCameraState(
+        position=REPLY_CAMERA_POSITION,
+        focal_point=[24.0, 25.0, 26.0],
+        view_up=[1.0, 0.0, 0.0],
+        clipping_range=REPLY_CAMERA_CLIPPING_RANGE,
+        parallel_projection=False,
+        view_angle=32.0,
+        parallel_scale=29.0,
+    )
 
 
 # ================================================================== #
@@ -487,5 +528,48 @@ class TestRegistrySourcedPartState:
         assert record.diffuse_rgb == [1.0, 0.0, 0.0]
         assert record.spectrum_id == "POINT::pressure::1"
         assert record.spectrum_component == 0
+
+    def test_saved_visor_json_carries_the_camera_record_not_the_browsers(self, iface, tmp_path):
+        """save_state writes the server's camera record, not the browser's reply.
+
+        The record is seeded through ``sync_camera``, which also projects onto
+        the pipeline camera, so record and pipeline hold the same values here.
+        This case therefore discriminates the **record from the browser's
+        reply** and nothing more; separating the record from its own pipeline
+        projection is done in tests/unit/vtk/scene/test_base.py, against a
+        renderer double whose pipeline read answers with different numbers.
+
+        No dataset is added, so ``finalize_scene``'s reset never runs and
+        cannot overwrite the seeded record with a VTK-derived one.
+        """
+        iface._scene._renderer.sync_camera(_record_camera())
+
+        # The browser answers getState with a different camera in every field.
+        # A pass therefore proves the file came from the record.
+        frontend_state = RuntimeAppState.from_components(
+            dark_mode=False,
+            unit="m",
+            dataset_states={},
+            camera=_reply_camera(),
+        )
+
+        async def _frontend_round_trip(timeout: float = 5.0):
+            return frontend_state
+
+        iface._scene._get_runtime_state_async = _frontend_round_trip
+        iface._server_manager = MagicMock()
+        iface._server_manager.running = True
+
+        asyncio.run(iface.save_state(str(tmp_path)))
+
+        with open(os.path.join(str(tmp_path), "visor.json"), "r") as fh:
+            written = json.load(fh)
+
+        # write_state dumps by_alias, so the camera's own fields are aliased.
+        camera = written["scene"]["camera"]
+        assert camera["position"] == RECORD_CAMERA_POSITION
+        assert camera["clippingRange"] == RECORD_CAMERA_CLIPPING_RANGE
+        assert camera["position"] != REPLY_CAMERA_POSITION
+        assert camera["clippingRange"] != REPLY_CAMERA_CLIPPING_RANGE
 
 
