@@ -182,6 +182,24 @@ class _CameraDouble:
         self.calls.append(("SetParallelScale", value))
 
 
+# ---------------------------------------------------------------------------
+# Object-manager id literals
+#
+# Hand-written, and distinctive on purpose.  The id source in the fixture is
+# keyed on object *identity*: the render window resolves to the first literal
+# and every other object to the second.  A test that asserts the first literal
+# therefore fails if production names the renderer, the interactor, the picker
+# or the active camera, instead of coinciding with whatever it named.
+#
+# Both are far outside the small-integer range a real object manager hands out
+# in a freshly initialised scene, so a literal arriving from anywhere other
+# than here is visible on sight.
+# ---------------------------------------------------------------------------
+
+RENDER_WINDOW_WASM_ID = 8150001
+WRONG_OBJECT_WASM_ID = 8150999
+
+
 
 # ---------------------------------------------------------------------------
 # Fixture: VisorLocalRenderer with all VTK infrastructure mocked
@@ -719,6 +737,47 @@ class TestCamera:
         renderer.sync_camera(cam)
 
         assert renderer.get_camera_state() is cam
+
+    def test_serialize_camera_state_updates_states_from_the_render_window_id(
+        self, renderer
+    ):
+        """The re-serialise names the render window, and nothing else.
+
+        The id source is keyed on object identity, so every object other than
+        the render window resolves to a different, equally distinctive
+        literal.  Asserting ``RENDER_WINDOW_WASM_ID`` therefore fails if the
+        implementation names ``_vtk_renderer``, the interactor, or the active
+        camera, rather than coinciding with them.  Asserting against
+        ``GetId(renderer._render_window)`` -- the attribute production reads
+        -- would pass in all of those cases and pin nothing.
+
+        The expected value is the list production passes, not a repacking of
+        it: ``UpdateStatesFromObjects`` takes a sequence of ids.
+        """
+        renderer._object_manager.GetId.side_effect = (
+            lambda obj: RENDER_WINDOW_WASM_ID
+            if obj is renderer._render_window
+            else WRONG_OBJECT_WASM_ID
+        )
+
+        renderer.serialize_camera_state()
+
+        renderer._object_manager.UpdateStatesFromObjects.assert_called_with(
+            [RENDER_WINDOW_WASM_ID]
+        )
+
+    def test_serialize_camera_state_does_not_notify_the_client(self, renderer):
+        """Serialise without pushing -- the whole reason this is not a flush.
+
+        ``flush_wasm_state`` serialises *and* fires the client-side update,
+        which rebuilds the scene and races the ``set_state`` that follows on
+        the load path.  An implementation written as ``flush_wasm_state()``
+        would make the camera current and would look correct here in every
+        other respect; only this assertion separates them.
+        """
+        renderer.serialize_camera_state()
+
+        renderer._local_view.update.assert_not_called()
 
 
 # ===========================================================================

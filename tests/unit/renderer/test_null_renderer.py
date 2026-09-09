@@ -97,3 +97,29 @@ def test_each_renderer_has_its_own_record():
     assert second.get_camera_state() is None
 
 
+# ===========================================================================
+# Publishing is not recording
+# ===========================================================================
+
+def test_serialize_camera_state_is_a_no_op_and_leaves_the_record_alone():
+    """This renderer serves the client nothing, so it has nothing to refresh.
+
+    Two things are asserted together because the method has exactly two ways
+    to be wrong here.  It must not raise -- a bare ``pass`` inherited by
+    accident would satisfy that alone -- and it must not touch the record.
+    Publishing and recording are separate obligations: the writers of the
+    record are ``reset_camera`` and ``sync_camera``, and this is neither.  An
+    implementation that cleared the record on serialise would be a silent data
+    loss on the renderer used to stand in for a second backend, and no other
+    test in the tree would notice.
+    """
+    renderer = NullRenderer()
+    cam = _camera_state()
+    renderer.sync_camera(cam)
+
+    renderer.serialize_camera_state()
+
+    assert renderer.get_camera_state() is cam
+
+
+

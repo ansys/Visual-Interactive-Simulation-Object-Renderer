@@ -205,8 +205,19 @@ class VisorSceneBase(ABC):
             #
             # A state with no camera says nothing, rather than saying "reset":
             # record and pipeline are both left alone.
+            #
+            # The re-serialisation is part of the write, not an afterthought.
+            # Writing the pipeline camera makes the server correct; it does
+            # not make the state the client is served correct.  The backend
+            # advertises a version number read from the live VTK object while
+            # serving content from a cache, so a write with no re-serialise
+            # publishes a new version against old content and the client
+            # fetches the pre-load camera and applies it over the loaded one.
+            # It serialises without notifying: a push here would re-open the
+            # rebuild race the note below refuses.
             if runtime_app_state.scene.camera is not None:
                 self._renderer.sync_camera(runtime_app_state.scene.camera)
+                self._renderer.serialize_camera_state()
 
             self._apply_runtime_state_to_render(runtime_app_state)
 

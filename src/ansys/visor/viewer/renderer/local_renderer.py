@@ -314,6 +314,31 @@ class VisorLocalRenderer(IRenderer):
         self._last_camera_state = camera_state
         self._apply_to_pipeline_camera(camera_state)
 
+    def serialize_camera_state(self) -> None:
+        """See :meth:`IRenderer.serialize_camera_state`.
+
+        ``vtklocal`` advertises each object's modification time off the live
+        VTK object but serves state out of a serialization cache that only
+        ``UpdateStatesFromObjects`` refreshes.  Writing the pipeline camera
+        without this call publishes a new version number against the old
+        content, and the client fetches the pre-write camera and applies it
+        over the one just installed.
+
+        The render window's id is passed, not the camera's own.  It is the
+        form the framework itself reproduces -- ``LocalView.update`` resolves
+        ``[self._render_window, *registered]`` to ids and hands those to
+        ``UpdateStatesFromObjects`` -- and the camera sits inside the render
+        window's dependency closure, which is why ``get_status`` can name the
+        camera's id at all when building ``ignore_ids``.
+
+        No ``js_call``: that lives in ``LocalView.update``, not in the object
+        manager, so this serialises without pushing and without re-opening
+        the rebuild race ``_apply_runtime_state_to_render`` refuses.
+        """
+        self._object_manager.UpdateStatesFromObjects(
+            [self._object_manager.GetId(self._render_window)]
+        )
+
     # ------------------------------------------------------------------
     # Pipeline camera helpers
     #

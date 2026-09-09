@@ -216,6 +216,27 @@ class IRenderer(ABC):
         The record half is not optional on any implementation.
         """
 
+    @abstractmethod
+    def serialize_camera_state(self) -> None:
+        """Make the state served to the client current for the camera.
+
+        Writing the pipeline camera is not the same as publishing it.  A
+        backend may advertise a version number taken from the live VTK object
+        while serving content from a cache refreshed on its own schedule; a
+        write with no re-serialisation then publishes a new version against
+        old content, and the client fetches and applies the pre-write camera
+        over the correct one.  This method closes that gap.
+
+        **Serialise only; do not notify.**  Pushing to the client is
+        :meth:`flush_wasm_state`'s job and carries a rebuild race that the
+        load path deliberately refuses.  An implementation that notifies is
+        wrong here even though it would look correct.
+
+        No-op on a renderer that serves the client no VTK object state.
+        Takes no lock: the caller-holds convention applies, as it does to
+        every other method on this interface.
+        """
+
     # ------------------------------------------------------------------------
     # Widget control (cross-section, bounding box)
     # ------------------------------------------------------------------------

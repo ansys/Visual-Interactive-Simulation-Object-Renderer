@@ -137,6 +137,20 @@ class NullRenderer(IRenderer):
         """
         self._last_camera_state = camera_state
 
+    def serialize_camera_state(self) -> None:
+        """See :meth:`IRenderer.serialize_camera_state`.
+
+        Explicit no-op, and deliberately not inherited as one.  This renderer
+        serves the client no VTK object state, so there is no serialization
+        cache to refresh and nothing to make current.
+
+        It does **not** touch the record.  Publishing and recording are
+        separate obligations: the writers of the record are
+        :meth:`reset_camera` and :meth:`sync_camera`, and this method is
+        neither.
+        """
+
+
     # ------------------------------------------------------------------
     # Widget control (cross-section, bounding box)
     # ------------------------------------------------------------------

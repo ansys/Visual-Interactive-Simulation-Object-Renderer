@@ -154,6 +154,22 @@ def array_dataset() -> vtkPolyData:
     return dataset
 
 
+# ---------------------------------------------------------------------------
+# Object-manager id literals
+#
+# Hand-written and distinctive.  Seeded into the renderer fixture's id source
+# keyed on object identity, so that asserting RENDER_WINDOW_WASM_ID fails --
+# rather than coincides -- if the re-serialisation names the renderer, the
+# interactor, the picker or the active camera instead of the render window.
+#
+# Asserting against the id source's own answer for the attribute production
+# reads would pin nothing: it would pass whichever object production named.
+# ---------------------------------------------------------------------------
+
+RENDER_WINDOW_WASM_ID = 8150001
+WRONG_OBJECT_WASM_ID = 8150999
+
+
 @pytest.fixture
 def renderer():
     """Real VisorLocalRenderer with every VTK sub-system patched out.
@@ -161,6 +177,12 @@ def renderer():
     Real, so the apply bodies under test actually run against real VTK
     objects; the sub-systems are patched so no render window, interactor,
     LocalView or widget is created.
+
+    The object manager that arrives with the patched LocalView is a MagicMock,
+    so its ``GetId`` is seeded here rather than in a test: keyed on object
+    identity, the render window resolves to RENDER_WINDOW_WASM_ID and every
+    other object to WRONG_OBJECT_WASM_ID.  That is what lets the ordering test
+    below assert which object the re-serialisation named.
     """
     mock_server = MagicMock()
     mock_server.state = {}
@@ -180,7 +202,15 @@ def renderer():
             VisorLocalRenderer, "_initialize_bounding_box_widget", return_value=MagicMock()
         ),
     ):
-        return VisorLocalRenderer(mock_server)
+        r = VisorLocalRenderer(mock_server)
+
+    r._object_manager.GetId.side_effect = (
+        lambda obj: RENDER_WINDOW_WASM_ID
+        if obj is r._render_window
+        else WRONG_OBJECT_WASM_ID
+    )
+    return r
+
 
 
 @pytest.fixture
@@ -1095,6 +1125,20 @@ def test_apply_state_syncs_the_camera_under_the_lock_before_the_render_step(scen
     camera step written after the render would leave every assertion in this
     module passing while the flush pushed a pipeline whose camera had not
     been written yet.
+
+    The sequence also carries the re-serialisation, and carries it with the
+    id argument production passed.  Writing the pipeline camera makes the
+    server correct; it does not make the state the client is served correct,
+    and the two are separate steps that can each silently do nothing.  The
+    spy appends the literal string ``"camera"`` for the write, the two-tuple
+    ``("serialize", <ids>)`` for the re-serialisation -- the tuple is the
+    recording format, not the argument -- and ``"bridge"`` for the delegated
+    render step.  ``<ids>`` is asserted as the list production passes, since
+    ``UpdateStatesFromObjects`` takes a sequence.
+
+    Ordered between the two: after the write, because re-serialising before
+    it would publish the pre-load camera; before the render step, because the
+    delegated step is where the state leaves for the client.
     """
     scene._vtk_lock = _LockSpy()
     order = []
@@ -1108,14 +1152,48 @@ def test_apply_state_syncs_the_camera_under_the_lock_before_the_render_step(scen
         return real_sync(camera_state)
 
     scene._renderer.sync_camera = _sync
+    scene._renderer._object_manager.UpdateStatesFromObjects = (
+        lambda ids: order.append(("serialize", ids))
+    )
     scene._apply_runtime_state_to_render = lambda state: order.append("bridge")
 
     scene.apply_state(_persisted_state(_persisted_camera()))
 
-    assert order == ["camera", "bridge"]
+    assert order == [
+        "camera",
+        ("serialize", [RENDER_WINDOW_WASM_ID]),
+        "bridge",
+    ]
     assert observed["depth"] >= 1
     assert scene._vtk_lock.depth == 0
     assert scene._vtk_lock.enter_count == scene._vtk_lock.exit_count
+
+
+def test_apply_state_serializes_the_camera_under_the_lock(scene):
+    """The re-serialisation runs inside the same critical section as the write.
+
+    Its own test rather than another assertion on the ordering test, on the
+    precedent of ``test_reset_camera_holds_the_lock``: lock depth and call
+    order fail for different reasons and want to be readable apart.
+
+    A re-serialisation that escaped the lock would read the VTK object graph
+    while another thread was free to mutate it, and would serve the client a
+    half-written scene.  The failure would be intermittent and would never
+    reproduce under a gate.
+    """
+    scene._vtk_lock = _LockSpy()
+    observed = {}
+
+    scene._renderer._object_manager.UpdateStatesFromObjects = (
+        lambda ids: observed.update(depth=scene._vtk_lock.depth)
+    )
+
+    scene.apply_state(_persisted_state(_persisted_camera()))
+
+    assert observed["depth"] >= 1
+    assert scene._vtk_lock.depth == 0
+    assert scene._vtk_lock.enter_count == scene._vtk_lock.exit_count
+
 
 
 def test_restore_part_states_holds_the_lock(scene, registry, pipeline):
