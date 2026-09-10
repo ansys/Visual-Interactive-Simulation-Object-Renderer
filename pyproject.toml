@@ -14,7 +14,6 @@ description = "\"VISOR 3D visualization web component framework\""
 authors = ["VISOR Team <visor@synopsys.com>"]
 readme = "README.rst"
 license = "Apache-2.0"
-license-files = ["LICENSE"]
 repository = "https://github.com/ansys/visor"
 classifiers = [
     "Development Status :: Alpha",
