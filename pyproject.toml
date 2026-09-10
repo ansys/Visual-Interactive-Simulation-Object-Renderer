@@ -42,7 +42,6 @@ include = [
     { path = "src/ansys/visor/viewer/dash/src/lib/**", format = ["sdist", "wheel"] },
     { path = "README.rst", format = ["sdist", "wheel"] },
     { path = "LICENSE", format = ["sdist", "wheel"] },
-    { path = "VISOR_Legal_notice.pdf", format = ["sdist", "wheel"] },
 ]
 
 [tool.poetry.scripts]
