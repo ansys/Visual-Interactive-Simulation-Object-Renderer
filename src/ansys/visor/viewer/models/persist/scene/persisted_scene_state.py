@@ -75,7 +75,6 @@ class PersistedSceneState(BaseModel):
     cross_section_enabled: bool | None = None
     edges_enabled: bool | None = None
     bounding_box_enabled: bool | None = None
-    camera: VisorCameraState | None = None
     dataset_states: Dict[str, "PersistedDatasetState"] = Field(default_factory=dict)
     variable_states: Dict[str, "VisorVariableState"] = Field(default_factory=dict)
     model_config = ConfigDict(arbitrary_types_allowed=True)
