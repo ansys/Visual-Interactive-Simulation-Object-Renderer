@@ -1,4 +1,5 @@
 import {
+    AppliedCameraState,
     ColorVariableDescriptor,
     GeometryPickMode,
     IRenderer,
@@ -177,7 +178,7 @@ export class WasmRenderer implements IRenderer {
         await this.#vtkScene.camera.setParallelScale(scale);
     }
 
-    async setCameraStateAsync(state: VisorCameraState): Promise<void> {
+    async setCameraStateAsync(state: AppliedCameraState): Promise<void> {
         // Sequential, not Promise.all, to preserve the observable ordering of
         // camera events any FPS/camera-changed listener sees (§11).
         await this.setCameraPositionAsync(state.position);
