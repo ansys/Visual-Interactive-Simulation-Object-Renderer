@@ -13,7 +13,7 @@ version = "1.0.dev0"
 description = "\"VISOR 3D visualization web component framework\""
 authors = ["VISOR Team <visor@synopsys.com>"]
 readme = "README.rst"
-license = "Ansys License"
+license = "Apache-2.0"
 repository = "https://github.com/ansys/visor"
 classifiers = [
     "Development Status :: Alpha",
@@ -41,7 +41,6 @@ include = [
     { path = "src/ansys/visor/viewer/dash/src/lib/**", format = ["sdist", "wheel"] },
     { path = "README.rst", format = ["sdist", "wheel"] },
     { path = "LICENSE", format = ["sdist", "wheel"] },
-    { path = "VISOR_Legal_notice.pdf", format = ["sdist", "wheel"] },
 ]
 
 [tool.poetry.scripts]
