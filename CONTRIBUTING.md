@@ -8,7 +8,7 @@ VISOR.
 The following contribution information is specific to VISOR.
 
 Additional information can be found in the
-[VISOR Contributing](https://vigilant-lamp-162kw9z.pages.github.io/version/dev/contributing/index.html)
+[VISOR Contributing](https://visor.docs.pyansys.com/version/dev/contributing/index.html)
 documentation.
 
 [Contributing]: https://dev.docs.pyansys.com/how-to/contributing.html
