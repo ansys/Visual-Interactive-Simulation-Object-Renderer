@@ -40,13 +40,6 @@ Visual Interactive Simulation Object Renderer (VISOR)
 
 
 
-Demo
-----
-
-You can view a `demo <https://visor.dev.ansysapis.com/index.html>`_ of
-VISOR to see it in action.
-
-
 Overview
 --------
 
