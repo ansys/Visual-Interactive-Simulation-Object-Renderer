@@ -1,11 +1,9 @@
 """Sphinx documentation configuration file."""
 
-import base64
 import os
 import runpy
 from datetime import datetime
 
-import requests
 from ansys_sphinx_theme import ansys_favicon, get_version_match
 from sphinx_gallery.sorting import FileNameSortKey
 
@@ -67,13 +65,10 @@ html_context = {
     "doc_path": "doc/source",
 }
 
-# specify the location of your github repo
-# Note: if the visor repo becomes public, we can set
-# "json_url": f"https://{cname}/versions.json"
-# and remove fetch_and_save_versions_json()
+# specify the location of your GitHub repo
 html_theme_options = {
     "switcher": {
-        "json_url": "_static/versions.json",
+        "json_url": f"https://{cname}/versions.json",
         "version_match": switcher_version,
     },
     "github_url": "https://github.com/ansys/Visual-Interactive-Simulation-Object-Renderer/",
@@ -190,47 +185,10 @@ source_suffix = ".rst"
 master_doc = "index"
 
 
-# debugging segfault when running the seupt script
+# debugging segfault when running the setup script
 import faulthandler
 
 faulthandler.enable()
-
-
-def fetch_and_save_versions_json():
-    """
-    Fetches the `versions.json` file from the `gh-pages` branch of the private
-    VISOR repository using the GitHub API and saves it locally to
-    `source/_static/versions.json`.
-
-    This is required for the version switcher, as the repository is private and
-    the file cannot be accessed via the GitHub Pages URL without authentication.
-
-    Requires a valid `GITHUB_TOKEN` for authentication.
-    This is automatically set in the GitHub Actions workflow, but must be set
-    manually for local builds, e.g.:
-        export GITHUB_TOKEN="your_tokem_here"
-    """
-    owner = "ansys"
-    repo = "visor"
-    branch = "gh-pages"
-    file_path = "versions.json"
-    api_url = f"https://api.github.com/repos/{owner}/{repo}/contents/{file_path}?ref={branch}"
-    token = os.getenv("GITHUB_TOKEN")
-    headers = {"Authorization": f"Bearer {token}"} if token else {}
-
-    local_path = os.path.join("source", "_static", "versions.json")
-    print(f"Fetching {file_path} from {repo}@{branch} via GitHub API...")
-
-    try:
-        response = requests.get(api_url, headers=headers)
-        response.raise_for_status()
-        content = response.json()["content"]
-        decoded = base64.b64decode(content).decode("utf-8")
-        with open(local_path, "w+", encoding="utf-8") as f:
-            f.write(decoded)
-        print(f"Saved versions.json to {local_path}")
-    except Exception as e:
-        print(f"Error fetching versions.json: {e}")
 
 
 # Run the script to generate an updated OpenAPI JSON file
@@ -243,7 +201,6 @@ def generate_openapi_json():
 
 def setup(app):
     app.connect('builder-inited', lambda app: generate_openapi_json())
-    app.connect('builder-inited', lambda app: fetch_and_save_versions_json())
     app.add_css_file("css/reset.css")
 
 linkcheck_ignore = []
