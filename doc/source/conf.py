@@ -76,7 +76,7 @@ html_theme_options = {
         "json_url": "_static/versions.json",
         "version_match": switcher_version,
     },
-    "github_url": "https://github.com/ansys/visor/",
+    "github_url": "https://github.com/ansys/Visual-Interactive-Simulation-Object-Renderer/",
     "show_prev_next": False,
     "show_breadcrumbs": True,
     "collapse_navigation": True,
@@ -252,5 +252,5 @@ linkcheck_ignore = []
 # available until the release is published.
 if switcher_version != "dev":
     linkcheck_ignore.append(
-        f"https://github.com/ansys/visor/releases/tag/v{__version__}"
+        f"https://github.com/ansys/Visual-Interactive-Simulation-Object-Renderer/releases/tag/v{__version__}"
     )

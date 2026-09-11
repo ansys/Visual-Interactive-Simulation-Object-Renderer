@@ -59,7 +59,7 @@ Developer installation
 
    .. code:: console
 
-      git clone https://github.com/ansys/visor.git
+      git clone https://github.com/ansys/Visual-Interactive-Simulation-Object-Renderer/.git
       cd visor
 
 #. Create a virtual environment:

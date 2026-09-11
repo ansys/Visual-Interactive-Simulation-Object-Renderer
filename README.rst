@@ -16,8 +16,8 @@ Visual Interactive Simulation Object Renderer (VISOR)
    :target: https://pypi.org/project/ansys-visor-viewer
    :alt: PyPI
 
-.. |GH-CI| image:: https://github.com/ansys/visor/actions/workflows/build_and_release.yml/badge.svg?branch=main
-   :target: https://github.com/ansys/visor/actions/workflows/build_and_release.yml
+.. |GH-CI| image:: https://github.com/ansys/Visual-Interactive-Simulation-Object-Renderer/actions/workflows/build_and_release.yml/badge.svg?branch=main
+   :target: https://github.com/ansys/Visual-Interactive-Simulation-Object-Renderer/actions/workflows/build_and_release.yml
    :alt: GH-CI
 
 .. |codecov| image:: https://codecov.io/gh/ansys/visor/branch/main/graph/badge.svg
@@ -73,7 +73,7 @@ Installation
 ------------
 
 To set up prerequisites and install VISOR, see
-`Getting started <https://vigilant-lamp-162kw9z.pages.github.io/version/dev/getting_started/index.html>`_
+`Getting started <https://visor.docs.pyansys.com/version/dev/getting_started/index.html>`_
 in the VISOR documentation.
 
 
@@ -81,7 +81,7 @@ Quick start
 -----------
 
 For a basic usage example, see
-`Quick start <https://vigilant-lamp-162kw9z.pages.github.io/version/dev/getting_started/quick_start.html>`_
+`Quick start <https://visor.docs.pyansys.com/version/dev/getting_started/quick_start.html>`_
 in the VISOR documentation.
 
 
@@ -101,9 +101,9 @@ VISOR documentation.
 * **Standalone Python**
 
    * Launch a desktop VISOR app with the Python package ``ansys.visor.viewer`` to visualize files.
-   * See `VISOR Python API <https://supreme-fiesta-v6v17mm.pages.github.io/version/dev/user_guide/launching_visor/visor_python_api.html>`_
+   * See `VISOR Python API <https://visor.docs.pyansys.com/version/dev/user_guide/launching_visor/visor_python_api.html>`_
      for API usage examples.
-   * See `API reference <https://supreme-fiesta-v6v17mm.pages.github.io/version/dev/python_api_reference.html>`_
+   * See `API reference <https://visor.docs.pyansys.com/version/dev/python_api_reference.html>`_
      for details about the Python API.
 
 * **VISOR HTTP service**
@@ -111,20 +111,20 @@ VISOR documentation.
    * Manage multiple VISOR instances through the VISOR HTTP API.
    * Integrate with `PIM (Product Instance Management) <https://github.com/ansys/ansys-api-platform-instancemanagement>`_
      to manage VISOR instances in SAF apps.
-   * See `VISOR HTTP service <https://supreme-fiesta-v6v17mm.pages.github.io/version/dev/user_guide/launching_visor/visor_service.html>`_
+   * See `VISOR HTTP service <https://visor.docs.pyansys.com/version/dev/user_guide/launching_visor/visor_service.html>`_
      for usage examples.
-   * See `HTTP API reference <https://supreme-fiesta-v6v17mm.pages.github.io/version/dev/http_api_reference/index.html>`_
+   * See `HTTP API reference <https://visor.docs.pyansys.com/version/dev/http_api_reference/index.html>`_
      for API details.
 
 * **Dash frontend app**
 
    * Connect to a VISOR instance from a Dash app with the VISOR Dash component in
      ``ansys.visor.dash.dash_visor_viewer``.
-   * See `VISOR Dash component <https://supreme-fiesta-v6v17mm.pages.github.io/version/dev/user_guide/launching_visor/visor_dash_component.html>`_
+   * See `VISOR Dash component <https://visor.docs.pyansys.com/version/dev/user_guide/launching_visor/visor_dash_component.html>`_
      for details.
 
 For advanced usage and configuration options, see the following VISOR documentation:
 
-`User guide <https://supreme-fiesta-v6v17mm.pages.github.io/version/dev/user_guide/index.html>`_ and
-`Examples <https://supreme-fiesta-v6v17mm.pages.github.io/version/dev/examples/index.html>`_ in the
+`User guide <https://visor.docs.pyansys.com/version/dev/user_guide/index.html>`_ and
+`Examples <https://visor.docs.pyansys.com/version/dev/examples/index.html>`_ in the
 VISOR sections.
