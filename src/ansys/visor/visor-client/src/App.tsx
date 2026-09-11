@@ -131,7 +131,22 @@ function App() {
             requireWasmAnnotation(sceneDetails.vtkInfo.rendererAnnotation),
             wasmView.current.trameTriggerAsync
         );
-        const newFrontend = new VisorFrontend(renderer, sceneDetails.vtkInfo.sceneGraph);
+        const newFrontend = new VisorFrontend(
+            renderer,
+            sceneDetails.vtkInfo.sceneGraph,
+            wasmView.current.trameTriggerAsync
+        );
+        // Release the frontend being replaced, here and not later: the
+        // `VtkScene` behind both renderers is the same object across a
+        // rebuild, so an unreleased subscription stays live and the next
+        // gesture is reported once per surviving frontend.  There is
+        // deliberately no `await` between the new frontend subscribing (the
+        // constructor above) and the old one releasing, so the window in
+        // which two subscriptions coexist contains no suspension point.
+        if (oldFrontend != null) {
+            oldFrontend.releaseCameraSettledListener();
+        }
+
         if (visorArgs.current.darkMode != null) {
             // Explicit Dash prop takes precedence over the server's dark_mode value.
             sceneDetails.appState.ui.setDarkTheme(visorArgs.current.darkMode);

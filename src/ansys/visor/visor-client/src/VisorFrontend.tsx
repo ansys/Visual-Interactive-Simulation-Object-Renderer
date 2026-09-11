@@ -9,6 +9,8 @@ import { TreeViewUtil } from './treeview/TreeView.tsx';
 import { StateInput } from './state/appstate/VisorStateCommon.tsx';
 import VisorVtkSceneNode from './state/appstate/vtkInfo/VisorVtkSceneNode.tsx';
 import { IRenderer, VisorCameraState } from './renderer/IRenderer';
+import type { TrameTriggerSender } from './renderer/IRenderer';
+import { attachCameraSyncReporter } from './CameraSyncReporter';
 import { Panel_TopRight_Util } from './components/ui-panels/Panel_TopRight_Util.tsx';
 import { Panel_TopLeft_Util } from './components/ui-panels/Panel_TopLeft_Util.tsx';
 import { OrientationWidget } from './widgets/orientationWidget.ts';
@@ -17,7 +19,11 @@ import { UiScaffoldUtil } from './components/UiScaffold.tsx';
 export type { VisorCameraState } from './renderer/IRenderer';
 
 export class VisorFrontend {
-    constructor(renderer: IRenderer, sceneGraphNode: VisorVtkSceneNode) {
+    constructor(
+        renderer: IRenderer,
+        sceneGraphNode: VisorVtkSceneNode,
+        triggerSender: TrameTriggerSender
+    ) {
         const spectrumManager = getSpectrumManager();
         const sceneGraph = CreateVisorSceneGraph(sceneGraphNode, spectrumManager, renderer);
         spectrumManager.finishAddingDataArrayMetadata();
@@ -73,6 +79,26 @@ export class VisorFrontend {
         };
         this.domElement = renderer.domElement;
         this.getCameraStateAsync = () => renderer.getCameraStateAsync();
+        // Report each settled camera window to the server.  The remover is
+        // held rather than discarded because the `VtkScene` behind the
+        // renderer survives a client rebuild: a frontend replaced without
+        // releasing leaves its subscription live, and every later gesture is
+        // then reported once per rebuild that has ever happened.  Every one of
+        // those reports is individually valid, so nothing fails -- the record
+        // is simply written several times and no gate can tell.
+        //
+        // Assigned to a `#private` field and exposed through a field-assigned
+        // method: `Object.freeze(this)` below does not reach `#private` state,
+        // but it would make a public field assigned after construction throw
+        // in the browser and in no gate.
+        this.#cameraSettledRemover = attachCameraSyncReporter(renderer, triggerSender);
+        this.releaseCameraSettledListener = () => {
+            const remover = this.#cameraSettledRemover;
+            // Cleared first, so a second call is a no-op rather than a second
+            // removal against a map the next frontend now owns.
+            this.#cameraSettledRemover = null;
+            remover?.();
+        };
         this.defaultActorColor = [];
         this.setSpectrumRangeAsync = async (spectrumId, component, min, max) => {
             const spectrum = spectrumManager.globalSpectrumCollection.getSpectrum(spectrumId);
@@ -511,7 +537,14 @@ export class VisorFrontend {
     }
 
     #unit: string;
+    #cameraSettledRemover: (() => void) | null;
     darkMode: boolean;
+    /**
+     * Release this frontend's settled-camera subscription.  Called by the
+     * rebuild on the frontend it is replacing, before the replacement is
+     * handed out.  Idempotent.
+     */
+    releaseCameraSettledListener: () => void;
     render: () => Promise<void>;
     resizeAsync: () => Promise<void>;
     sceneGraph: VisorSceneNodeExtended;
