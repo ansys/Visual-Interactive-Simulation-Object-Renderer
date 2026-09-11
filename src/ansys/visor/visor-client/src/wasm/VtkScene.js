@@ -496,7 +496,12 @@ export default class VtkScene {
         );
 
         // TODO: need to remove this event listener when the user disposes the WasmView object
-        window.addEventListener('keyup', async (e) => {
+        window.addEventListener('keydown', async (e) => {
+            // Ctrl+R, Cmd+R and auto-repeat must not move the camera.
+            // CameraGestureTracker applies the same rule: change both together.
+            if (e.ctrlKey || e.metaKey || e.altKey || e.repeat ) {
+                return;
+            }
             switch (e.key.toLowerCase()) {
                 // NOTE: the z/r key list is mirrored in CameraGestureTracker,
                 // which treats a keyup on either as active user input. Adding

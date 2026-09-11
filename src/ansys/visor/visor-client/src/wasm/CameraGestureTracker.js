@@ -86,7 +86,13 @@ export default class CameraGestureTracker {
         const onWheel = () => {
             this.#markImpulse();
         };
-        const onKeyUp = /**@param {KeyboardEvent} e*/ (e) => {
+        const onKeyDown = /**@param {KeyboardEvent} e*/ (e) => {
+            // Ctrl+R, Cmd+R and auto-repeat must not move the camera.
+            // VtkScene applies the same rule: change both together.
+            if (e.ctrlKey || e.metaKey || e.altKey || e.repeat) {
+                return;
+            }
+
             if (e.key != null && CAMERA_KEYS.includes(e.key.toLowerCase())) {
                 this.#markImpulse();
             }
@@ -96,7 +102,7 @@ export default class CameraGestureTracker {
         this.#addListener(canvasDiv, 'mouseup', onMouseUp, true);
         this.#addListener(canvasDiv, 'mouseout', onInputLost, true);
         this.#addListener(canvas, 'wheel', onWheel, { passive: true });
-        this.#addListener(window, 'keyup', onKeyUp, false);
+        this.#addListener(window, 'keydown', onKeyDown, false);
         this.#addListener(window, 'blur', onInputLost, false);
     }
 
