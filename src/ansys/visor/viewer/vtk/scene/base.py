@@ -420,6 +420,7 @@ class VisorSceneBase(ABC):
                 return
 
             self._renderer.reset_camera(self._scene_graph.bounds)
+            self._renderer.serialize_camera_state()
 
     def pick_geometry(self, actor_wasm_id, cell_id, mode, world_x, world_y, world_z) -> dict:
         """

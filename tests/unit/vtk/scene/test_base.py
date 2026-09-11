@@ -1195,6 +1195,83 @@ def test_apply_state_serializes_the_camera_under_the_lock(scene):
     assert scene._vtk_lock.enter_count == scene._vtk_lock.exit_count
 
 
+# ===========================================================================
+# reset_camera -- the re-serialisation
+#
+# ``VisorSceneBase.reset_camera`` calls ``self._renderer.reset_camera(...)``
+# then ``self._renderer.serialize_camera_state()``, both inside
+# ``_vtk_lock``.  Same shape as the ``sync_camera`` trigger section above: the
+# re-serialisation runs after the reset, is spied on
+# ``_object_manager.UpdateStatesFromObjects`` with the render-window id, and
+# the lock is held (depth >= 1) at both points.
+#
+# Own literals are unnecessary here -- reset_camera takes no camera argument,
+# only the scene-graph bounds -- so what is pinned is order and lock depth,
+# not a value.
+# ===========================================================================
+
+def test_reset_camera_serializes_after_the_reset_with_the_render_window_id(scene):
+    """The re-serialisation follows the reset, and carries production's id.
+
+    Reverted -- the reset kept and the re-serialisation dropped -- the
+    pipeline camera is right and every other test in this module still
+    passes, while the client is served the pre-reset camera on its next
+    fetch.
+
+    The spy appends ``"reset"`` for the reset call and the two-tuple
+    ``("serialize", <ids>)`` for the re-serialisation; the tuple is the
+    recording format, not the argument.  ``<ids>`` is asserted as the list
+    production passes, since ``UpdateStatesFromObjects`` takes a sequence.
+    """
+    order = []
+    real_reset = scene._renderer.reset_camera
+
+    def _reset(bounds):
+        order.append("reset")
+        return real_reset(bounds)
+
+    scene._renderer.reset_camera = _reset
+    scene._renderer._object_manager.UpdateStatesFromObjects = (
+        lambda ids: order.append(("serialize", ids))
+    )
+
+    scene.reset_camera()
+
+    assert order == ["reset", ("serialize", [RENDER_WINDOW_WASM_ID])]
+
+
+def test_reset_camera_holds_the_lock_across_both_halves(scene):
+    """Both the reset and the re-serialisation run inside one critical section.
+
+    Its own test rather than another assertion on the ordering test, on the
+    precedent of ``test_sync_camera_holds_the_lock_across_both_halves``: lock
+    depth and call order fail for different reasons and want to be readable
+    apart.  ``reset_camera`` can be called from the trame daemon thread
+    indirectly through ``finalize_scene``, while the VTK objects it mutates
+    belong to the caller's thread, and a re-serialisation outside the lock
+    would read the object graph while another thread was free to mutate it.
+    That failure is intermittent and never reproduces under a gate.
+    """
+    scene._vtk_lock = _LockSpy()
+    observed = {}
+    real_reset = scene._renderer.reset_camera
+
+    def _reset(bounds):
+        observed["reset_depth"] = scene._vtk_lock.depth
+        return real_reset(bounds)
+
+    scene._renderer.reset_camera = _reset
+    scene._renderer._object_manager.UpdateStatesFromObjects = (
+        lambda ids: observed.update(serialize_depth=scene._vtk_lock.depth)
+    )
+
+    scene.reset_camera()
+
+    assert observed["reset_depth"] >= 1
+    assert observed["serialize_depth"] >= 1
+    assert scene._vtk_lock.depth == 0
+    assert scene._vtk_lock.enter_count == scene._vtk_lock.exit_count
+
 
 def test_restore_part_states_holds_the_lock(scene, registry, pipeline):
     """The lock is held at both halves inside the restore helper itself."""
