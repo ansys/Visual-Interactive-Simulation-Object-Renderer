@@ -161,6 +161,10 @@ export default class RemoteVtkScene {
         wasmHandler.bindCanvasToDOM(renderWindowId, canvasDiv);
         const canvas = canvasDiv.getElementsByTagName('canvas')[0];
         canvas.style.cssText = `position:absolute;left:0;top:0;width:100%;height:100%;`;
+        // vtk-wasm creates the canvas with tabindex="0".  Focused, it takes key events and browser
+        // shortcuts stop working (Ctrl+R, Ctrl+F).  Visor's keys listen on window, so the
+        // canvas never needs focus.
+        canvas.removeAttribute('tabindex');
 
         ////////////////////////////////////////////////////////////////////////////////////////
         ////////////////////////////////////////////////////////////////////////////////////////
