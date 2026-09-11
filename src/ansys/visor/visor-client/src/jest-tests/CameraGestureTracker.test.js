@@ -45,7 +45,8 @@ describe('CameraGestureTracker', () => {
     const mouseOut = () => canvasDiv.dispatchEvent(new MouseEvent('mouseout', { bubbles: true }));
     const mouseMove = () => canvasDiv.dispatchEvent(new MouseEvent('mousemove', { bubbles: true }));
     const wheel = () => canvas.dispatchEvent(new Event('wheel'));
-    const keyUp = (key) => window.dispatchEvent(new KeyboardEvent('keyup', { key }));
+    const keyDown = (key, opts = {}) =>
+        window.dispatchEvent(new KeyboardEvent('keydown', { key, ...opts }));
     const blur = () => window.dispatchEvent(new Event('blur'));
 
     // ---- the debounce ------------------------------------------------------
@@ -160,8 +161,8 @@ describe('CameraGestureTracker', () => {
         expect(onSettled).toHaveBeenCalledWith('programmatic');
     });
 
-    test('an event within 300 ms of a z keyup reports gesture', () => {
-        keyUp('z');
+    test('an event within 300 ms of a z keydown reports gesture', () => {
+        keyDown('z');
         jest.advanceTimersByTime(299);
         tracker.noteCameraEvent();
 
@@ -170,8 +171,8 @@ describe('CameraGestureTracker', () => {
         expect(onSettled).toHaveBeenCalledWith('gesture');
     });
 
-    test('an event within 300 ms of an r keyup reports gesture', () => {
-        keyUp('r');
+    test('an event within 300 ms of an r keydown reports gesture', () => {
+        keyDown('r');
         jest.advanceTimersByTime(299);
         tracker.noteCameraEvent();
 
@@ -180,8 +181,29 @@ describe('CameraGestureTracker', () => {
         expect(onSettled).toHaveBeenCalledWith('gesture');
     });
 
-    test('a keyup that is not z or r does not arm input', () => {
-        keyUp('a');
+    test('a keydown that is not z or r does not arm input', () => {
+        keyDown('a');
+        tracker.noteCameraEvent();
+
+        jest.advanceTimersByTime(300);
+
+        expect(onSettled).toHaveBeenCalledWith('programmatic');
+    });
+
+    test('a z keydown held with Ctrl, Meta or Alt does not arm input', () => {
+        keyDown('z', { ctrlKey: true });
+        keyDown('r', { metaKey: true });
+        keyDown('z', { altKey: true });
+        tracker.noteCameraEvent();
+
+        jest.advanceTimersByTime(300);
+
+        expect(onSettled).toHaveBeenCalledWith('programmatic');
+    });
+
+    test('a repeat z/r keydown does not arm input', () => {
+        keyDown('z', { repeat: true });
+        keyDown('r', { repeat: true });
         tracker.noteCameraEvent();
 
         jest.advanceTimersByTime(300);
@@ -223,7 +245,7 @@ describe('CameraGestureTracker', () => {
 });
 
 /**
- * The wasm canvas's own wheel handler and VtkScene's window keyup handler are
+ * The wasm canvas's own wheel handler and VtkScene's window keydown handler are
  * registered before the tracker is constructed, so the camera event raised by a
  * single wheel notch or a single z/r press reaches noteCameraEvent() before the
  * tracker's own handler has marked input active.
@@ -288,12 +310,12 @@ describe('CameraGestureTracker, when the camera event precedes the tracker handl
         expect(onSettled).toHaveBeenCalledWith('gesture');
     });
 
-    test('a single r keyup reports gesture', () => {
-        standInBefore(window, 'keyup');
+    test('a single r keydown reports gesture', () => {
+        standInBefore(window, 'keydown');
         tracker = new CameraGestureTracker(canvasDiv, canvas);
         tracker.addSettledListener(onSettled);
 
-        window.dispatchEvent(new KeyboardEvent('keyup', { key: 'r' }));
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'r' }));
         jest.advanceTimersByTime(300);
 
         expect(onSettled).toHaveBeenCalledTimes(1);
