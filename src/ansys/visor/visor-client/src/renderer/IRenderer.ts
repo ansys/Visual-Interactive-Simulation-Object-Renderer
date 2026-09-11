@@ -36,6 +36,16 @@ export type AppliedCameraState = Readonly<{
     parallelScale: number;
 }>;
 
+/**
+ * Where a settled camera change came from.
+ *
+ * `gesture` means at least one camera event in the settle window occurred while
+ * user input was active. `programmatic` means none did, whatever the source of
+ * the change was. Origin is recorded per event, at event time; see
+ * `wasm/CameraGestureTracker.js`.
+ */
+export type CameraOrigin = 'gesture' | 'programmatic';
+
 /** Descriptor consumed by setColorVariableAsync. */
 export type ColorVariableDescriptor = Readonly<{
     spectrumId: string;
@@ -119,6 +129,15 @@ export interface IRenderer {
     // ---- Subscriptions (return unsubscribe closures) ------------------------
     /** Fires whenever the camera changes. Callback receives a full snapshot. */
     addCameraChangedListener(callback: (state: VisorCameraState) => void): () => void;
+    /**
+     * Fires once, 300 ms after the last camera change, with that window's
+     * origin. Intended for the server-side camera record: a `gesture` report is
+     * the user's own camera and is authoritative; a `programmatic` one is an
+     * echo of a camera the application itself applied.
+     *
+     * Exactly one report per settle window, never one per camera event.
+     */
+    addCameraSettledListener(callback: (origin: CameraOrigin) => void): () => void;
     /** Fires each frame with the current FPS. */
     addFrameRenderedListener(callback: (fps: number) => void): () => void;
     /**

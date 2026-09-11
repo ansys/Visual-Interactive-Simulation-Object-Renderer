@@ -1,5 +1,6 @@
 import {
     AppliedCameraState,
+    CameraOrigin,
     ColorVariableDescriptor,
     GeometryPickMode,
     IRenderer,
@@ -203,6 +204,13 @@ export class WasmRenderer implements IRenderer {
         return this.#vtkScene.addCameraChangedListener(async (_) => {
             callback(await this.getCameraStateAsync());
         });
+    }
+
+    addCameraSettledListener(callback: (origin: CameraOrigin) => void): () => void {
+        // Deliberately no camera read-back here: the settled camera is read
+        // once, by the subscriber, at settle time. Reading it here would put
+        // the cost back on a path the debounce exists to keep cheap.
+        return this.#vtkScene.addCameraSettledListener(callback);
     }
 
     addFrameRenderedListener(callback: (fps: number) => void): () => void {

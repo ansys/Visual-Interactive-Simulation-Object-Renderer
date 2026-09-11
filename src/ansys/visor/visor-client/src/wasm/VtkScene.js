@@ -5,6 +5,8 @@
  * provided to the constructor to initialize the scene from an existing
  * remote one.
  */
+import CameraGestureTracker from './CameraGestureTracker.js';
+
 export default class VtkScene {
     /**
      * @private
@@ -125,7 +127,14 @@ export default class VtkScene {
         this.#cameraChangedListeners.clear();
         this.#viewerClickedListeners.clear();
         this.#frameRenderedListeners.clear();
+        // Clears the settled-listener map, the pending settle timer and the
+        // window's recorded origins, resets the input state, and removes the
+        // tracker's own listeners. Without this a settle armed before a
+        // rebuild fires afterwards and reports the previous scene's camera.
+        this.#cameraGestureTracker?.dispose();
     };
+    /**@type{CameraGestureTracker|null}*/
+    #cameraGestureTracker = null;
     /**@type{Map<Function,()=>void>}*/
     #userObserverRemovers = new Map();
     /**@type{Map<Function,(actorId:number,ctrlKey:boolean,shiftKey:boolean,normX:number,normY:number)=>void>}*/
@@ -142,6 +151,17 @@ export default class VtkScene {
         const remover = () => this.#cameraChangedListeners.delete(remover);
         this.#cameraChangedListeners.set(remover, handler);
         return remover;
+    };
+    /**
+     * Fires once, 300 ms after the last camera event, with the origin of that
+     * settle window: `gesture` if any event in the window occurred while user
+     * input was active, `programmatic` otherwise. See CameraGestureTracker.
+     *
+     * @param {(origin:'gesture'|'programmatic')=>void} handler
+     * @return {()=>void} a remover
+     */
+    addCameraSettledListener = (handler) => {
+        return this.#cameraGestureTracker.addSettledListener(handler);
     };
     /**
      * @param {(actorId:number,ctrlKey:boolean,shiftKey:boolean,normX:number,normY:number)=>void} handler
@@ -387,6 +407,10 @@ export default class VtkScene {
             for (const callback of cameraChangedListeners.values()) {
                 callback(camera);
             }
+            // Debounce + origin capture (story 3.2, D1-a). Bound here, at the
+            // fan-out, rather than through addCameraChangedListener: that
+            // wrapper reads the whole wasm camera back per event.
+            this.#cameraGestureTracker?.noteCameraEvent();
         });
 
         /**@type{boolean}*/
@@ -479,6 +503,9 @@ export default class VtkScene {
         // TODO: need to remove this event listener when the user disposes the WasmView object
         window.addEventListener('keyup', async (e) => {
             switch (e.key.toLowerCase()) {
+                // NOTE: the z/r key list is mirrored in CameraGestureTracker,
+                // which treats a keyup on either as active user input. Adding
+                // a camera-mutating key here means adding it there too.
                 case 'z':
                     await renderer.ResetCamera();
                     await renderWindow.Render();
@@ -506,6 +533,12 @@ export default class VtkScene {
             },
             true
         );
+
+        // Constructed last, so its listeners register after the ones above and
+        // after the wasm canvas's own wheel handler. The tracker does not
+        // depend on that order: an impulse arriving while a settle is already
+        // pending marks that window as a gesture.
+        this.#cameraGestureTracker = new CameraGestureTracker(canvasDiv, canvas);
     };
 
     #setupFpsMonitor = () => {
