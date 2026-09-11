@@ -9,7 +9,7 @@ build-system-version = "1.7.0"
 
 [project]
 name = "ansys-visor-viewer"
-version = "1.0.dev0"
+version = "1.0.1"
 description = "VISOR 3D visualization web component framework"
 requires-python = ">=3.11,<4.0"
 dynamic = ["dependencies"]
