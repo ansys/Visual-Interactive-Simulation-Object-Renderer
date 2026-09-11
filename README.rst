@@ -2,7 +2,7 @@
 Visual Interactive Simulation Object Renderer (VISOR)
 =====================================================
 
-|pyansys|  |Apache-2.0|  |black|
+|pyansys| |python| |pypi| |GH-CI| |Apache-2.0| |black|
 
 .. |pyansys| image:: https://img.shields.io/badge/Py-Ansys-ffc107.svg?labelColor=black&logo=data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAABDklEQVQ4jWNgoDfg5mD8vE7q/3bpVyskbW0sMRUwofHD7Dh5OBkZGBgW7/3W2tZpa2tLQEOyOzeEsfumlK2tbVpaGj4N6jIs1lpsDAwMJ278sveMY2BgCA0NFRISwqkhyQ1q/Nyd3zg4OBgYGNjZ2ePi4rB5loGBhZnhxTLJ/9ulv26Q4uVk1NXV/f///////69du4Zdg78lx//t0v+3S88rFISInD59GqIH2esIJ8G9O2/XVwhjzpw5EAam1xkkBJn/bJX+v1365hxxuCAfH9+3b9/+////48cPuNehNsS7cDEzMTAwMMzb+Q2u4dOnT2vWrMHu9ZtzxP9vl/69RVpCkBlZ3N7enoDXBwEAAA+YYitOilMVAAAAAElFTkSuQmCC
    :target: https://docs.pyansys.com/
@@ -16,12 +16,12 @@ Visual Interactive Simulation Object Renderer (VISOR)
    :target: https://pypi.org/project/ansys-visor-viewer
    :alt: PyPI
 
-.. |GH-CI| image:: https://github.com/ansys/Visual-Interactive-Simulation-Object-Renderer/actions/workflows/build_and_release.yml/badge.svg?branch=main
-   :target: https://github.com/ansys/Visual-Interactive-Simulation-Object-Renderer/actions/workflows/build_and_release.yml
+.. |GH-CI| image:: https://github.com/ansys/Visual-Interactive-Simulation-Object-Renderer/actions/workflows/build_and_package.yml/badge.svg?branch=main
+   :target: https://github.com/ansys/Visual-Interactive-Simulation-Object-Renderer/actions/workflows/build_and_package.yml
    :alt: GH-CI
 
-.. |codecov| image:: https://codecov.io/gh/ansys/visor/branch/main/graph/badge.svg
-   :target: https://codecov.io/gh/ansys/visor
+.. |codecov| image:: https://codecov.io/gh/ansys/Visual-Interactive-Simulation-Object-Renderer/branch/main/graph/badge.svg
+   :target: https://codecov.io/gh/ansys/Visual-Interactive-Simulation-Object-Renderer
 
 .. |Apache-2.0| image::  https://img.shields.io/badge/License-Apache%202.0-blue.svg
    :target: https://opensource.org/license/Apache-2.0
@@ -31,20 +31,13 @@ Visual Interactive Simulation Object Renderer (VISOR)
    :target: https://github.com/psf/black
    :alt: Black
 
-.. |pre-commit| image:: https://results.pre-commit.ci/badge/github/ansys/visor/main.svg
-   :target: https://results.pre-commit.ci/latest/github/ansys/visor/main
+.. |pre-commit| image:: https://results.pre-commit.ci/badge/github/ansys/Visual-Interactive-Simulation-Object-Renderer/main.svg
+   :target: https://results.pre-commit.ci/latest/github/ansys/Visual-Interactive-Simulation-Object-Renderer/main
    :alt: pre-commit.ci status
 
 .. contents::
    :local:
 
-
-
-Demo
-----
-
-You can view a `demo <https://visor.dev.ansysapis.com/index.html>`_ of
-VISOR to see it in action.
 
 
 Overview
