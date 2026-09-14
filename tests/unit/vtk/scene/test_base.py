@@ -27,7 +27,10 @@ from vtkmodules.vtkFiltersSources import vtkSphereSource
 
 from ansys.visor.viewer.core.visor_colors import VisorColors
 from ansys.visor.viewer.core.visor_enums import VisorVtkVariableType
+from ansys.visor.viewer.models.common.visor_camera_state import VisorCameraState
+from ansys.visor.viewer.models.common.visor_ui_state import VisorUIState
 from ansys.visor.viewer.models.common.visor_variable_state import VisorVariableState
+from ansys.visor.viewer.models.persist.persisted_viewer_state import PersistedViewerStateV1
 from ansys.visor.viewer.models.runtime.dataset.runtime_dataset_state import (
     RuntimeDatasetState,
     RuntimePartProperties,
@@ -151,6 +154,22 @@ def array_dataset() -> vtkPolyData:
     return dataset
 
 
+# ---------------------------------------------------------------------------
+# Object-manager id literals
+#
+# Hand-written and distinctive.  Seeded into the renderer fixture's id source
+# keyed on object identity, so that asserting RENDER_WINDOW_WASM_ID fails --
+# rather than coincides -- if the re-serialisation names the renderer, the
+# interactor, the picker or the active camera instead of the render window.
+#
+# Asserting against the id source's own answer for the attribute production
+# reads would pin nothing: it would pass whichever object production named.
+# ---------------------------------------------------------------------------
+
+RENDER_WINDOW_WASM_ID = 8150001
+WRONG_OBJECT_WASM_ID = 8150999
+
+
 @pytest.fixture
 def renderer():
     """Real VisorLocalRenderer with every VTK sub-system patched out.
@@ -158,6 +177,12 @@ def renderer():
     Real, so the apply bodies under test actually run against real VTK
     objects; the sub-systems are patched so no render window, interactor,
     LocalView or widget is created.
+
+    The object manager that arrives with the patched LocalView is a MagicMock,
+    so its ``GetId`` is seeded here rather than in a test: keyed on object
+    identity, the render window resolves to RENDER_WINDOW_WASM_ID and every
+    other object to WRONG_OBJECT_WASM_ID.  That is what lets the ordering test
+    below assert which object the re-serialisation named.
     """
     mock_server = MagicMock()
     mock_server.state = {}
@@ -177,7 +202,15 @@ def renderer():
             VisorLocalRenderer, "_initialize_bounding_box_widget", return_value=MagicMock()
         ),
     ):
-        return VisorLocalRenderer(mock_server)
+        r = VisorLocalRenderer(mock_server)
+
+    r._object_manager.GetId.side_effect = (
+        lambda obj: RENDER_WINDOW_WASM_ID
+        if obj is r._render_window
+        else WRONG_OBJECT_WASM_ID
+    )
+    return r
+
 
 
 @pytest.fixture
@@ -898,6 +931,228 @@ def test_get_state_snapshots_the_registry_rather_than_referencing_it(scene, regi
     assert snapshot.part_states[NODE_ID].opacity == 0.25
 
 
+# ---------------------------------------------------------------------------
+# Save path — the camera
+#
+# The save takes the camera from the renderer's record.  Three things could
+# supply one and they are told apart here by value, not by call recording:
+#
+#   * the record          -> RECORD_*    (what the save must write)
+#   * the browser's reply -> REPLY_*     (what the save wrote before)
+#   * the pipeline camera -> PIPELINE_*  (the record's projection, which
+#                                         re-imports VTK's own drift)
+#
+# The record and the pipeline agree in the running application except in
+# clipping_range, and only after a ResetCamera, so reading the pipeline is a
+# silent failure there.  The three literal sets below differ in every field so
+# that it is not silent here.
+#
+# These tests run the REAL state mapper -- not the _capture_persist_input
+# helper, which stubs it -- because the assertion has to be on the object
+# get_state returns.  An assignment placed after runtime_to_persisted passes
+# every assertion made against the runtime object and still writes the wrong
+# file.  The registry is replaced with an empty one so the mapper's per-dataset
+# loop is empty and cannot contribute a failure.
+# ---------------------------------------------------------------------------
+
+# Hand-written literals.  Nothing here is computed the way the code computes
+# it, and no value originates from VTK.
+RECORD_POSITION = [11.0, 12.0, 13.0]
+RECORD_FOCAL_POINT = [14.0, 15.0, 16.0]
+RECORD_VIEW_UP = [0.0, 1.0, 0.0]
+RECORD_CLIPPING_RANGE = [17.0, 18.0]
+RECORD_PARALLEL_PROJECTION = True
+RECORD_VIEW_ANGLE = 31.0
+RECORD_PARALLEL_SCALE = 19.0
+
+REPLY_POSITION = [21.0, 22.0, 23.0]
+REPLY_CLIPPING_RANGE = [27.0, 28.0]
+
+PIPELINE_POSITION = [31.0, 32.0, 33.0]
+PIPELINE_CLIPPING_RANGE = [37.0, 38.0]
+
+
+def _record_camera() -> VisorCameraState:
+    """The renderer's camera record, from hand-written literals."""
+    return VisorCameraState(
+        position=RECORD_POSITION,
+        focal_point=RECORD_FOCAL_POINT,
+        view_up=RECORD_VIEW_UP,
+        clipping_range=RECORD_CLIPPING_RANGE,
+        parallel_projection=RECORD_PARALLEL_PROJECTION,
+        view_angle=RECORD_VIEW_ANGLE,
+        parallel_scale=RECORD_PARALLEL_SCALE,
+    )
+
+
+def _reply_camera() -> VisorCameraState:
+    """What the browser answers getState with.  Never the right answer."""
+    return VisorCameraState(
+        position=REPLY_POSITION,
+        focal_point=[24.0, 25.0, 26.0],
+        view_up=[1.0, 0.0, 0.0],
+        clipping_range=REPLY_CLIPPING_RANGE,
+        parallel_projection=False,
+        view_angle=32.0,
+        parallel_scale=29.0,
+    )
+
+
+def _pipeline_camera() -> VisorCameraState:
+    """What a read of the pipeline vtkCamera would return."""
+    return VisorCameraState(
+        position=PIPELINE_POSITION,
+        focal_point=[34.0, 35.0, 36.0],
+        view_up=[0.0, 0.0, 1.0],
+        clipping_range=PIPELINE_CLIPPING_RANGE,
+        parallel_projection=False,
+        view_angle=33.0,
+        parallel_scale=39.0,
+    )
+
+
+class _CameraRecordRenderer:
+    """Hand-written renderer double for the save path's camera read.
+
+    Deliberately not a MagicMock.  It answers the pipeline read with numbers
+    of its own, so an implementation that read the pipeline instead of the
+    record fails on **values** rather than on AttributeError -- an
+    AttributeError would also be raised by an implementation that read nothing
+    at all, and the two are different defects.
+
+    Records the scene's lock depth at the moment the record is read, so the
+    read can be asserted to happen with the lock *held* rather than merely
+    taken at some point.
+    """
+
+    def __init__(self, record, pipeline_camera, scene=None):
+        self._record = record
+        self._pipeline_camera = pipeline_camera
+        self._scene = scene
+        self.record_reads = 0
+        self.pipeline_reads = 0
+        self.depth_at_read = None
+
+    def get_camera_state(self):
+        self.record_reads += 1
+        if self._scene is not None:
+            self.depth_at_read = getattr(self._scene._vtk_lock, "depth", None)
+        return self._record
+
+    def _read_pipeline_camera(self):
+        self.pipeline_reads += 1
+        return self._pipeline_camera
+
+
+def _save_scene(scene, record, reply_camera):
+    """Wire *scene* for a save whose record is *record* and whose browser
+    reply carries *reply_camera*.  Returns the renderer double."""
+    double = _CameraRecordRenderer(record, _pipeline_camera(), scene=scene)
+    scene._renderer = double
+    scene._dataset_registry = VisorDatasetRegistry()
+
+    async def _get_runtime_state_async(timeout):
+        return RuntimeAppState.from_components(
+            dark_mode=False,
+            unit="m",
+            dataset_states={},
+            camera=reply_camera,
+        )
+
+    scene._get_runtime_state_async = _get_runtime_state_async
+    return double
+
+
+def test_get_state_takes_the_camera_from_the_record(scene):
+    """The saved camera is the record's, field for field.
+
+    This is the assertion that pins the change.  Reverted, the camera on the
+    returned state is the browser's reply and every field below differs.
+
+    Asserted on what get_state RETURNS -- the object that reaches the writer
+    -- not on the runtime state it was built from.
+    """
+    _save_scene(scene, _record_camera(), _reply_camera())
+
+    persisted = asyncio.run(scene.get_state(timeout=1.0))
+
+    camera = persisted.scene.camera
+    assert camera.position == RECORD_POSITION
+    assert camera.focal_point == RECORD_FOCAL_POINT
+    assert camera.view_up == RECORD_VIEW_UP
+    assert camera.clipping_range == RECORD_CLIPPING_RANGE
+    assert camera.parallel_projection == RECORD_PARALLEL_PROJECTION
+    assert camera.view_angle == RECORD_VIEW_ANGLE
+    assert camera.parallel_scale == RECORD_PARALLEL_SCALE
+
+
+def test_get_state_discards_the_camera_the_browser_returned(scene):
+    """The browser's camera does not survive into the persisted state.
+
+    Its own test rather than an extra assertion above: "wrote the record" and
+    "did not write the reply" are the same only while the round trip still
+    carries a camera at all, and the round trip is not being removed.
+    """
+    _save_scene(scene, _record_camera(), _reply_camera())
+
+    persisted = asyncio.run(scene.get_state(timeout=1.0))
+
+    assert persisted.scene.camera.position != REPLY_POSITION
+    assert persisted.scene.camera.clipping_range != REPLY_CLIPPING_RANGE
+
+
+def test_get_state_does_not_read_the_pipeline_camera(scene):
+    """The record is read; the pipeline is not.
+
+    The one test that separates the record from its own projection.  In the
+    running application the two agree except in clipping_range, and only
+    after a ResetCamera, so no manual check discriminates them reliably.
+    """
+    double = _save_scene(scene, _record_camera(), _reply_camera())
+
+    persisted = asyncio.run(scene.get_state(timeout=1.0))
+
+    assert double.record_reads == 1
+    assert double.pipeline_reads == 0
+    assert persisted.scene.camera.position != PIPELINE_POSITION
+    assert persisted.scene.camera.clipping_range != PIPELINE_CLIPPING_RANGE
+
+
+def test_get_state_writes_no_camera_when_the_record_is_empty(scene):
+    """Negative twin: an empty record writes no camera, reply notwithstanding.
+
+    The record is None only for a scene that never held a dataset, since the
+    first one resets the camera and that reset writes the record.  The reply
+    carries a perfectly valid camera, so this is the only test in the module
+    that a guarded assignment -- one that skipped the write when the record
+    was None -- would fail.
+    """
+    _save_scene(scene, None, _reply_camera())
+
+    persisted = asyncio.run(scene.get_state(timeout=1.0))
+
+    assert persisted.scene.camera is None
+
+
+def test_get_state_reads_the_camera_under_the_lock(scene):
+    """The lock is *held* at the moment the record is read.
+
+    The record is a single attribute holding a whole object reference, but the
+    read sits in the same critical section as the registry snapshot and is
+    asserted the same way, on the precedent of
+    test_get_state_reads_the_registry_under_the_lock -- which also covers the
+    await, since the lock is taken after it and never held across it.
+    """
+    scene._vtk_lock = _LockSpy()
+    double = _save_scene(scene, _record_camera(), _reply_camera())
+
+    asyncio.run(scene.get_state(timeout=1.0))
+
+    assert double.depth_at_read >= 1
+    assert scene._vtk_lock.depth == 0
+    assert scene._vtk_lock.enter_count == scene._vtk_lock.exit_count
+
+
 def test_apply_state_pushes_a_json_encodable_runtime_state(scene, registry):
     """What the bridge is handed survives JSON encoding.
 
@@ -970,6 +1225,197 @@ def test_apply_state_does_not_flush_after_the_bridge_call(scene, registry):
     _apply(scene, _runtime_state({NODE_ID: RuntimePartProperties(id=NODE_ID, opacity=0.25)}))
 
     assert order == ["bridge"]
+
+
+# ---------------------------------------------------------------------------
+# Load path — the camera
+#
+# These are the only tests in this module that drive apply_state with a real
+# PersistedViewerStateV1, through the real state mapper, rather than through
+# the _apply helper (which stubs the mapper) or mocked_scene (which pins its
+# return value).  Two consequences, both deliberate:
+#
+#   1. They exercise the mapper's camera pass-through as well as the camera
+#      step, so they are the first tests here that would notice if the mapper
+#      stopped handing camera on verbatim.
+#   2. A failure could in principle be the unstubbed path rather than the
+#      camera step.  The camera-bearing and camera-free tests below are built
+#      from the SAME constructor call, differing in one argument, so the pair
+#      discriminates: both failing means the shared path, only the first
+#      failing means the camera step, only the second means the guard.
+#
+# ``datasets={}`` keeps the mapper's per-dataset loop empty, so the registry
+# hop (get_by_name) is never taken and cannot contribute a failure.
+# ---------------------------------------------------------------------------
+
+# Hand-written literals.  Nothing here is computed the way the code computes
+# it, and no value originates from VTK.
+CAMERA_POSITION = [1.0, 2.0, 3.0]
+CAMERA_FOCAL_POINT = [4.0, 5.0, 6.0]
+CAMERA_VIEW_UP = [0.0, 0.0, 1.0]
+CAMERA_CLIPPING_RANGE = [7.0, 8.0]
+CAMERA_PARALLEL_PROJECTION = False
+CAMERA_VIEW_ANGLE = 30.0
+CAMERA_PARALLEL_SCALE = 9.0
+
+
+def _persisted_state(camera):
+    """A real PersistedViewerStateV1 carrying *camera*, or no camera at all.
+
+    One constructor, one varying argument: the camera-bearing and camera-free
+    cases differ in nothing else, which is what makes the pair a discriminator
+    rather than two unrelated tests.
+    """
+    return PersistedViewerStateV1.from_components(
+        ui_state=VisorUIState(dark_theme=False),
+        unit="m",
+        orthographic_enabled=None,
+        cross_section_enabled=None,
+        edges_enabled=None,
+        bounding_box_enabled=None,
+        datasets={},
+        camera=camera,
+    )
+
+
+def _persisted_camera() -> VisorCameraState:
+    """The camera the save file carries, from hand-written literals."""
+    return VisorCameraState(
+        position=CAMERA_POSITION,
+        focal_point=CAMERA_FOCAL_POINT,
+        view_up=CAMERA_VIEW_UP,
+        clipping_range=CAMERA_CLIPPING_RANGE,
+        parallel_projection=CAMERA_PARALLEL_PROJECTION,
+        view_angle=CAMERA_VIEW_ANGLE,
+        parallel_scale=CAMERA_PARALLEL_SCALE,
+    )
+
+
+def test_apply_state_writes_the_camera_record(scene):
+    """Store half: a camera in the file becomes the server's record.
+
+    This is the assertion that pins the change.  Reverted, the record stays
+    None and this fails on attribute access.
+    """
+    scene.apply_state(_persisted_state(_persisted_camera()))
+
+    assert scene._renderer.get_camera_state().position == CAMERA_POSITION
+
+
+def test_apply_state_projects_the_camera_onto_the_pipeline(scene):
+    """Apply half: the record reaches the server's pipeline camera.
+
+    Asserted separately from the store half.  Either can silently do nothing
+    while the other works, and a record that is never projected is precisely
+    the arrangement that leaves a refresh showing the wrong camera -- the
+    record would be right and the camera the client rebuilds from would not.
+    """
+    scene.apply_state(_persisted_state(_persisted_camera()))
+
+    camera = scene._renderer._vtk_renderer.GetActiveCamera.return_value
+    camera.SetPosition.assert_called_once_with(CAMERA_POSITION)
+    camera.SetFocalPoint.assert_called_once_with(CAMERA_FOCAL_POINT)
+    camera.SetViewUp.assert_called_once_with(CAMERA_VIEW_UP)
+    camera.SetClippingRange.assert_called_once_with(CAMERA_CLIPPING_RANGE)
+    camera.SetParallelProjection.assert_called_once_with(CAMERA_PARALLEL_PROJECTION)
+    camera.SetViewAngle.assert_called_once_with(CAMERA_VIEW_ANGLE)
+    camera.SetParallelScale.assert_called_once_with(CAMERA_PARALLEL_SCALE)
+
+
+def test_apply_state_without_a_camera_leaves_the_record_untouched(scene):
+    """Absent says nothing: a camera-free file does not reset the record.
+
+    The negative twin of the two tests above -- same constructor, one
+    argument changed -- so a failure here against a pass there isolates the
+    guard, and a failure in both isolates the unstubbed path instead.
+    """
+    seeded = _persisted_camera()
+    scene._renderer.sync_camera(seeded)
+    scene._renderer._vtk_renderer.GetActiveCamera.return_value.reset_mock()
+
+    scene.apply_state(_persisted_state(None))
+
+    assert scene._renderer.get_camera_state() is seeded
+    scene._renderer._vtk_renderer.GetActiveCamera.return_value.SetPosition.assert_not_called()
+
+
+def test_apply_state_syncs_the_camera_under_the_lock_before_the_render_step(scene):
+    """The camera step holds the lock, and precedes the delegated render.
+
+    Placement is load-bearing and nothing else in the suite pins it: the
+    existing ordering test records only the bridge call and the flush, so a
+    camera step written after the render would leave every assertion in this
+    module passing while the flush pushed a pipeline whose camera had not
+    been written yet.
+
+    The sequence also carries the re-serialisation, and carries it with the
+    id argument production passed.  Writing the pipeline camera makes the
+    server correct; it does not make the state the client is served correct,
+    and the two are separate steps that can each silently do nothing.  The
+    spy appends the literal string ``"camera"`` for the write, the two-tuple
+    ``("serialize", <ids>)`` for the re-serialisation -- the tuple is the
+    recording format, not the argument -- and ``"bridge"`` for the delegated
+    render step.  ``<ids>`` is asserted as the list production passes, since
+    ``UpdateStatesFromObjects`` takes a sequence.
+
+    Ordered between the two: after the write, because re-serialising before
+    it would publish the pre-load camera; before the render step, because the
+    delegated step is where the state leaves for the client.
+    """
+    scene._vtk_lock = _LockSpy()
+    order = []
+    observed = {}
+
+    real_sync = scene._renderer.sync_camera
+
+    def _sync(camera_state):
+        order.append("camera")
+        observed["depth"] = scene._vtk_lock.depth
+        return real_sync(camera_state)
+
+    scene._renderer.sync_camera = _sync
+    scene._renderer._object_manager.UpdateStatesFromObjects = (
+        lambda ids: order.append(("serialize", ids))
+    )
+    scene._apply_runtime_state_to_render = lambda state: order.append("bridge")
+
+    scene.apply_state(_persisted_state(_persisted_camera()))
+
+    assert order == [
+        "camera",
+        ("serialize", [RENDER_WINDOW_WASM_ID]),
+        "bridge",
+    ]
+    assert observed["depth"] >= 1
+    assert scene._vtk_lock.depth == 0
+    assert scene._vtk_lock.enter_count == scene._vtk_lock.exit_count
+
+
+def test_apply_state_serializes_the_camera_under_the_lock(scene):
+    """The re-serialisation runs inside the same critical section as the write.
+
+    Its own test rather than another assertion on the ordering test, on the
+    precedent of ``test_reset_camera_holds_the_lock``: lock depth and call
+    order fail for different reasons and want to be readable apart.
+
+    A re-serialisation that escaped the lock would read the VTK object graph
+    while another thread was free to mutate it, and would serve the client a
+    half-written scene.  The failure would be intermittent and would never
+    reproduce under a gate.
+    """
+    scene._vtk_lock = _LockSpy()
+    observed = {}
+
+    scene._renderer._object_manager.UpdateStatesFromObjects = (
+        lambda ids: observed.update(depth=scene._vtk_lock.depth)
+    )
+
+    scene.apply_state(_persisted_state(_persisted_camera()))
+
+    assert observed["depth"] >= 1
+    assert scene._vtk_lock.depth == 0
+    assert scene._vtk_lock.enter_count == scene._vtk_lock.exit_count
+
 
 
 def test_restore_part_states_holds_the_lock(scene, registry, pipeline):

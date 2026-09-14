@@ -1,4 +1,5 @@
 import {
+    AppliedCameraState,
     ColorVariableDescriptor,
     GeometryPickMode,
     IRenderer,
@@ -79,7 +80,7 @@ export class NullRenderer implements IRenderer {
         // no-op
     }
 
-    async setCameraStateAsync(_state: VisorCameraState): Promise<void> {
+    async setCameraStateAsync(_state: AppliedCameraState): Promise<void> {
         // no-op
     }
 

@@ -28,6 +28,7 @@ from ansys.visor.viewer.config import settings
 from ansys.visor.viewer.core.perf_timer import PerfTimer
 from ansys.visor.viewer.core.visor_colors import VisorColors
 from ansys.visor.viewer.core.visor_logging import VisorDefaultLogger
+from ansys.visor.viewer.models.common.visor_camera_state import VisorCameraState
 from ansys.visor.viewer.models.runtime.vtk.renderer_annotation import (
     WasmNodeHandles,
     WasmRendererAnnotation,
@@ -40,7 +41,6 @@ from ansys.visor.viewer.vtk.widgets.visor_cross_section import VisorCrossSection
 from ansys.visor.viewer.vtk.widgets.visor_orientation import VisorOrientationWidget
 
 if TYPE_CHECKING:
-    from ansys.visor.viewer.models.common.visor_camera_state import VisorCameraState
     from ansys.visor.viewer.vtk.scene_graph import VisorSceneGraphPartNode
 
 logger = VisorDefaultLogger(__name__)
@@ -285,24 +285,101 @@ class VisorLocalRenderer(IRenderer):
     # ------------------------------------------------------------------
 
     def reset_camera(self, bounds: list[float]) -> None:
-        """See :meth:`IRenderer.reset_camera`."""
+        """See :meth:`IRenderer.reset_camera`.
+
+        ``ResetCamera`` computes the framing, so the pipeline camera is
+        written first and the record is read back from it.  This is the only
+        method on this class that derives the record from the pipeline rather
+        than projecting the record onto it.
+        """
         self._vtk_renderer.ResetCamera(bounds)
+        self._last_camera_state = self._read_pipeline_camera()
 
     def get_camera_state(self) -> Optional["VisorCameraState"]:
         """See :meth:`IRenderer.get_camera_state`.
 
-        Returns ``None`` on this branch: no coordinator caller and no
-        frontend round-trip populates the store.  Phase 3 wires the sync.
+        ``None`` until a writer has run: :meth:`reset_camera` or
+        :meth:`sync_camera`.
         """
         return self._last_camera_state
 
     def sync_camera(self, camera_state: "VisorCameraState") -> None:
         """See :meth:`IRenderer.sync_camera`.
 
-        Stores the state for :meth:`get_camera_state` to return.  No
-        coordinator caller on this branch; Phase 3 wires the round-trip.
+        Stores the object as given -- no defensive copy, so
+        :meth:`get_camera_state` returns the same object -- then projects it
+        onto the pipeline camera.  Store first: if a VTK setter raised, the
+        record would still hold what the caller asked for.
         """
         self._last_camera_state = camera_state
+        self._apply_to_pipeline_camera(camera_state)
+
+    def serialize_camera_state(self) -> None:
+        """See :meth:`IRenderer.serialize_camera_state`.
+
+        ``vtklocal`` advertises each object's modification time off the live
+        VTK object but serves state out of a serialization cache that only
+        ``UpdateStatesFromObjects`` refreshes.  Writing the pipeline camera
+        without this call publishes a new version number against the old
+        content, and the client fetches the pre-write camera and applies it
+        over the one just installed.
+
+        The render window's id is passed, not the camera's own.  It is the
+        form the framework itself reproduces -- ``LocalView.update`` resolves
+        ``[self._render_window, *registered]`` to ids and hands those to
+        ``UpdateStatesFromObjects`` -- and the camera sits inside the render
+        window's dependency closure, which is why ``get_status`` can name the
+        camera's id at all when building ``ignore_ids``.
+
+        No ``js_call``: that lives in ``LocalView.update``, not in the object
+        manager, so this serialises without pushing and without re-opening
+        the rebuild race ``_apply_runtime_state_to_render`` refuses.
+        """
+        self._object_manager.UpdateStatesFromObjects(
+            [self._object_manager.GetId(self._render_window)]
+        )
+
+    # ------------------------------------------------------------------
+    # Pipeline camera helpers
+    #
+    # Neither takes a lock.  The caller-holds convention applies exactly as
+    # it does to every other IRenderer method: the scene coordinator holds
+    # ``VisorSceneBase._vtk_lock`` across every path that reaches these.
+    # ------------------------------------------------------------------
+
+    def _read_pipeline_camera(self) -> VisorCameraState:
+        """Read the active pipeline camera into a fresh camera state.
+
+        ``GetParallelProjection`` returns an ``int``; it is converted
+        explicitly rather than leaning on pydantic's non-strict coercion, so
+        the field's type does not depend on a validation setting.
+        """
+        camera = self._vtk_renderer.GetActiveCamera()
+        return VisorCameraState(
+            position=list(camera.GetPosition()),
+            focal_point=list(camera.GetFocalPoint()),
+            view_up=list(camera.GetViewUp()),
+            clipping_range=list(camera.GetClippingRange()),
+            parallel_projection=bool(camera.GetParallelProjection()),
+            view_angle=camera.GetViewAngle(),
+            parallel_scale=camera.GetParallelScale(),
+        )
+
+    def _apply_to_pipeline_camera(self, camera_state: "VisorCameraState") -> None:
+        """Write *camera_state*'s seven fields onto the active pipeline camera.
+
+        The setter order matches the client's seven-setter order so the two
+        stacks are comparable when debugging.  Each vector is passed as a
+        single sequence, which vtkCamera accepts, rather than star-unpacked.
+        """
+        camera = self._vtk_renderer.GetActiveCamera()
+        camera.SetPosition(camera_state.position)
+        camera.SetFocalPoint(camera_state.focal_point)
+        camera.SetViewUp(camera_state.view_up)
+        camera.SetClippingRange(camera_state.clipping_range)
+        camera.SetParallelProjection(camera_state.parallel_projection)
+        camera.SetViewAngle(camera_state.view_angle)
+        camera.SetParallelScale(camera_state.parallel_scale)
 
     # ------------------------------------------------------------------
     # IRenderer: widget control (cross-section, bounding box)

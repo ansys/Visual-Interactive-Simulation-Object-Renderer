@@ -157,6 +157,16 @@ class VisorSceneBase(ABC):
         The registry hands out live ``RuntimeDatasetState`` objects that the per-part
         setters mutate from the trame daemon thread, so each one is deep-copied under
         ``_vtk_lock``.  The lock is taken after the ``await`` and never held across one.
+
+        The camera is the second thing the browser's reply does not get to supply.
+        It comes from the renderer's record, which is authoritative, rather than
+        from the reply or from the pipeline ``vtkCamera``: the pipeline is the
+        record's projection, and reading it back would re-import whatever drift
+        VTK introduced -- ``ResetCamera`` rewrites ``clipping_range``.  The
+        assignment is unconditional.  A ``None`` record means no camera was ever
+        written, and writing that ``None`` through is what says so; the guard for
+        "absent says nothing" belongs to the load path, in :meth:`apply_state`,
+        not here.
         """
         runtime_state = await self._get_runtime_state_async(timeout)
 
@@ -165,6 +175,7 @@ class VisorSceneBase(ABC):
                 dataset_id: dataset_state.model_copy(deep=True)
                 for dataset_id, dataset_state in self._dataset_registry.runtime_state_dict.items()
             }
+            runtime_state.scene.camera = self._renderer.get_camera_state()
         runtime_state.scene.dataset_states = registry_dataset_states
 
         persisted = self._state_mapper.runtime_to_persisted(runtime_state)
@@ -191,6 +202,33 @@ class VisorSceneBase(ABC):
             runtime_app_state = self._state_mapper.persisted_to_runtime(state)
 
             self._restore_part_states_from_runtime(runtime_app_state)
+
+            # The loaded camera becomes the record, and through the record the
+            # server's pipeline camera.  Before this step the loaded camera
+            # reached the browser and nowhere else, so the server's vtkCamera
+            # stayed at whatever it last held and a refresh -- which rebuilds
+            # the client from the server's serialised VTK state -- discarded
+            # the loaded camera.  The load path takes no reset that would
+            # supply one: it calls finalize_scene(skip_reset_camera=True).
+            #
+            # Ordered before the delegated render step: the pipeline camera
+            # must be correct before render_window_only() flushes it.
+            #
+            # A state with no camera says nothing, rather than saying "reset":
+            # record and pipeline are both left alone.
+            #
+            # The re-serialisation is part of the write, not an afterthought.
+            # Writing the pipeline camera makes the server correct; it does
+            # not make the state the client is served correct.  The backend
+            # advertises a version number read from the live VTK object while
+            # serving content from a cache, so a write with no re-serialise
+            # publishes a new version against old content and the client
+            # fetches the pre-load camera and applies it over the loaded one.
+            # It serialises without notifying: a push here would re-open the
+            # rebuild race the note below refuses.
+            if runtime_app_state.scene.camera is not None:
+                self._renderer.sync_camera(runtime_app_state.scene.camera)
+                self._renderer.serialize_camera_state()
 
             self._apply_runtime_state_to_render(runtime_app_state)
 

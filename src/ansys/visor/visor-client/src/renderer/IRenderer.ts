@@ -25,6 +25,17 @@ export type VisorCameraState = Readonly<{
     parallelScale: number;
 }>;
 
+/** The seven camera fields that can be applied. No derived fields. */
+export type AppliedCameraState = Readonly<{
+    position: readonly number[];
+    focalPoint: readonly number[];
+    viewUp: readonly number[];
+    clippingRange: readonly number[];
+    parallelProjection: boolean;
+    viewAngle: number;
+    parallelScale: number;
+}>;
+
 /** Descriptor consumed by setColorVariableAsync. */
 export type ColorVariableDescriptor = Readonly<{
     spectrumId: string;
@@ -97,11 +108,11 @@ export interface IRenderer {
     setCameraViewAngleAsync(angle: number): Promise<void>;
     setCameraParallelScaleAsync(scale: number): Promise<void>;
     /**
-     * Apply an entire camera snapshot in one RPC. WasmRenderer implements it
+     * Apply the seven applied camera fields in one RPC. WasmRenderer implements it
      * by delegating to the seven per-field setters above. See §11 for the
      * Story 3.2 rationale (server-tracked camera + sync-back).
      */
-    setCameraStateAsync(state: VisorCameraState): Promise<void>;
+    setCameraStateAsync(state: AppliedCameraState): Promise<void>;
     /** Frame the scene on the given bounds; used by scene-graph rebuilds. */
     resetCameraAsync(bounds?: readonly number[]): Promise<void>;
 
