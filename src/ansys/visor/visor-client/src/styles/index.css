@@ -1,6 +1,14 @@
-*,
-*::before,
-*::after {
+/* Scope the global reset to `.visor-embed-style` / `.visor-root` so it does not
+    affect the host application when Visor is embedded. Wrap Visor content
+    in a container with class `visor-embed-style` (preferred) or `visor-root`. */
+.visor-embed-style,
+.visor-root,
+.visor-embed-style *,
+.visor-root *,
+.visor-embed-style *::before,
+.visor-root *::before,
+.visor-embed-style *::after,
+.visor-root *::after {
     margin: 0;
     padding: 0;
     line-height: 1;
@@ -19,20 +27,17 @@ html {
 @font-face {
     /*
     The "Source Sans 3" font is used by the Ansys AWC React library,
-    and was imported manually from there for use in Visor.
+    and is served by the Visor backend for embedded usage.
      */
     font-family: 'Source Sans 3';
     src: url('/fonts/source-sans-3.woff2') format('woff2');
 }
 
-body {
+/* Scoped styles: set height and the AWC font only within the Visor root
+    so these font and sizing rules do not leak into host applications. */
+.visor-embed-style,
+.visor-root {
     height: 100%;
-    /*
-    This font list is used by the Ansys AWC React library,
-    and was imported manually from there for use in Visor.
-    This font list can be found in CSS file "@ansys\awc-react\styles\themes\css\default.css"
-    after installing the AWC React npm package.
-     */
     font-family:
         'Source Sans 3',
         -apple-system,
@@ -48,6 +53,16 @@ body {
         'Segoe UI Emoji',
         'Segoe UI Symbol',
         'Noto Color Emoji';
+}
+
+/* Ensure Visor typography matches standalone appearance while keeping
+    styles scoped to the root container so they don't leak into host apps. */
+.visor-embed-style,
+.visor-root,
+.visor-embed-style *,
+.visor-root * {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
 }
 
 a,
