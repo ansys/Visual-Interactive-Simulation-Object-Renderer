@@ -31,6 +31,7 @@ html {
      */
     font-family: 'Source Sans 3';
     src: url('/fonts/source-sans-3.woff2') format('woff2');
+    font-display: swap;
 }
 
 /* Scoped styles: set height and the AWC font only within the Visor root
