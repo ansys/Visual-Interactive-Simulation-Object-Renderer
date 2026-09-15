@@ -6,12 +6,17 @@ Behaviour-free test double for :class:`IRenderer`.
 Implements every abstract method as a no-op so that the scene coordinator can
 be unit-tested without a VTK environment.  Methods whose return type is
 annotated return the simplest valid empty value for that type; all others are
-``pass``.  No VTK imports, no local view, no side effects, no state.
+``pass``.  No VTK imports, no local view, no side effects.
+
+One exception to "no state": the camera record, ``_last_camera_state``.  The
+record half of the :class:`IRenderer` camera contract is not optional on any
+implementation -- only the projection half is, and here it is a no-op because
+there is no pipeline camera to project onto.
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from ansys.visor.viewer.renderer.base import IRenderer
 
@@ -24,6 +29,12 @@ if TYPE_CHECKING:
 
 class NullRenderer(IRenderer):
     """Null-object implementation of :class:`IRenderer` for use in tests."""
+
+    _last_camera_state: Optional["VisorCameraState"]
+
+    def __init__(self) -> None:
+        """Initialize the camera record."""
+        self._last_camera_state = None
 
     # ------------------------------------------------------------------
     # Wire contract
@@ -96,18 +107,38 @@ class NullRenderer(IRenderer):
     ) -> None:
         pass
 
+    def serialize_pipeline_states(self) -> None:
+        """See :meth:`Irenderer.serialize_pipeline_states`.
+
+        No-op: this renderer serves the client no VTK object state.
+        """
+
     # ------------------------------------------------------------------
     # Camera
     # ------------------------------------------------------------------
 
     def reset_camera(self, bounds: list[float]) -> None:
-        pass
+        """See :meth:`IRenderer.reset_camera`.
+
+        Deliberately does not write the record: with no pipeline camera there
+        is nothing to derive a camera for *bounds* from, and clearing it would
+        destroy a camera the frontend reported.
+        """
 
     def get_camera_state(self) -> "VisorCameraState | None":
-        return None
+        """See :meth:`IRenderer.get_camera_state`."""
+        return self._last_camera_state
 
     def sync_camera(self, camera_state: "VisorCameraState") -> None:
-        pass
+        """See :meth:`IRenderer.sync_camera`."""
+        self._last_camera_state = camera_state
+
+    def serialize_camera_state(self) -> None:
+        """See :meth:`IRenderer.serialize_camera_state`.
+
+        No-op: this renderer serves the client no VTK object state.
+        """
+
 
     # ------------------------------------------------------------------
     # Widget control (cross-section, bounding box)

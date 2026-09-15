@@ -192,6 +192,46 @@ class VisorSceneBase(ABC):
 
             self._restore_part_states_from_runtime(runtime_app_state)
 
+            # The loaded camera becomes the record, and through the record the
+            # server's pipeline camera.  Before this step the loaded camera
+            # reached the browser and nowhere else, so the server's vtkCamera
+            # stayed at whatever it last held and a refresh -- which rebuilds
+            # the client from the server's serialised VTK state -- discarded
+            # the loaded camera.  The load path takes no reset that would
+            # supply one: it calls finalize_scene(skip_reset_camera=True).
+            #
+            # Ordered before the delegated render step: the pipeline camera
+            # must be correct before render_window_only() flushes it.
+            #
+            # A state with no camera says nothing, rather than saying "reset":
+            # record and pipeline are both left alone.
+            #
+            # The re-serialisation is part of the write, not an afterthought.
+            # Writing the pipeline camera makes the server correct; it does
+            # not make the state the client is served correct.  The backend
+            # advertises a version number read from the live VTK object while
+            # serving content from a cache, so a write with no re-serialise
+            # publishes a new version against old content and the client
+            # fetches the pre-load camera and applies it over the loaded one.
+            # It serialises without notifying: a push here would re-open the
+            # rebuild race the note below refuses.
+            if runtime_app_state.scene.camera is not None:
+                self._renderer.sync_camera(runtime_app_state.scene.camera)
+                self._renderer.serialize_camera_state()
+
+            # The same staleness, for the part states restored above: the
+            # applies mutate actor, property and mapper in place while the
+            # client is served out of a serialization cache, so without this
+            # it reapplies the pre-load visibility, opacity and color.
+            #
+            # Unconditional, outside the camera guard: a state with no camera
+            # still carries part states.  Ordered before the delegated render
+            # step for the same reason the camera write is: that step is where
+            # the state leaves for the client.  This is the only path that
+            # calls it; the others republish the whole store via
+            # render() -> LocalView.update().
+            self._renderer.serialize_pipeline_states()
+
             self._apply_runtime_state_to_render(runtime_app_state)
 
             # Note: There is intentionally no wasm flush here: the bridge call is fire-and-forget, so a flush
@@ -199,17 +239,18 @@ class VisorSceneBase(ABC):
 
     def get_scene_details(self) -> VisorSceneDetails:
         """Return the VisorState."""
-        if self._scene_graph is None:
-            self._initialize_scene_graph()
-        annotation = self._renderer.build_renderer_annotation()
-        scene_graph_state = self._build_scene_graph_state()
-        return VisorSceneDetails.from_components(
-            dark_mode=self.dark_mode,
-            unit=self._dataset_registry.unit,
-            dataset_states=self._dataset_registry.runtime_state_dict,
-            scene_graph_state=scene_graph_state,
-            renderer_annotation=annotation,
-        )
+        with self._vtk_lock:
+            if self._scene_graph is None:
+                self._initialize_scene_graph()
+            annotation = self._renderer.build_renderer_annotation()
+            scene_graph_state = self._build_scene_graph_state()
+            return VisorSceneDetails.from_components(
+                dark_mode=self.dark_mode,
+                unit=self._dataset_registry.unit,
+                dataset_states=self._dataset_registry.runtime_state_dict,
+                scene_graph_state=scene_graph_state,
+                renderer_annotation=annotation,
+            )
 
     def get_scene_details_json(self) -> str:
         """Return the VisorVtkPipelineState as JSON string."""
@@ -393,6 +434,7 @@ class VisorSceneBase(ABC):
                 return
 
             self._renderer.reset_camera(self._scene_graph.bounds)
+            self._renderer.serialize_camera_state()
 
     def pick_geometry(self, actor_wasm_id, cell_id, mode, world_x, world_y, world_z) -> dict:
         """
