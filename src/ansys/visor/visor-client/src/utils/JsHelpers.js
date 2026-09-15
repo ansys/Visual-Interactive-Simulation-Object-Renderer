@@ -10,16 +10,20 @@ let rootFontSize = null;
  *
  * @param {number} fallback - Value to return when the root font size cannot be
  * determined in pixels. Must be zero or greater.
+ * @param {Element} [element] - Element whose computed font size is read.
+ * Defaults to `document.documentElement`. Pass the `.visor-embed-style` root
+ * when available, since that is where Visor's base font size is scoped to
+ * (the host page's `<html>` element is not modified when embedded).
  * @returns {number} The root font size in pixels, or the fallback value.
  * @throws {Error} If `fallback` is not a non-negative number.
  */
-export const getRootFontSize = (fallback) => {
+export const getRootFontSize = (fallback, element = document.documentElement) => {
     if (typeof fallback !== 'number' || fallback < 0) {
         throw new Error('fallback must be a number 0 or greater');
     }
 
     if (rootFontSize == null) {
-        const str = getComputedStyle(document.documentElement, null).getPropertyValue('font-size');
+        const str = getComputedStyle(element, null).getPropertyValue('font-size');
 
         if (/^(?:-?\d+|-?\d*[.,]\d+)px$/i.test(str)) {
             return (rootFontSize = parseFloat(str.slice(0, -2)));

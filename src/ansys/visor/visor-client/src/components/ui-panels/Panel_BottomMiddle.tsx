@@ -2,6 +2,7 @@ import { FC, RefObject, useEffect, useRef } from 'react';
 import { AwcIcons } from '../AwcIcons';
 import { VisorFrontend } from '../../VisorFrontend.tsx';
 import { makeTooltip } from '../../utils/Tooltip';
+import { appendToPortal, removeFromPortal } from '../../utils/portal';
 
 export type Panel_BottomMiddle_Util = {};
 
@@ -112,7 +113,7 @@ export const Panel_BottomMiddle: FC<{
             z-index: 1000;
             white-space: nowrap;
         `;
-        document.body.appendChild(popup);
+        appendToPortal(popup);
 
         const subModes: SelectionMode[] = ['edge', 'face', 'vertex'];
         const popupCleanupFuncs: Array<() => void> = [];
@@ -180,7 +181,7 @@ export const Panel_BottomMiddle: FC<{
 
         cleanupFuncs.push(...popupCleanupFuncs);
         cleanupFuncs.push(() => document.removeEventListener('click', closePopupOnOutsideClick));
-        cleanupFuncs.push(() => popup.remove());
+        cleanupFuncs.push(() => removeFromPortal(popup));
         //////////////////////////
         onLoad({});
         //////////////////////////
