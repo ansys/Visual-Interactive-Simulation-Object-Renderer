@@ -239,17 +239,18 @@ class VisorSceneBase(ABC):
 
     def get_scene_details(self) -> VisorSceneDetails:
         """Return the VisorState."""
-        if self._scene_graph is None:
-            self._initialize_scene_graph()
-        annotation = self._renderer.build_renderer_annotation()
-        scene_graph_state = self._build_scene_graph_state()
-        return VisorSceneDetails.from_components(
-            dark_mode=self.dark_mode,
-            unit=self._dataset_registry.unit,
-            dataset_states=self._dataset_registry.runtime_state_dict,
-            scene_graph_state=scene_graph_state,
-            renderer_annotation=annotation,
-        )
+        with self._vtk_lock:
+            if self._scene_graph is None:
+                self._initialize_scene_graph()
+            annotation = self._renderer.build_renderer_annotation()
+            scene_graph_state = self._build_scene_graph_state()
+            return VisorSceneDetails.from_components(
+                dark_mode=self.dark_mode,
+                unit=self._dataset_registry.unit,
+                dataset_states=self._dataset_registry.runtime_state_dict,
+                scene_graph_state=scene_graph_state,
+                renderer_annotation=annotation,
+            )
 
     def get_scene_details_json(self) -> str:
         """Return the VisorVtkPipelineState as JSON string."""
