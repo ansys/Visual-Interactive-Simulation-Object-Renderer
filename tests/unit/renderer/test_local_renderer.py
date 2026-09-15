@@ -103,16 +103,9 @@ class _DummyActors:
 # Hand-written rather than a MagicMock: reset_camera reads the active camera
 # back into a VisorCameraState, and pydantic rejects Mock attributes.
 #
-# Every literal below is deliberately chosen NOT to coincide with vtkCamera's
-# construction defaults, which are:
-#     position (0.0, 0.0, 1.0)      focal point (0.0, 0.0, 0.0)
-#     view up  (0.0, 1.0, 0.0)      clipping range (0.01, 1000.01)
-#     parallel projection 0         view angle 30.0
-#     parallel scale 1.0
-# If this double is ever pointed at a real vtkRenderer, an assertion against
-# these values must still be able to FAIL; a literal that happened to match a
-# default would pass vacuously and assert nothing.  View angle is the trap:
-# 30.0 is both a natural-looking choice and the VTK default, so it is avoided.
+# No literal below matches a vtkCamera construction default -- view angle 30.0
+# is the trap -- so an assertion against these values can still fail if the
+# double is ever pointed at a real vtkRenderer.
 # ---------------------------------------------------------------------------
 
 CAMERA_DOUBLE_POSITION = [11.0, 12.0, 13.0]
@@ -185,13 +178,10 @@ class _CameraDouble:
 # ---------------------------------------------------------------------------
 # Object-manager id literals
 #
-# Hand-written, and distinctive on purpose.  The id source is keyed on object
-# *identity*: the active camera resolves to its own literal, the render window
-# to a second, and every other object to the third. A test that asserts
-# ACTIVE_CAMERA_WASM_ID therefore fails if production names the render window,
-# the renderer, the interactor or the picker, instead of coinciding with
-# whatever it named. The render window keeps a literal of its own so that a
-# revert to the previous call shape fails by name rather than as the catch-all.
+# One literal per object, so asserting ACTIVE_CAMERA_WASM_ID fails -- rather
+# than coincides -- if production names the render window, the renderer, the
+# interactor or the picker instead.  The render window keeps its own literal
+# so a revert to the previous call shape fails by name, not as the catch-all.
 # ---------------------------------------------------------------------------
 
 RENDER_WINDOW_WASM_ID = 8150001
@@ -217,8 +207,7 @@ def renderer():
     mock_server.state = {}
 
     vtk_renderer = MagicMock(name="vtk_renderer")
-    # reset_camera reads the active camera back into the record, so the
-    # active camera must return numbers, not Mocks.
+    # _read_pipeline_camera feeds pydantic, which rejects Mock attributes.
     vtk_renderer.GetActiveCamera.return_value = _CameraDouble()
     render_window = MagicMock(name="render_window")
     interactor = MagicMock(name="interactor")

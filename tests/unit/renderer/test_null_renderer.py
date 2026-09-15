@@ -5,10 +5,6 @@ NullRenderer owes the *record* half of the IRenderer camera contract in full,
 and the *projection* half not at all -- there is no pipeline camera to project
 onto.  It also carries the one documented divergence from "every server-side
 camera mutation writes the record": ``reset_camera`` leaves the record alone.
-
-That divergence is the reason this module exists.  It is stated in prose in
-two places and, before this module, asserted in none; a future edit that made
-``reset_camera`` clear the record would have passed every gate in the tree.
 """
 
 from __future__ import annotations

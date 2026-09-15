@@ -285,31 +285,19 @@ class VisorLocalRenderer(IRenderer):
     # ------------------------------------------------------------------
 
     def reset_camera(self, bounds: list[float]) -> None:
-        """See :meth:`IRenderer.reset_camera`.
-
-        ``ResetCamera`` computes the framing, so the pipeline camera is
-        written first and the record is read back from it.  This is the only
-        method on this class that derives the record from the pipeline rather
-        than projecting the record onto it.
-        """
+        """See :meth:`IRenderer.reset_camera`."""
         self._vtk_renderer.ResetCamera(bounds)
         self._last_camera_state = self._read_pipeline_camera()
 
     def get_camera_state(self) -> Optional["VisorCameraState"]:
-        """See :meth:`IRenderer.get_camera_state`.
-
-        ``None`` until a writer has run: :meth:`reset_camera` or
-        :meth:`sync_camera`.
-        """
+        """See :meth:`IRenderer.get_camera_state`."""
         return self._last_camera_state
 
     def sync_camera(self, camera_state: "VisorCameraState") -> None:
         """See :meth:`IRenderer.sync_camera`.
 
-        Stores the object as given -- no defensive copy, so
-        :meth:`get_camera_state` returns the same object -- then projects it
-        onto the pipeline camera.  Store first: if a VTK setter raised, the
-        record would still hold what the caller asked for.
+        Stores before projecting, so a raising VTK setter still leaves the
+        record holding what the earlier caller asked for.
         """
         self._last_camera_state = camera_state
         self._apply_to_pipeline_camera(camera_state)
@@ -350,9 +338,8 @@ class VisorLocalRenderer(IRenderer):
     def _read_pipeline_camera(self) -> VisorCameraState:
         """Read the active pipeline camera into a fresh camera state.
 
-        ``GetParallelProjection`` returns an ``int``; it is converted
-        explicitly rather than leaning on pydantic's non-strict coercion, so
-        the field's type does not depend on a validation setting.
+        ``GetParallelProjection`` returns an ``int``; the explicit ``bool()``
+        keeps the field's type off pydantic's non-strict coercion.
         """
         camera = self._vtk_renderer.GetActiveCamera()
         return VisorCameraState(
@@ -366,12 +353,7 @@ class VisorLocalRenderer(IRenderer):
         )
 
     def _apply_to_pipeline_camera(self, camera_state: "VisorCameraState") -> None:
-        """Write *camera_state*'s seven fields onto the active pipeline camera.
-
-        The setter order matches the client's seven-setter order so the two
-        stacks are comparable when debugging.  Each vector is passed as a
-        single sequence, which vtkCamera accepts, rather than star-unpacked.
-        """
+        """Write *camera_state*'s onto the active pipeline camera."""
         camera = self._vtk_renderer.GetActiveCamera()
         camera.SetPosition(camera_state.position)
         camera.SetFocalPoint(camera_state.focal_point)
