@@ -16,8 +16,15 @@
     visibility: inherit;
 }
 
-html {
+html,
+body {
+    /* Baseline reset kept global (not scoped): a non-zero default body
+    margin causes a viewport scrollbar and a resized/clipped full-page
+    canvas in standalone/Dash-hosted pages. This is standard boilerplate
+    (unlike font-family/line-height) and does not visibly affect a host
+    app's existing content when Visor is truly embedded as a widget. */
     height: 100%;
+    margin: 0;
 }
 
 @font-face {
