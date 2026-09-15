@@ -11,7 +11,7 @@ export function getPortalRoot(): HTMLElement {
         // Non-browser environment (SSR). Return a harmless stub to avoid
         // throwing in places that call this helper during static analysis.
         // Callers should guard when used outside the browser.
-        return ({} as HTMLElement);
+        return {} as HTMLElement;
     }
 
     // Prefer an explicit Visor embed root when present, then fall back to
