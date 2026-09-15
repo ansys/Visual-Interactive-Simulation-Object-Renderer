@@ -107,6 +107,12 @@ class NullRenderer(IRenderer):
     ) -> None:
         pass
 
+    def serialize_pipeline_states(self) -> None:
+        """See :meth:`Irenderer.serialize_pipeline_states`.
+
+        No-op: this renderer serves the client no VTK object state.
+        """
+
     # ------------------------------------------------------------------
     # Camera
     # ------------------------------------------------------------------

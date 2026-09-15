@@ -219,6 +219,19 @@ class VisorSceneBase(ABC):
                 self._renderer.sync_camera(runtime_app_state.scene.camera)
                 self._renderer.serialize_camera_state()
 
+            # The same staleness, for the part states restored above: the
+            # applies mutate actor, property and mapper in place while the
+            # client is served out of a serialization cache, so without this
+            # it reapplies the pre-load visibility, opacity and color.
+            #
+            # Unconditional, outside the camera guard: a state with no camera
+            # still carries part states.  Ordered before the delegated render
+            # step for the same reason the camera write is: that step is where
+            # the state leaves for the client.  This is the only path that
+            # calls it; the others republish the whole store via
+            # render() -> LocalView.update().
+            self._renderer.serialize_pipeline_states()
+
             self._apply_runtime_state_to_render(runtime_app_state)
 
             # Note: There is intentionally no wasm flush here: the bridge call is fire-and-forget, so a flush

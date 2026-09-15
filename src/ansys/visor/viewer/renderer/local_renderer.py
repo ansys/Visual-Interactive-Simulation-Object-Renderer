@@ -311,13 +311,13 @@ class VisorLocalRenderer(IRenderer):
         version number against the old content: the client fetches the
         pre-write camera and applies it over the one just installed.
 
-        ``UpdateStateFromObject`` resets the camera's dependency edges
-        and re-serializes it, and does nothing else.  It is not
-        interchangeable with ``UpdateStatesFromObjects``, which prunes
-        the whole store whichever ids are passed.  The interactor,
-        picker and widget objects are named in no other object's state
-        and survive a prune only by being re-serialized as roots in the
-        same pass, which nothing else on the load path does.
+        ``UpdateStateFromObject`` re-serializes the single already-registered
+        id it is given and commits its dependency edges again; a mid-tree node
+        re-serialized on its own stays reachable from its parent, so naming
+        one id is safe.  It is narrower than ``UpdateStatesFromObjects``,
+        which serializes from the roots it is given and registers objects the
+        store has not seen: an id the store has never held answers ``GetId``
+        ``0``, the ROOT sentinel, and the call degrades to an error-logged
 
         No ``js_call``: that lives in ``LocalView.update``, so this
         serialises without re-opening the rebuild race
@@ -379,6 +379,33 @@ class VisorLocalRenderer(IRenderer):
 
     def set_bounding_box_visibility(self, visible: bool) -> None:
         """No-op in Story 1.2. Phase 3 populates."""
+
+    def serialize_pipeline_states(self) -> None:
+        """ See :meth:`IRenderer.serialize_pipeline_states`.
+
+        The same staleness as the camera, for the part states: the per-node
+        applies above mutate the actor, its property and its mapper in place,
+        while the state served to the client is read from a serialization
+        cache the write does not touch.  Without this the client is advertised
+        a new version number against the pre-apply content and reapplies the
+        pre-load visibility, opactiy and color over the ones just restored.
+
+        The load path is the only caller.  Everywhere else applies are
+        followed by ``render()`` -> ``LocalView.update()``, which republishes
+        the whole store; and on the start / ``add_dataset`` paths the actors
+        have not been serialized at all yet, so ``GetId`` answers ``0`` -- the
+        ROOT sentinel -- and each call here would be an error-logged no-op.
+
+        Serialize only; do not notify, for the same reason as
+        :meth:`serialize_camera_state`.
+        """
+        for pipe in self._pipelines.values():
+            actor_id = self._object_manager.GetId(pipe.actor)
+            property_id = self._object_manager.GetId(pipe.actor.GetProperty())
+            mapper_id = self._object_manager.GetId(pipe.mapper)
+            self._object_manager.UpdateStateFromObject(actor_id)
+            self._object_manager.UpdateStateFromObject(property_id)
+            self._object_manager.UpdateStateFromObject(mapper_id)
 
     # ------------------------------------------------------------------
     # IRenderer: widget fan-out (called by coordinator today)

@@ -173,6 +173,24 @@ class IRenderer(ABC):
         MTime is stale.
         """
 
+    def serialize_pipeline_states(self) -> None:
+        """Make the state served to the client current for the node pipelines.
+
+        The per-node applies above mutate the actor, its property and its
+        mapper in place.  On a backend that serves the client serialized VTK
+        state, the write and the state the client is served are two different
+        things, and the second does not follow from the first.
+
+        **Serialize only; do not notify**: the same contract, and the same
+        reason, as :meth:`serialize_camera_state`.
+
+        The load path is the only caller: every other path follows its applies
+        with a render that republishes the whole store, and on the start path
+        the objects named here have not been serialized yet.
+
+        No-op on a renderer that serves the client no VTK object state.
+        """
+
     # ------------------------------------------------------------------------
     # Camera
     # ------------------------------------------------------------------------
@@ -206,7 +224,13 @@ class IRenderer(ABC):
     def serialize_camera_state(self) -> None:
         """Make the state served to the client current for the camera.
 
-        **Serialise only; do not notify.**  Pushing to the client is
+        The camera alone; the node pipelines are
+        :meth:`serialize_pipeline_states`'s job.  Writing the pipeline camera
+        makes the server correct: it does not make the state the client is
+        served correct, and the two are separate steps that can each silently
+        do nothing.
+
+        **Serialize only; do not notify.**  Pushing to the client is
         :meth:`flush_wasm_state`'s job and carries a rebuild race that the
         load path deliberately refuses.
 
