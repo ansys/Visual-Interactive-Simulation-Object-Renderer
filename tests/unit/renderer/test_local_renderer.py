@@ -185,18 +185,17 @@ class _CameraDouble:
 # ---------------------------------------------------------------------------
 # Object-manager id literals
 #
-# Hand-written, and distinctive on purpose.  The id source in the fixture is
-# keyed on object *identity*: the render window resolves to the first literal
-# and every other object to the second.  A test that asserts the first literal
-# therefore fails if production names the renderer, the interactor, the picker
-# or the active camera, instead of coinciding with whatever it named.
-#
-# Both are far outside the small-integer range a real object manager hands out
-# in a freshly initialised scene, so a literal arriving from anywhere other
-# than here is visible on sight.
+# Hand-written, and distinctive on purpose.  The id source is keyed on object
+# *identity*: the active camera resolves to its own literal, the render window
+# to a second, and every other object to the third. A test that asserts
+# ACTIVE_CAMERA_WASM_ID therefore fails if production names the render window,
+# the renderer, the interactor or the picker, instead of coinciding with
+# whatever it named. The render window keeps a literal of its own so that a
+# revert to the previous call shape fails by name rather than as the catch-all.
 # ---------------------------------------------------------------------------
 
 RENDER_WINDOW_WASM_ID = 8150001
+ACTIVE_CAMERA_WASM_ID = 8150002
 WRONG_OBJECT_WASM_ID = 8150999
 
 
@@ -738,32 +737,37 @@ class TestCamera:
 
         assert renderer.get_camera_state() is cam
 
-    def test_serialize_camera_state_updates_states_from_the_render_window_id(
+    def test_serialize_camera_state_updates_the_states_from_the_active_camera_id(
         self, renderer
     ):
-        """The re-serialise names the render window, and nothing else.
+        """The re-serialise names the active camera, and nothing else.
 
         The id source is keyed on object identity, so every object other than
-        the render window resolves to a different, equally distinctive
-        literal.  Asserting ``RENDER_WINDOW_WASM_ID`` therefore fails if the
-        implementation names ``_vtk_renderer``, the interactor, or the active
-        camera, rather than coinciding with them.  Asserting against
-        ``GetId(renderer._render_window)`` -- the attribute production reads
-        -- would pass in all of those cases and pin nothing.
+        the active camera resolves to a different, equally distinctive
+        literal.  Asserting ``ACTIVE_CAMERA_WASM_ID`` therefore fails if the
+        implementation names ``_render_window``, ``_vtk_renderer``, the
+        interactor or the picker, rather than coinciding with them.  The
+        render window has a literal of its own, so the previous call shape
+        fails by name.  Asserting against
+        ``GetId(renderer._vtk_renderer.GetActiveCamera())`` -- the expression
+        production reads -- would pass in all of those cases and pin nothing.
 
-        The expected value is the list production passes, not a repacking of
-        it: ``UpdateStatesFromObjects`` takes a sequence of ids.
+        The expected value is the bare id production passes:
+        ``UpdateStateFromObject`` takes a single id, not a sequence.
         """
+        camera = renderer._vtk_renderer.GetActiveCamera()
         renderer._object_manager.GetId.side_effect = (
-            lambda obj: RENDER_WINDOW_WASM_ID
+            lambda obj: ACTIVE_CAMERA_WASM_ID
+            if obj is camera
+            else RENDER_WINDOW_WASM_ID
             if obj is renderer._render_window
             else WRONG_OBJECT_WASM_ID
         )
 
         renderer.serialize_camera_state()
 
-        renderer._object_manager.UpdateStatesFromObjects.assert_called_with(
-            [RENDER_WINDOW_WASM_ID]
+        renderer._object_manager.UpdateStateFromObject.assert_called_with(
+            ACTIVE_CAMERA_WASM_ID
         )
 
     def test_serialize_camera_state_does_not_notify_the_client(self, renderer):
