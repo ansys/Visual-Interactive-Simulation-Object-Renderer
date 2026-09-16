@@ -499,7 +499,7 @@ export default class VtkScene {
         window.addEventListener('keydown', async (e) => {
             // Ctrl+R, Cmd+R and auto-repeat must not move the camera.
             // CameraGestureTracker applies the same rule: change both together.
-            if (e.ctrlKey || e.metaKey || e.altKey || e.repeat ) {
+            if (e.ctrlKey || e.metaKey || e.altKey || e.repeat) {
                 return;
             }
             switch (e.key.toLowerCase()) {
