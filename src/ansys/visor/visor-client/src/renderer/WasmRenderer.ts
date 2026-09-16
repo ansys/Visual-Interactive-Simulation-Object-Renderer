@@ -1,5 +1,6 @@
 import {
     AppliedCameraState,
+    CameraOrigin,
     ColorVariableDescriptor,
     GeometryPickMode,
     IRenderer,
@@ -203,6 +204,10 @@ export class WasmRenderer implements IRenderer {
         return this.#vtkScene.addCameraChangedListener(async (_) => {
             callback(await this.getCameraStateAsync());
         });
+    }
+
+    addCameraSettledListener(callback: (origin: CameraOrigin) => void): () => void {
+        return this.#vtkScene.addCameraSettledListener(callback);
     }
 
     addFrameRenderedListener(callback: (fps: number) => void): () => void {
