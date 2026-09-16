@@ -153,8 +153,8 @@ export default class VtkScene {
         return remover;
     };
     /**
-     * Fires once, 300 ms after the last camera event, with the origin of that
-     * settle window: `gesture` if any event in the window occurred while user
+     * Fires once per settle, CAMERA_SETTLE_MS after the last camera event,
+     * with the origin of that window: `gesture` if any event in the window occurred while user
      * input was active, `programmatic` otherwise. See CameraGestureTracker.
      *
      * @param {(origin:'gesture'|'programmatic')=>void} handler
@@ -407,9 +407,8 @@ export default class VtkScene {
             for (const callback of cameraChangedListeners.values()) {
                 callback(camera);
             }
-            // Debounce + origin capture (story 3.2, D1-a). Bound here, at the
-            // fan-out, rather than through addCameraChangedListener: that
-            // wrapper reads the whole wasm camera back per event.
+            // Bound at the fan-out, rather than via addCameraChangedListener:
+            // that wrapper reads the whole wasm camera back per event.
             this.#cameraGestureTracker?.noteCameraEvent();
         });
 
