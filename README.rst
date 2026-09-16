@@ -47,7 +47,7 @@ VISOR is a Python-based 3D visualization web component.
 
 You can use VISOR to integrate with the following tools:
 
-* `SAF (Solution Application Framework) <https://upgraded-carnival-wn6lkym.pages.github.io>`_
+* `SAF (Solution Application Framework) <https://saf.ansys.com>`_
   to provide 3D visualization capabilities.
 * `Ansys Dynamic Reporting <https://nexusdemo.ensight.com/docs/html/Nexus.html>`_
   to support dynamic reporting workflows.
