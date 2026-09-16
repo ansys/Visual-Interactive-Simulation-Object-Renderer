@@ -1,5 +1,5 @@
 /**
- * Story 3.2, Increment 6 — the camera settle debounce and its origin capture.
+ * Camera settle debounce and its origin capture.
  *
  * The tracker is tested directly rather than through VtkScene: VtkScene's
  * construction awaits four wasm proxies and starts a requestAnimationFrame

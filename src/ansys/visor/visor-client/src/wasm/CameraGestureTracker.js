@@ -1,45 +1,38 @@
 /**
  * @desc Debounces raw camera `ModifiedEvent`s into a single "settled" report,
- * and attributes each report to `gesture` or `programmatic`.
+ * and tags each report to `gesture` or `programmatic`.
  *
- * Story 3.2, Increment 6. The binding point is the `ModifiedEvent` fan-out in
- * `VtkScene.#setupCamera` (decision D1-a): the fan-out is the only camera-event
- * source, and it is the one place that sees orbit, pan, wheel zoom, the z/r
- * keyboard resets and the client-side `vtkCameraOrientationWidget` alike.
- * Subscribing through `addCameraChangedListener` instead would pay that
- * wrapper's per-event nine-await read-back of the wasm camera on every
- * intermediate event of a gesture.
+ * Called from the camera `ModifiedEvent` handler in `VtkScene.#setupCamera`,
+ * not through `addCameraChangedListener`, since that wrapper reads the whole
+ * wasm camera back on every intermediate event.
  *
- * Two rules matter and are easy to get wrong:
+ * - A drag or zoom raises many camera events in a row.  Each one restarts a
+ *   timer.  When CAMERA_SETTLE_MS pass with no new event, the gesture is taken
+ *   to be over and one report is sent.
  *
- * 1. **Origin is recorded per event, at event time, never at settle time.**
- *    The settle fires 300 ms after the *last* event, by which time a gesture
- *    has ended and a programmatic apply has finished. An origin computed when
- *    the timer fires is mislabelled in both directions.
+ * - The report is tagged `gesture` if the user was providing input while the
+ *   events were coming in, and `programmatic` if not (for example, a camera the
+ *   server pushed).  "Providing input" means a mouse button is held on the
+ *   canvas, or a wheel event or z/r keyup happened within the last CAMERA_SETTLE_MS.
  *
- * 2. **Origin is attributed by user input, not by apply depth.** An event is
- *    `gesture` only while user input is active: a mouse button held on the
- *    canvas, within 300 ms of a wheel event, or within 300 ms of a z/r keyup.
- *    Pointer movement with no button held is not input. Everything else is
- *    `programmatic`, whatever its source. The settle reports `gesture` if
- *    *any* event in its window was `gesture`.
+ * - That input check runs on every event as it arrives, and the result is
+ *   remembered until the report.  It cannot run when the timer fires,
+ *   because by then the user has let go of the mouse and every drag would
+ *   look programmatic.
  *
- * The wasm wheel handler and `VtkScene`'s own window keyup handler are
- * registered before this tracker, so the camera event raised by a single wheel
- * notch or a single z/r press reaches `noteCameraEvent()` *before* this
- * tracker's own handler has marked input active. Rather than depend on
- * listener registration order, a wheel event or a z/r keyup arriving while a
- * settle is already pending marks that window `gesture` as well. The mouse
- * path needs no such rule: the press always precedes the moves it causes.
+ * - The wasm wheel handler and `VtkScene`'s keyup handler run before this
+ *   tracker's own listeners. So for a single wheel notch or a single z/r press,
+ *   the camera event can arrive before the tracker has noticed the input.
+ *   To cover that, a wheel event or a z/r keyup arriving while a report is
+ *   pending marks that report `gesture` as well.
  */
 
 /**
  * The settle debounce, in milliseconds, and equally the window during which a
  * wheel event or a z/r keyup counts as active input.
  *
- * This is a ruling, not a measurement. Tests pin the literal 300 and must not
- * import this constant, so that changing it here fails a test rather than
- * silently redefining what the tests assert.
+ * Tests pin the literal 300 and must not import this constant, so that changing
+ * it here fails a test rather than silently redefining what the tests assert.
  *
  * @type{number}
  */
@@ -145,8 +138,8 @@ export default class CameraGestureTracker {
 
     /**
      * A wheel notch or a z/r press. Arms the input window for CAMERA_SETTLE_MS,
-     * and — because the camera event these raise may already have been noted
-     * before this handler ran — retroactively marks a pending settle window as
+     * and, because the camera event these raise may already have been noted
+     * before this handler ran, retroactively marks a pending settle window as
      * a gesture.
      */
     #markImpulse = () => {
