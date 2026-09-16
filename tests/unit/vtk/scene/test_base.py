@@ -1489,7 +1489,7 @@ def test_sync_camera_projects_the_camera_onto_the_pipeline(scene):
     camera.SetParallelScale.assert_called_once_with(GESTURE_PARALLEL_SCALE)
 
 
-def test_sync_camera_serializes_after_the_write_with_the_render_window_id(scene):
+def test_sync_camera_serializes_after_the_write_with_the_active_camera_id(scene):
     """The re-serialisation follows the write, and carries production's id.
 
     This is the assertion that pins the increment.  Reverted -- the write kept
@@ -1499,9 +1499,9 @@ def test_sync_camera_serializes_after_the_write_with_the_render_window_id(scene)
     a refresh snap back to the framing they moved away from.
 
     The spy appends ``"camera"`` for the write and the two-tuple
-    ``("serialize", <ids>)`` for the re-serialisation; the tuple is the
-    recording format, not the argument.  ``<ids>`` is asserted as the list
-    production passes, since ``UpdateStatesFromObjects`` takes a sequence.
+    ``("serialize", <id>)`` for the re-serialization; the tuple is the
+    recording format, not the argument.  ``<id>`` is asserted as the bare id
+    production passes, since ``UpdateStateFromObject`` takes a single id.
     """
     order = []
     real_sync = scene._renderer.sync_camera
@@ -1511,13 +1511,13 @@ def test_sync_camera_serializes_after_the_write_with_the_render_window_id(scene)
         return real_sync(camera_state)
 
     scene._renderer.sync_camera = _sync
-    scene._renderer._object_manager.UpdateStatesFromObjects = (
-        lambda ids: order.append(("serialize", ids))
+    scene._renderer._object_manager.UpdateStateFromObject = (
+        lambda object_id: order.append(("serialize", object_id))
     )
 
     scene.sync_camera(_gesture_camera())
 
-    assert order == ["camera", ("serialize", [RENDER_WINDOW_WASM_ID])]
+    assert order == ["camera", ("serialize", ACTIVE_CAMERA_WASM_ID)]
 
 
 def test_sync_camera_holds_the_lock_across_both_halves(scene):
@@ -1540,8 +1540,8 @@ def test_sync_camera_holds_the_lock_across_both_halves(scene):
         return real_sync(camera_state)
 
     scene._renderer.sync_camera = _sync
-    scene._renderer._object_manager.UpdateStatesFromObjects = (
-        lambda ids: observed.update(serialize_depth=scene._vtk_lock.depth)
+    scene._renderer._object_manager.UpdateStateFromObject = (
+        lambda object_id: observed.update(serialize_depth=scene._vtk_lock.depth)
     )
 
     scene.sync_camera(_gesture_camera())
