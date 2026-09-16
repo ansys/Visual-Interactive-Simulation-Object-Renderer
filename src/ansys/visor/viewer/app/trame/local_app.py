@@ -11,6 +11,8 @@ from vtk import vtkObject
 from ansys.visor.viewer.config import settings
 from ansys.visor.viewer.core.visor_enums import VisorVtkVariableType
 from ansys.visor.viewer.core.visor_logging import VisorDefaultLogger
+from ansys.visor.viewer.models.common.visor_camera_state import VisorCameraState
+from ansys.visor.viewer.models.runtime.requests.sync_camera_payload import SyncCameraPayload
 
 logger = VisorDefaultLogger(__name__)
 
@@ -25,6 +27,10 @@ class ScenePartStateApi(Protocol):
     ``isinstance`` check anywhere against it.  Declaring it here rather than
     importing the scene keeps this module free of any scene type, so the
     injected object remains LocalApp's only route to the scene.
+
+    ``sync_camera`` is not per-part, and it is declared here anyway: the one
+    production injection site passes the whole scene coordinator, so a second
+    protocol would be the same object under a second name.
     """
 
     def set_part_visibility(self, node_id: int, visible: bool) -> None: ...
@@ -47,6 +53,8 @@ class ScenePartStateApi(Protocol):
     ) -> None: ...
 
     def clear_part_color_variable(self, node_id: int) -> None: ...
+
+    def sync_camera(self, camera_state: VisorCameraState) -> None: ...
 
 
 # ----------------------------------------------------------------------
@@ -175,6 +183,7 @@ class LocalApp:
         set_part_selected: selects or deselects one part
         set_part_color_variable: colours one part by a scalar variable
         clear_part_color_variable: stops colouring one part by a scalar variable
+        sync_camera: records a settled camera reported by the frontend
         set_only_cookie: sets a cookie on the server (note: Trame server only allows a single cookie header)
     Protected Methods:
         _cleanup(): Cleans up the active actor in the visualization pipeline.
@@ -415,6 +424,48 @@ class LocalApp:
         if api is None:
             return
         api.clear_part_color_variable(payload.node_id)
+
+    # ------------------------------------------------------------------
+    # Camera trigger
+    #
+    # Frontend -> Backend.  One report per settled camera window, never one
+    # per camera event: the debounce lives on the client, and the camera is
+    # read once, at settle.
+    #
+    # ``origin`` is decided at the input, on the client, and travels
+    # verbatim; the *server* decides what to do with it.  A report that is
+    # not a gesture is an echo of a camera the application itself applied --
+    # a load, a reset, a scene-details push -- and applying it would
+    # overwrite the record with a value the server had just sent.  It is
+    # dropped here, with a log line, before the lock is taken and before the
+    # coordinator is even looked up: a dropped report is visible when
+    # diagnosing an echo, and a report the client never sent is not.
+    #
+    # Exactly one debug line per arrival on every path, so that counting
+    # arrivals in the log is a sound measurement.
+    # ------------------------------------------------------------------
+
+    @trigger("sync_camera")
+    @parse_payload(SyncCameraPayload)
+    def sync_camera(self, payload) -> None:
+        """Frontend -> Backend: a settled camera window reports its camera.
+
+        A payload missing any of the seven camera fields, or carrying an
+        ``origin`` that is neither value, never reaches this body: it is a
+        logged warning from the payload decorator and nothing is delegated.
+        """
+        if payload.origin != "gesture":
+            logger.debug("sync_camera: origin=%s; dropping.", payload.origin)
+            return
+        api = self._part_state_api("sync_camera")
+        if api is None:
+            return
+        logger.debug(
+            "sync_camera: origin=%s; applying position=%s.",
+            payload.origin,
+            payload.camera.position,
+        )
+        api.sync_camera(payload.camera)
 
     def set_only_cookie(self, key: str, value: str):
         """

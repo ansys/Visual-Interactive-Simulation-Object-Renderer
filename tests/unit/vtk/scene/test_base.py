@@ -1425,6 +1425,158 @@ def test_apply_state_serializes_the_camera_under_the_lock(scene):
 
 
 # ===========================================================================
+# Trigger path -- the camera
+#
+# ``VisorSceneBase.sync_camera`` is the coordinator method the ``sync_camera``
+# trigger routes through.  The handler arrives on trame's daemon thread and
+# must not touch the renderer directly, so what is asserted here is the whole
+# critical section: the write, the projection, the re-serialisation that
+# follows the write, the lock, and -- as its own test -- the notify that must
+# not happen.
+#
+# Its own literals, distinct from the load path's above, so that a failure
+# names the path that broke.  The same seven values are written out again in
+# the client-side test of this trigger.
+# ===========================================================================
+
+GESTURE_POSITION = [11.0, 12.0, 13.0]
+GESTURE_FOCAL_POINT = [14.0, 15.0, 16.0]
+GESTURE_VIEW_UP = [0.0, 1.0, 0.0]
+GESTURE_CLIPPING_RANGE = [17.0, 18.0]
+GESTURE_PARALLEL_PROJECTION = True
+GESTURE_VIEW_ANGLE = 35.0
+GESTURE_PARALLEL_SCALE = 19.0
+
+
+def _gesture_camera() -> VisorCameraState:
+    """The camera a settled gesture reports, from hand-written literals."""
+    return VisorCameraState(
+        position=GESTURE_POSITION,
+        focal_point=GESTURE_FOCAL_POINT,
+        view_up=GESTURE_VIEW_UP,
+        clipping_range=GESTURE_CLIPPING_RANGE,
+        parallel_projection=GESTURE_PARALLEL_PROJECTION,
+        view_angle=GESTURE_VIEW_ANGLE,
+        parallel_scale=GESTURE_PARALLEL_SCALE,
+    )
+
+
+def test_sync_camera_writes_the_camera_record(scene):
+    """Store half: a reported camera becomes the server's record."""
+    camera = _gesture_camera()
+
+    scene.sync_camera(camera)
+
+    assert scene._renderer.get_camera_state() is camera
+
+
+def test_sync_camera_projects_the_camera_onto_the_pipeline(scene):
+    """Apply half: the record reaches the server's pipeline camera.
+
+    Separate from the store half on the same grounds as the load path's pair:
+    either can silently do nothing while the other works, and a record that is
+    never projected leaves the client rebuilding from the pre-gesture camera.
+    """
+    scene.sync_camera(_gesture_camera())
+
+    camera = scene._renderer._vtk_renderer.GetActiveCamera.return_value
+    camera.SetPosition.assert_called_once_with(GESTURE_POSITION)
+    camera.SetFocalPoint.assert_called_once_with(GESTURE_FOCAL_POINT)
+    camera.SetViewUp.assert_called_once_with(GESTURE_VIEW_UP)
+    camera.SetClippingRange.assert_called_once_with(GESTURE_CLIPPING_RANGE)
+    camera.SetParallelProjection.assert_called_once_with(GESTURE_PARALLEL_PROJECTION)
+    camera.SetViewAngle.assert_called_once_with(GESTURE_VIEW_ANGLE)
+    camera.SetParallelScale.assert_called_once_with(GESTURE_PARALLEL_SCALE)
+
+
+def test_sync_camera_serializes_after_the_write_with_the_active_camera_id(scene):
+    """The re-serialisation follows the write, and carries production's id.
+
+    This is the assertion that pins the increment.  Reverted -- the write kept
+    and the re-serialisation dropped -- the record is right, the pipeline
+    camera is right, every other test in this module still passes, and the
+    client is served the pre-gesture camera on its next fetch.  The user sees
+    a refresh snap back to the framing they moved away from.
+
+    The spy appends ``"camera"`` for the write and the two-tuple
+    ``("serialize", <id>)`` for the re-serialization; the tuple is the
+    recording format, not the argument.  ``<id>`` is asserted as the bare id
+    production passes, since ``UpdateStateFromObject`` takes a single id.
+    """
+    order = []
+    real_sync = scene._renderer.sync_camera
+
+    def _sync(camera_state):
+        order.append("camera")
+        return real_sync(camera_state)
+
+    scene._renderer.sync_camera = _sync
+    scene._renderer._object_manager.UpdateStateFromObject = (
+        lambda object_id: order.append(("serialize", object_id))
+    )
+
+    scene.sync_camera(_gesture_camera())
+
+    assert order == ["camera", ("serialize", ACTIVE_CAMERA_WASM_ID)]
+
+
+def test_sync_camera_holds_the_lock_across_both_halves(scene):
+    """Both halves run inside one critical section.
+
+    Its own test rather than another assertion on the ordering test, on the
+    precedent of ``test_reset_camera_holds_the_lock``: lock depth and call
+    order fail for different reasons and want to be readable apart.  The
+    trigger handler runs on trame's daemon thread while the VTK objects it
+    mutates belong to the caller's thread, and a re-serialisation outside the
+    lock would read the object graph while another thread was free to mutate
+    it.  That failure is intermittent and never reproduces under a gate.
+    """
+    scene._vtk_lock = _LockSpy()
+    observed = {}
+    real_sync = scene._renderer.sync_camera
+
+    def _sync(camera_state):
+        observed["write_depth"] = scene._vtk_lock.depth
+        return real_sync(camera_state)
+
+    scene._renderer.sync_camera = _sync
+    scene._renderer._object_manager.UpdateStateFromObject = (
+        lambda object_id: observed.update(serialize_depth=scene._vtk_lock.depth)
+    )
+
+    scene.sync_camera(_gesture_camera())
+
+    assert observed["write_depth"] >= 1
+    assert observed["serialize_depth"] >= 1
+    assert scene._vtk_lock.depth == 0
+    assert scene._vtk_lock.enter_count == scene._vtk_lock.exit_count
+
+
+def test_sync_camera_does_not_notify_the_client(scene):
+    """Serialise only.  No render, no flush, no delegated push.
+
+    A notify here would look correct and would be a loop: the push rebuilds
+    the client, the rebuild re-delivers state, the reapply moves the camera
+    and emits further settle reports, and each report pushes again.  It would
+    also race the rebuild against a half-written object graph, which is the
+    hazard ``_apply_runtime_state_to_render`` already refuses to reopen.
+
+    Nothing else can catch this.  Every gate passes with a notify in place,
+    and the symptom in the browser is a rebuild storm that looks like a
+    network problem.
+    """
+    notifications = []
+    scene._renderer.render = lambda: notifications.append("render")
+    scene._renderer.render_window_only = lambda: notifications.append("render_window")
+    scene._renderer.flush_wasm_state = lambda: notifications.append("flush")
+    scene._apply_runtime_state_to_render = lambda state: notifications.append("bridge")
+
+    scene.sync_camera(_gesture_camera())
+
+    assert notifications == []
+
+
+# ===========================================================================
 # reset_camera -- the re-serialisation
 #
 # ``VisorSceneBase.reset_camera`` calls ``self._renderer.reset_camera(...)``
