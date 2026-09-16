@@ -158,15 +158,18 @@ def array_dataset() -> vtkPolyData:
 # Object-manager id literals
 #
 # Hand-written and distinctive.  Seeded into the renderer fixture's id source
-# keyed on object identity, so that asserting RENDER_WINDOW_WASM_ID fails --
-# rather than coincides -- if the re-serialisation names the renderer, the
-# interactor, the picker or the active camera instead of the render window.
+# keyed on object identity, so that asserting ACTIVE_CAMERA_WASM_ID fails --
+# rather than coincides -- if the re-serialization names the render window,
+# the renderer, the interactor or the picker instead of the active camera.
+# The render window keeps a literal of its own so that a revert to the
+# previous call shape fails by name rather than as the catch-all.
 #
 # Asserting against the id source's own answer for the attribute production
 # reads would pin nothing: it would pass whichever object production named.
 # ---------------------------------------------------------------------------
 
 RENDER_WINDOW_WASM_ID = 8150001
+ACTIVE_CAMERA_WASM_ID = 8150002
 WRONG_OBJECT_WASM_ID = 8150999
 
 
@@ -180,9 +183,10 @@ def renderer():
 
     The object manager that arrives with the patched LocalView is a MagicMock,
     so its ``GetId`` is seeded here rather than in a test: keyed on object
-    identity, the render window resolves to RENDER_WINDOW_WASM_ID and every
-    other object to WRONG_OBJECT_WASM_ID.  That is what lets the ordering test
-    below assert which object the re-serialisation named.
+    identity, the active camera resolves to ACTIVE_CAMERA_WASM_ID, the render
+    window to RENDER_WINDOW_WASM_ID and every other object to
+    WRONG_OBJECT_WASM_ID.  This is what lets the ordering test below assert
+    which object the re-serialization named.
     """
     mock_server = MagicMock()
     mock_server.state = {}
@@ -204,8 +208,11 @@ def renderer():
     ):
         r = VisorLocalRenderer(mock_server)
 
+    camera = r._vtk_renderer.GetActiveCamera.return_value
     r._object_manager.GetId.side_effect = (
-        lambda obj: RENDER_WINDOW_WASM_ID
+        lambda obj: ACTIVE_CAMERA_WASM_ID
+        if obj is camera
+        else RENDER_WINDOW_WASM_ID
         if obj is r._render_window
         else WRONG_OBJECT_WASM_ID
     )
@@ -1131,10 +1138,10 @@ def test_apply_state_syncs_the_camera_under_the_lock_before_the_render_step(scen
     server correct; it does not make the state the client is served correct,
     and the two are separate steps that can each silently do nothing.  The
     spy appends the literal string ``"camera"`` for the write, the two-tuple
-    ``("serialize", <ids>)`` for the re-serialisation -- the tuple is the
+    ``("serialize", <id>)`` for the re-serialisation -- the tuple is the
     recording format, not the argument -- and ``"bridge"`` for the delegated
-    render step.  ``<ids>`` is asserted as the list production passes, since
-    ``UpdateStatesFromObjects`` takes a sequence.
+    render step.  ``<id>`` is asserted as the bare id production passes, since
+    ``UpdateStateFromObject`` takes a single id.
 
     Ordered between the two: after the write, because re-serialising before
     it would publish the pre-load camera; before the render step, because the
@@ -1152,8 +1159,8 @@ def test_apply_state_syncs_the_camera_under_the_lock_before_the_render_step(scen
         return real_sync(camera_state)
 
     scene._renderer.sync_camera = _sync
-    scene._renderer._object_manager.UpdateStatesFromObjects = (
-        lambda ids: order.append(("serialize", ids))
+    scene._renderer._object_manager.UpdateStateFromObject = (
+        lambda object_id: order.append(("serialize", object_id))
     )
     scene._apply_runtime_state_to_render = lambda state: order.append("bridge")
 
@@ -1161,7 +1168,13 @@ def test_apply_state_syncs_the_camera_under_the_lock_before_the_render_step(scen
 
     assert order == [
         "camera",
-        ("serialize", [RENDER_WINDOW_WASM_ID]),
+        ("serialize", ACTIVE_CAMERA_WASM_ID),
+        # then the one pipeline the fixture registers, leaf by leaf: actor,
+        # property, mapper.  None of them is a seeded object, so the id
+        # source's catch-all answers for all three.
+        ("serialize", WRONG_OBJECT_WASM_ID),
+        ("serialize", WRONG_OBJECT_WASM_ID),
+        ("serialize", WRONG_OBJECT_WASM_ID),
         "bridge",
     ]
     assert observed["depth"] >= 1
@@ -1184,8 +1197,8 @@ def test_apply_state_serializes_the_camera_under_the_lock(scene):
     scene._vtk_lock = _LockSpy()
     observed = {}
 
-    scene._renderer._object_manager.UpdateStatesFromObjects = (
-        lambda ids: observed.update(depth=scene._vtk_lock.depth)
+    scene._renderer._object_manager.UpdateStateFromObject = (
+        lambda object_id: observed.update(depth=scene._vtk_lock.depth)
     )
 
     scene.apply_state(_persisted_state(_persisted_camera()))
@@ -1202,7 +1215,7 @@ def test_apply_state_serializes_the_camera_under_the_lock(scene):
 # then ``self._renderer.serialize_camera_state()``, both inside
 # ``_vtk_lock``.  Same shape as the ``sync_camera`` trigger section above: the
 # re-serialisation runs after the reset, is spied on
-# ``_object_manager.UpdateStatesFromObjects`` with the render-window id, and
+# ``_object_manager.UpdateStateFromObject`` with the active-camera id, and
 # the lock is held (depth >= 1) at both points.
 #
 # Own literals are unnecessary here -- reset_camera takes no camera argument,
@@ -1210,7 +1223,7 @@ def test_apply_state_serializes_the_camera_under_the_lock(scene):
 # not a value.
 # ===========================================================================
 
-def test_reset_camera_serializes_after_the_reset_with_the_render_window_id(scene):
+def test_reset_camera_serializes_after_the_reset_with_the_active_camera_id(scene):
     """The re-serialisation follows the reset, and carries production's id.
 
     Reverted -- the reset kept and the re-serialisation dropped -- the
@@ -1219,9 +1232,9 @@ def test_reset_camera_serializes_after_the_reset_with_the_render_window_id(scene
     fetch.
 
     The spy appends ``"reset"`` for the reset call and the two-tuple
-    ``("serialize", <ids>)`` for the re-serialisation; the tuple is the
-    recording format, not the argument.  ``<ids>`` is asserted as the list
-    production passes, since ``UpdateStatesFromObjects`` takes a sequence.
+    ``("serialize", <id>)`` for the re-serialisation; the tuple is the
+    recording format, not the argument.  ``<id>`` is asserted as the bare id
+    production passes, since ``UpdateStateFromObject`` takes a single id.
     """
     order = []
     real_reset = scene._renderer.reset_camera
@@ -1231,13 +1244,13 @@ def test_reset_camera_serializes_after_the_reset_with_the_render_window_id(scene
         return real_reset(bounds)
 
     scene._renderer.reset_camera = _reset
-    scene._renderer._object_manager.UpdateStatesFromObjects = (
-        lambda ids: order.append(("serialize", ids))
+    scene._renderer._object_manager.UpdateStateFromObject = (
+        lambda object_id: order.append(("serialize", object_id))
     )
 
     scene.reset_camera()
 
-    assert order == ["reset", ("serialize", [RENDER_WINDOW_WASM_ID])]
+    assert order == ["reset", ("serialize", ACTIVE_CAMERA_WASM_ID)]
 
 
 def test_reset_camera_holds_the_lock_across_both_halves(scene):
@@ -1261,8 +1274,8 @@ def test_reset_camera_holds_the_lock_across_both_halves(scene):
         return real_reset(bounds)
 
     scene._renderer.reset_camera = _reset
-    scene._renderer._object_manager.UpdateStatesFromObjects = (
-        lambda ids: observed.update(serialize_depth=scene._vtk_lock.depth)
+    scene._renderer._object_manager.UpdateStateFromObject = (
+        lambda object_id: observed.update(serialize_depth=scene._vtk_lock.depth)
     )
 
     scene.reset_camera()

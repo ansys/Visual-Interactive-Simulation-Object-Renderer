@@ -285,31 +285,19 @@ class VisorLocalRenderer(IRenderer):
     # ------------------------------------------------------------------
 
     def reset_camera(self, bounds: list[float]) -> None:
-        """See :meth:`IRenderer.reset_camera`.
-
-        ``ResetCamera`` computes the framing, so the pipeline camera is
-        written first and the record is read back from it.  This is the only
-        method on this class that derives the record from the pipeline rather
-        than projecting the record onto it.
-        """
+        """See :meth:`IRenderer.reset_camera`."""
         self._vtk_renderer.ResetCamera(bounds)
         self._last_camera_state = self._read_pipeline_camera()
 
     def get_camera_state(self) -> Optional["VisorCameraState"]:
-        """See :meth:`IRenderer.get_camera_state`.
-
-        ``None`` until a writer has run: :meth:`reset_camera` or
-        :meth:`sync_camera`.
-        """
+        """See :meth:`IRenderer.get_camera_state`."""
         return self._last_camera_state
 
     def sync_camera(self, camera_state: "VisorCameraState") -> None:
         """See :meth:`IRenderer.sync_camera`.
 
-        Stores the object as given -- no defensive copy, so
-        :meth:`get_camera_state` returns the same object -- then projects it
-        onto the pipeline camera.  Store first: if a VTK setter raised, the
-        record would still hold what the caller asked for.
+        Stores before projecting, so a raising VTK setter still leaves the
+        record holding what the earlier caller asked for.
         """
         self._last_camera_state = camera_state
         self._apply_to_pipeline_camera(camera_state)
@@ -318,25 +306,26 @@ class VisorLocalRenderer(IRenderer):
         """See :meth:`IRenderer.serialize_camera_state`.
 
         ``vtklocal`` advertises each object's modification time off the live
-        VTK object but serves state out of a serialization cache that only
-        ``UpdateStatesFromObjects`` refreshes.  Writing the pipeline camera
-        without this call publishes a new version number against the old
-        content, and the client fetches the pre-write camera and applies it
-        over the one just installed.
+        VTK object but serves state out of a serialization cache, so a write
+        to the pipeline camera without this call publishes a new
+        version number against the old content: the client fetches the
+        pre-write camera and applies it over the one just installed.
 
-        The render window's id is passed, not the camera's own.  It is the
-        form the framework itself reproduces -- ``LocalView.update`` resolves
-        ``[self._render_window, *registered]`` to ids and hands those to
-        ``UpdateStatesFromObjects`` -- and the camera sits inside the render
-        window's dependency closure, which is why ``get_status`` can name the
-        camera's id at all when building ``ignore_ids``.
+        ``UpdateStateFromObject`` re-serializes the single already-registered
+        id it is given and commits its dependency edges again; a mid-tree node
+        re-serialized on its own stays reachable from its parent, so naming
+        one id is safe.  It is narrower than ``UpdateStatesFromObjects``,
+        which serializes from the roots it is given and registers objects the
+        store has not seen: an id the store has never held answers ``GetId``
+        ``0``, the ROOT sentinel, and the call degrades to an error-logged
+        no-op.
 
-        No ``js_call``: that lives in ``LocalView.update``, not in the object
-        manager, so this serialises without pushing and without re-opening
-        the rebuild race ``_apply_runtime_state_to_render`` refuses.
+        No ``js_call``: that lives in ``LocalView.update``, so this
+        serialises without re-opening the rebuild race
+        ``_apply_runtime_state_to_render`` refuses.
         """
-        self._object_manager.UpdateStatesFromObjects(
-            [self._object_manager.GetId(self._render_window)]
+        self._object_manager.UpdateStateFromObject(
+            self._object_manager.GetId(self._vtk_renderer.GetActiveCamera())
         )
 
     # ------------------------------------------------------------------
@@ -350,9 +339,8 @@ class VisorLocalRenderer(IRenderer):
     def _read_pipeline_camera(self) -> VisorCameraState:
         """Read the active pipeline camera into a fresh camera state.
 
-        ``GetParallelProjection`` returns an ``int``; it is converted
-        explicitly rather than leaning on pydantic's non-strict coercion, so
-        the field's type does not depend on a validation setting.
+        ``GetParallelProjection`` returns an ``int``; the explicit ``bool()``
+        keeps the field's type off pydantic's non-strict coercion.
         """
         camera = self._vtk_renderer.GetActiveCamera()
         return VisorCameraState(
@@ -366,12 +354,7 @@ class VisorLocalRenderer(IRenderer):
         )
 
     def _apply_to_pipeline_camera(self, camera_state: "VisorCameraState") -> None:
-        """Write *camera_state*'s seven fields onto the active pipeline camera.
-
-        The setter order matches the client's seven-setter order so the two
-        stacks are comparable when debugging.  Each vector is passed as a
-        single sequence, which vtkCamera accepts, rather than star-unpacked.
-        """
+        """Write *camera_state*'s onto the active pipeline camera."""
         camera = self._vtk_renderer.GetActiveCamera()
         camera.SetPosition(camera_state.position)
         camera.SetFocalPoint(camera_state.focal_point)

@@ -33,7 +33,7 @@ class NullRenderer(IRenderer):
     _last_camera_state: Optional["VisorCameraState"]
 
     def __init__(self) -> None:
-        """Initialise the camera record, the only state this class holds."""
+        """Initialize the camera record."""
         self._last_camera_state = None
 
     # ------------------------------------------------------------------
@@ -114,15 +114,9 @@ class NullRenderer(IRenderer):
     def reset_camera(self, bounds: list[float]) -> None:
         """See :meth:`IRenderer.reset_camera`.
 
-        No-op, and **deliberately does not write the record**.  With no
-        pipeline camera there is nothing from which to derive a camera for
-        *bounds*.  The record keeps its previous value rather than being
-        cleared, so that a reset cannot destroy a camera the frontend
-        reported -- a silent data loss on the very renderer used to stand in
-        for a second backend.
-
-        Any future backend that inherits this behaviour while having a real
-        camera must override this method.
+        Deliberately does not write the record: with no pipeline camera there
+        is nothing to derive a camera for *bounds* from, and clearing it would
+        destroy a camera the frontend reported.
         """
 
     def get_camera_state(self) -> "VisorCameraState | None":
@@ -130,24 +124,13 @@ class NullRenderer(IRenderer):
         return self._last_camera_state
 
     def sync_camera(self, camera_state: "VisorCameraState") -> None:
-        """See :meth:`IRenderer.sync_camera`.
-
-        Stores the object as given.  The projection half is a no-op: there is
-        no pipeline camera.
-        """
+        """See :meth:`IRenderer.sync_camera`."""
         self._last_camera_state = camera_state
 
     def serialize_camera_state(self) -> None:
         """See :meth:`IRenderer.serialize_camera_state`.
 
-        Explicit no-op, and deliberately not inherited as one.  This renderer
-        serves the client no VTK object state, so there is no serialization
-        cache to refresh and nothing to make current.
-
-        It does **not** touch the record.  Publishing and recording are
-        separate obligations: the writers of the record are
-        :meth:`reset_camera` and :meth:`sync_camera`, and this method is
-        neither.
+        No-op: this renderer serves the client no VTK object state.
         """
 
 

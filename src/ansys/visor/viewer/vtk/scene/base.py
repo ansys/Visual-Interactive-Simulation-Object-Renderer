@@ -176,12 +176,8 @@ class VisorSceneBase(ABC):
 
         Shared work (per-part state restoration) is done here; the
         renderer-specific final step is delegated to
-        :meth:`_apply_runtime_state_to_render`.
-
-        Holds ``_vtk_lock`` for the whole body: the delegated step mutates
-        VTK and pushes to the frontend.  The critical section deliberately
-        spans the outbound bridge call and the flush that follows it — the
-        unit the lock protects is the compound sequence, not the VTK work.
+        :meth:`_apply_runtime_state_to_render`.  Holds ``_vtk_lock``
+        for the whole body, including the delegated render step.
         """
         with self._vtk_lock:
             # Apply UI settings
@@ -192,29 +188,12 @@ class VisorSceneBase(ABC):
 
             self._restore_part_states_from_runtime(runtime_app_state)
 
-            # The loaded camera becomes the record, and through the record the
-            # server's pipeline camera.  Before this step the loaded camera
-            # reached the browser and nowhere else, so the server's vtkCamera
-            # stayed at whatever it last held and a refresh -- which rebuilds
-            # the client from the server's serialised VTK state -- discarded
-            # the loaded camera.  The load path takes no reset that would
-            # supply one: it calls finalize_scene(skip_reset_camera=True).
-            #
-            # Ordered before the delegated render step: the pipeline camera
-            # must be correct before render_window_only() flushes it.
-            #
-            # A state with no camera says nothing, rather than saying "reset":
-            # record and pipeline are both left alone.
-            #
-            # The re-serialisation is part of the write, not an afterthought.
-            # Writing the pipeline camera makes the server correct; it does
-            # not make the state the client is served correct.  The backend
-            # advertises a version number read from the live VTK object while
-            # serving content from a cache, so a write with no re-serialise
-            # publishes a new version against old content and the client
-            # fetches the pre-load camera and applies it over the loaded one.
-            # It serialises without notifying: a push here would re-open the
-            # rebuild race the note below refuses.
+            # Write the loaded camera to the record and the pipeline camera,
+            # so a client rebuilt from server state (refresh) gets it. Must
+            # precede the render step.  The re-serialize is required: the
+            # server advertises the camera's live MTime but serves its
+            # cached state, so without it a client fetches the pre-load
+            # camera.  A state with no camera leaves both alone.
             if runtime_app_state.scene.camera is not None:
                 self._renderer.sync_camera(runtime_app_state.scene.camera)
                 self._renderer.serialize_camera_state()

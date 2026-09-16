@@ -179,28 +179,17 @@ class IRenderer(ABC):
 
     @abstractmethod
     def reset_camera(self, bounds: list[float]) -> None:
-        """Reset the camera to fit *bounds*, and write the resulting camera to
-        the record.
+        """Reset the camera to fit *bounds*, and write the result to the record.
 
-        This is the one place where the pipeline camera is written *first* and
-        the record derived *from* it: VTK computes the framing, so there is
-        nothing to project.  Everywhere else the record is authoritative and
-        the pipeline camera is its projection.
-
-        Implementations diverge here.  A renderer with no pipeline camera has
-        nothing from which to derive a camera for *bounds*; it leaves the
-        record at its previous value rather than clearing it, so that a reset
-        cannot destroy a camera the frontend reported.  See
-        :meth:`NullRenderer.reset_camera`.
+        An implementation with no pipeline camera leaves the record at its
+        previous value rather than clearing it, so that a reset cannot destroy
+        a camera the frontend reported.
         """
 
     @abstractmethod
     def get_camera_state(self) -> "VisorCameraState | None":
         """
         Return the camera record, or ``None`` if nothing has written one yet.
-
-        The writers are :meth:`reset_camera` and :meth:`sync_camera`.  There
-        are no others.
         """
 
     @abstractmethod
@@ -209,32 +198,25 @@ class IRenderer(ABC):
         Write *camera_state* to the record and project it onto the pipeline
         camera.
 
-        The record stores the object **as given, without copying**: callers
-        rely on object identity through :meth:`get_camera_state`.
-
-        The projection half is a no-op on a renderer with no pipeline camera.
-        The record half is not optional on any implementation.
+        The record stores the object as given, without copying: callers rely
+        on object identity through :meth:`get_camera_state`.
         """
 
     @abstractmethod
     def serialize_camera_state(self) -> None:
         """Make the state served to the client current for the camera.
 
-        Writing the pipeline camera is not the same as publishing it.  A
-        backend may advertise a version number taken from the live VTK object
-        while serving content from a cache refreshed on its own schedule; a
-        write with no re-serialisation then publishes a new version against
-        old content, and the client fetches and applies the pre-write camera
-        over the correct one.  This method closes that gap.
+        The camera alone; the node pipelines are
+        :meth:`serialize_pipeline_states`'s job.  Writing the pipeline camera
+        makes the server correct: it does not make the state the client is
+        served correct, and the two are separate steps that can each silently
+        do nothing.
 
-        **Serialise only; do not notify.**  Pushing to the client is
+        **Serialize only; do not notify.**  Pushing to the client is
         :meth:`flush_wasm_state`'s job and carries a rebuild race that the
-        load path deliberately refuses.  An implementation that notifies is
-        wrong here even though it would look correct.
+        load path deliberately refuses.
 
         No-op on a renderer that serves the client no VTK object state.
-        Takes no lock: the caller-holds convention applies, as it does to
-        every other method on this interface.
         """
 
     # ------------------------------------------------------------------------
