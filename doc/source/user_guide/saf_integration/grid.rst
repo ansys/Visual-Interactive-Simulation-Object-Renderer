@@ -15,4 +15,4 @@ See more information in the `PIM documentation`_.
 
 
 .. _PIM documentation:
-    https://upgraded-carnival-wn6lkym.pages.github.io/version/stable/user_guide/backend/instance_management/index.html
+    https://saf.ansys.com/version/stable/user_guide/backend/instance_management/index.html
