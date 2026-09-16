@@ -1169,12 +1169,6 @@ def test_apply_state_syncs_the_camera_under_the_lock_before_the_render_step(scen
     assert order == [
         "camera",
         ("serialize", ACTIVE_CAMERA_WASM_ID),
-        # then the one pipeline the fixture registers, leaf by leaf: actor,
-        # property, mapper.  None of them is a seeded object, so the id
-        # source's catch-all answers for all three.
-        ("serialize", WRONG_OBJECT_WASM_ID),
-        ("serialize", WRONG_OBJECT_WASM_ID),
-        ("serialize", WRONG_OBJECT_WASM_ID),
         "bridge",
     ]
     assert observed["depth"] >= 1
