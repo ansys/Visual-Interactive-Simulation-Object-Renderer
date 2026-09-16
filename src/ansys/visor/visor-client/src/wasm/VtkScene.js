@@ -127,10 +127,6 @@ export default class VtkScene {
         this.#cameraChangedListeners.clear();
         this.#viewerClickedListeners.clear();
         this.#frameRenderedListeners.clear();
-        // Clears the settled-listener map, the pending settle timer and the
-        // window's recorded origins, resets the input state, and removes the
-        // tracker's own listeners. Without this a settle armed before a
-        // rebuild fires afterwards and reports the previous scene's camera.
         this.#cameraGestureTracker?.dispose();
     };
     /**@type{CameraGestureTracker|null}*/
@@ -407,8 +403,8 @@ export default class VtkScene {
             for (const callback of cameraChangedListeners.values()) {
                 callback(camera);
             }
-            // Bound at the fan-out, rather than via addCameraChangedListener:
-            // that wrapper reads the whole wasm camera back per event.
+            // Called directly rather than via addCameraChangedListener,
+            // which reads the whole wasm camera back on every event.
             this.#cameraGestureTracker?.noteCameraEvent();
         });
 
@@ -532,11 +528,6 @@ export default class VtkScene {
             },
             true
         );
-
-        // Constructed last, so its listeners register after the ones above and
-        // after the wasm canvas's own wheel handler. The tracker does not
-        // depend on that order: an impulse arriving while a settle is already
-        // pending marks that window as a gesture.
         this.#cameraGestureTracker = new CameraGestureTracker(canvasDiv, canvas);
     };
 
