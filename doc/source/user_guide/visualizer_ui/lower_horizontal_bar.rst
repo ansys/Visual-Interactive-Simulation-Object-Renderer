@@ -48,3 +48,19 @@ Use the following controls in the lower horizontal bar:
   - The bounding-box size does not update when you hide parts. This behavior may change in a future VISOR release.
 
 .. image:: /user_guide/visualizer_ui/images/bounding-box.png
+
+- **Select part**
+
+  - Click the plain cube icon to open the selection sub-menu.
+  - Select an icon to choose the desired selection mode.
+  .. image:: /user_guide/visualizer_ui/images/length-selection-options.png
+  - Select an area of the geeometry to pick an edge, face, or vertex.
+  - The length of the edge, area of the face, or XYZ coordinates of the vertex are displayed.
+  - Click a different area of the geometry to change the measurement.
+  - Click the plain cube icon again to remove the measurement.
+
+.. image:: /user_guide/visualizer_ui/images/edge-selected.png
+
+.. image:: /user_guide/visualizer_ui/images/face-selected.png
+
+.. image:: /user_guide/visualizer_ui/images/vertex-selected.png
