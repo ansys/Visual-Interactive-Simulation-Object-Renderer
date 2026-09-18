@@ -378,10 +378,12 @@ export class VisorFrontend {
                     uiScaffold.setUnit(unit);
                 })();
             }
-            if (sceneState.orthographicEnabled !== undefined) {
-                const promise = renderer.setOrthographicModeAsync(sceneState.orthographicEnabled);
-                promises.push(promise);
-            }
+            // `sceneState.orthographicEnabled` is deliberately not read here.
+            // Projection arrives on the camera, below, through the one call
+            // that also sets the widget flag `getAppStateAsync` reads back.
+            // The persisted toggle is still emitted for compatibility and is
+            // ignored on load: two independent fields writing one wasm camera
+            // property, in unspecified order, is the divergence this removed.
             if (sceneState.crossSectionEnabled !== undefined) {
                 const promise = renderer.setCrossSectionVisibilityAsync(
                     sceneState.crossSectionEnabled
@@ -416,9 +418,12 @@ export class VisorFrontend {
                 promises.push(promise);
             }
             if (cameraState.parallelProjection !== undefined) {
-                const promise = renderer.setCameraParallelProjectionAsync(
-                    cameraState.parallelProjection
-                );
+                // The sole writer of projection on this path. Routed through
+                // setOrthographicModeAsync rather than
+                // setCameraParallelProjectionAsync because that one also sets
+                // the widget flag; the camera-only call would leave the flag
+                // stale and the next save would write the stale value.
+                const promise = renderer.setOrthographicModeAsync(cameraState.parallelProjection);
                 promises.push(promise);
             }
             if (cameraState.viewAngle !== undefined) {

@@ -77,7 +77,28 @@ export class WasmRenderer implements IRenderer {
         annotation: WasmRendererAnnotation,
         triggerSender: TrameTriggerSender | null = null
     ): Promise<WasmRenderer> {
-        return new WasmRenderer(vtkScene, annotation, triggerSender);
+        const renderer = new WasmRenderer(vtkScene, annotation, triggerSender);
+        await renderer.#seedOrthographicFlagAsync();
+        return renderer;
+    }
+
+    /**
+     * Read the orthographic flag out of the wasm camera, once, at construction.
+     *
+     * This is the only asynchronous seam in building a renderer, and it exists
+     * because the orthographic widget's cached flag is otherwise `false` no
+     * matter what the camera says. By the time `createAsync` runs, the wasm
+     * state fetch has already completed, so the camera read here is a read of
+     * the *delivered* camera -- which is what makes `isOrthographicEnabled()`
+     * a projection of server state rather than an independent source.
+     *
+     * Deliberately not defensive: a seed that swallowed its own failure would
+     * leave the flag at `false` against a parallel camera, which is precisely
+     * the save-corrupting fault this seed was added to remove, and it would be
+     * invisible to every gate.
+     */
+    async #seedOrthographicFlagAsync(): Promise<void> {
+        await this.#orthographicWidget.seedFromCameraAsync();
     }
 
     readonly #vtkScene: VtkScene;
@@ -393,6 +414,32 @@ export class WasmRenderer implements IRenderer {
         }
     }
 
+    /**
+     * Send one view-level widget payload to its server trigger.
+     *
+     * The sibling of `#sendTriggerAsync` above, whose rationale -- no sender
+     * means no send, a rejection is logged and swallowed, the catch is
+     * unnarrowed -- applies here unchanged and is not repeated.
+     *
+     * It exists separately only because a widget trigger has no `nodeId`.
+     * That helper takes one purely to name it in the error line, and passing a
+     * sentinel would put a fictitious node id in the one message a failed send
+     * produces. The prefix here is correspondingly distinct and greppable.
+     */
+    async #sendWidgetTriggerAsync(
+        triggerName: string,
+        payload: Record<string, unknown>
+    ): Promise<void> {
+        if (this.#triggerSender == null) {
+            return;
+        }
+        try {
+            await this.#triggerSender(triggerName, payload);
+        } catch (err) {
+            console.error(`[VISOR] widget trigger send failed: trigger='${triggerName}'`, err);
+        }
+    }
+
     async sendPartVisibilityAsync(nodeId: NodeId, visible: boolean): Promise<void> {
         await this.#sendTriggerAsync('set_part_visibility', nodeId, {
             nodeId,
@@ -454,8 +501,32 @@ export class WasmRenderer implements IRenderer {
     }
 
     // ---- View-level widgets -------------------------------------------------
+    /**
+     * The four methods below each report to the server *after* the local
+     * write, and each reads its own widget back rather than forwarding the
+     * argument it was given.
+     *
+     * That read-back is required, not stylistic. The toolbar calls all four
+     * with **no argument** -- see `Panel_BottomMiddle.tsx` -- and each widget
+     * resolves the absent argument itself by negating its cached flag. The
+     * argument is therefore not the value; only the widget knows what it
+     * settled on. Forwarding the argument would put `undefined` on the wire
+     * on every toolbar click, which type-checks and lints and fails only at
+     * the server's payload boundary.
+     *
+     * Each reads back through the same getter `getAppStateAsync` uses, so the
+     * value sent and the value saved cannot disagree.
+     *
+     * Every payload is absolute, never a toggle and never a delta, so a send
+     * that is suppressed, duplicated or reordered is harmless. A delivered
+     * state therefore echoes back one send per toggle; that echo is
+     * idempotent by construction and is accepted.
+     */
     async setCrossSectionVisibilityAsync(visible?: boolean): Promise<void> {
         await this.#crossSectionWidget.setVisibilityAsync(visible);
+        await this.#sendWidgetTriggerAsync('set_cross_section_visibility', {
+            visible: this.isCrossSectionVisible(),
+        });
     }
 
     isCrossSectionVisible(): boolean {
@@ -485,6 +556,9 @@ export class WasmRenderer implements IRenderer {
     async setBoundingBoxVisibilityAsync(visible?: boolean): Promise<void> {
         this.#requireSceneGraphAttached('setBoundingBoxVisibilityAsync');
         await this.#boundingBoxWidget!.setVisibilityAsync(visible);
+        await this.#sendWidgetTriggerAsync('set_bounding_box_visibility', {
+            visible: this.isBoundingBoxVisible(),
+        });
     }
 
     isBoundingBoxVisible(): boolean {
@@ -499,6 +573,9 @@ export class WasmRenderer implements IRenderer {
 
     async setOrthographicModeAsync(enable?: boolean): Promise<void> {
         await this.#orthographicWidget.setOrthographicModeAsync(enable);
+        await this.#sendWidgetTriggerAsync('set_projection', {
+            parallel: this.isOrthographicEnabled(),
+        });
     }
 
     isOrthographicEnabled(): boolean {
@@ -508,6 +585,9 @@ export class WasmRenderer implements IRenderer {
     async setEdgeVisibilityGlobalAsync(visible?: boolean): Promise<void> {
         this.#requireSceneGraphAttached('setEdgeVisibilityGlobalAsync');
         await this.#edgesWidget!.setEdgesVisibleAsync(visible);
+        await this.#sendWidgetTriggerAsync('set_edges_visible', {
+            visible: this.#edgesWidget!.enabled,
+        });
     }
 
     areEdgesVisibleGlobally(): boolean {

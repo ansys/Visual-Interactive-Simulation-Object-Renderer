@@ -211,6 +211,17 @@ export interface IRenderer {
 
     // ---- View-level widgets (state is renderer-owned; see arch rule (a)) ---
     setCrossSectionVisibilityAsync(visible?: boolean): Promise<void>;
+    /**
+     * Whether the cross-section plane is shown.
+     *
+     * The value is the last one the server delivered, or the last one this
+     * client set locally, whichever happened later. The widget's cached flag
+     * is a projection of that value, not an independent source.
+     *
+     * A write followed by an immediate read returns the **pre-push** value:
+     * the write is local and the server's confirmation arrives on a later
+     * fetch, so this getter is not a read-after-write on the server's store.
+     */
     isCrossSectionVisible(): boolean; // cached bool, sync
     updateCrossSectionBoundsAsync(): Promise<void>;
     getCrossSectionOriginAsync(): Promise<readonly number[]>;
@@ -219,13 +230,49 @@ export interface IRenderer {
     setCrossSectionNormalAsync(normal: readonly number[]): Promise<void>;
 
     setBoundingBoxVisibilityAsync(visible?: boolean): Promise<void>;
+    /**
+     * Whether the bounding-box outline is shown.
+     *
+     * The value is the last one the server delivered, or the last one this
+     * client set locally, whichever happened later. The bounding-box widget's
+     * cached flag is a projection of that value, not an independent source.
+     *
+     * A write followed by an immediate read returns the **pre-push** value:
+     * the write is local and the server's confirmation arrives on a later
+     * fetch, so this getter is not a read-after-write on the server's store.
+     */
     isBoundingBoxVisible(): boolean;
     updateBoundingBoxBoundsAsync(): Promise<void>;
 
     setOrthographicModeAsync(enable?: boolean): Promise<void>;
+    /**
+     * Whether the view is in parallel (orthographic) projection.
+     *
+     * The value is the last one the server delivered -- seeded from the wasm
+     * camera when the renderer is built, which is the point at which the
+     * delivered camera is already in place -- or the last one this client set
+     * locally, whichever happened later. The orthographic widget's cached flag
+     * is a projection of that camera, not an independent source: the camera is
+     * the single place projection lives, and this flag only reflects it.
+     *
+     * A write followed by an immediate read returns the **pre-push** value:
+     * the write is local and the server's confirmation arrives on a later
+     * fetch, so this getter is not a read-after-write on the server's store.
+     */
     isOrthographicEnabled(): boolean;
 
     setEdgeVisibilityGlobalAsync(visible?: boolean): Promise<void>;
+    /**
+     * Whether edges are shown on every part in the scene.
+     *
+     * The value is the last one the server delivered, or the last one this
+     * client set locally, whichever happened later. The edges widget's cached
+     * flag is a projection of that value, not an independent source.
+     *
+     * A write followed by an immediate read returns the **pre-push** value:
+     * the write is local and the server's confirmation arrives on a later
+     * fetch, so this getter is not a read-after-write on the server's store.
+     */
     areEdgesVisibleGlobally(): boolean;
 
     toggleFullScreenAsync(): Promise<void>;
