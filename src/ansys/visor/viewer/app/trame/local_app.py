@@ -352,6 +352,7 @@ class LocalApp:
 
     def _part_state_api(self, trigger_name: str) -> ScenePartStateApi | None:
         """Return the injected coordinator, or ``None`` after logging."""
+        logger.debug("[trigger] %s arrived.", trigger_name)
         if self._scene_part_state_api is None:
             logger.debug("%s: no scene part-state API injected; ignoring.", trigger_name)
             return None
