@@ -17,6 +17,7 @@ from ansys.visor.viewer.models.runtime.requests.widget_state_payloads import (
     SetBoundingBoxVisibilityPayload,
     SetCrossSectionVisibilityPayload,
     SetEdgesVisiblePayload,
+    SetProjectionPayload,
 )
 
 logger = VisorDefaultLogger(__name__)
@@ -33,11 +34,11 @@ class ScenePartStateApi(Protocol):
     importing the scene keeps this module free of any scene type, so the
     injected object remains LocalApp's only route to the scene.
 
-    Not all of it is per-part, and the name is historical.  ``sync_camera``
-    and the three widget-state toggles are scene-wide, and they are declared
-    here anyway: the one production injection site passes the whole scene
-    coordinator, so a second protocol would be the same object under a second
-    name.  Read this as the whole coordinator surface LocalApp calls, not only
+    Not all of it is per-part, and the name is historical.  ``sync_camera``,
+    the three widget-state toggles and ``set_projection`` are scene-wide, and
+    they are declared here anyway: the one production injection site passes
+    the whole scene coordinator, so a second protocol would be the same object
+    under a second name.  Read this as the whole coordinator surface LocalApp calls, not only
     the per-part part of it.
     """
 
@@ -69,6 +70,8 @@ class ScenePartStateApi(Protocol):
     def set_edges_visible(self, visible: bool) -> None: ...
 
     def set_bounding_box_visibility(self, visible: bool) -> None: ...
+
+    def set_projection(self, parallel: bool) -> None: ...
 
 
 # ----------------------------------------------------------------------
@@ -201,6 +204,7 @@ class LocalApp:
         set_cross_section_visibility: shows or hides the cross-section plane
         set_edges_visible: shows or hides edges on every part
         set_bounding_box_visibility: shows or hides the bounding-box outline
+        set_projection: sets parallel or perspective projection on the camera record
         set_only_cookie: sets a cookie on the server (note: Trame server only allows a single cookie header)
     Protected Methods:
         _cleanup(): Cleans up the active actor in the visualization pipeline.
@@ -505,8 +509,14 @@ class LocalApp:
     # work, not this one's.
     #
     # Payloads are validated at this boundary by ``@parse_payload`` exactly
-    # as the per-part ones are.  The wire key is ``visible`` on all three and
-    # carries no pydantic alias: snake_case and camelCase coincide.
+    # as the per-part ones are.  The wire key is ``visible`` on the three
+    # visibility triggers and ``parallel`` on ``set_projection``; none carries
+    # a pydantic alias, snake_case and camelCase coinciding on all four.
+    #
+    # ``set_projection`` sits in this block because it arrives from the same
+    # toolbar and under the same absolute-value rule, but it is not a fourth
+    # toggle: the server keeps no projection field, the camera record holds
+    # it, and the coordinator re-serialises the camera as part of the write.
     # ------------------------------------------------------------------
 
     @trigger("set_cross_section_visibility")
@@ -535,6 +545,20 @@ class LocalApp:
         if api is None:
             return
         api.set_bounding_box_visibility(payload.visible)
+
+    @trigger("set_projection")
+    @parse_payload(SetProjectionPayload)
+    def set_projection(self, payload) -> None:
+        """Frontend -> Backend: set parallel or perspective projection.
+
+        The projection is the camera record's field, not a toggle of its
+        own: the coordinator writes the record and re-serialises the
+        camera in one critical section.
+        """
+        api = self._part_state_api("set_projection")
+        if api is None:
+            return
+        api.set_projection(payload.parallel)
 
     def set_only_cookie(self, key: str, value: str):
         """

@@ -186,6 +186,18 @@ class VisorSceneBase(ABC):
         written, and writing that ``None`` through is what says so; the guard for
         "absent says nothing" belongs to the load path, in :meth:`apply_state`,
         not here.
+
+        ``orthographic_enabled`` is derived from that same record rather than
+        stored, and it is **emitted here and not read on load**.  The record
+        is bound once and read once: the camera and the projection cannot
+        disagree because there is nothing for them to disagree about.  The
+        load path takes projection off ``camera.parallel_projection`` alone
+        and ignores this field, because two independent fields writing one
+        camera property is exactly the divergence that made a saved file
+        report one projection while the view showed the other.  A ``None``
+        record emits ``None``, which says "nothing was ever written" rather
+        than asserting perspective.  Restoring the load-side read would
+        reopen the divergence; it is not a missing feature.
         """
         runtime_state = await self._get_runtime_state_async(timeout)
 
@@ -194,7 +206,11 @@ class VisorSceneBase(ABC):
                 dataset_id: dataset_state.model_copy(deep=True)
                 for dataset_id, dataset_state in self._dataset_registry.runtime_state_dict.items()
             }
-            runtime_state.scene.camera = self._renderer.get_camera_state()
+            camera_record = self._renderer.get_camera_state()
+            runtime_state.scene.camera = camera_record
+            runtime_state.scene.orthographic_enabled = (
+                camera_record.parallel_projection if camera_record is not None else None
+            )
             runtime_state.scene.cross_section_enabled = self._cross_section_enabled
             runtime_state.scene.edges_enabled = self._edges_enabled
             runtime_state.scene.bounding_box_enabled = self._bounding_box_enabled
@@ -673,6 +689,29 @@ class VisorSceneBase(ABC):
         with self._vtk_lock:
             self._bounding_box_enabled = visible
             self._renderer.set_bounding_box_visibility(visible)
+
+    def set_projection(self, parallel: bool) -> None:
+        """Set parallel or perspective projection on the camera record.
+
+        No store field, and that is the point: projection lives on the camera
+        record and nowhere else, so ``get_state`` derives it rather than
+        reading a second copy that could disagree.
+
+        Both halves run in one critical section and the re-serialisation is
+        part of the write, exactly as in :meth:`sync_camera`: the backend
+        advertises a version number read from the live VTK object while
+        serving content from a cache, so a write with no re-serialise
+        publishes a new version against old content and the client fetches
+        and re-applies the pre-write camera.  Because a projection flip is
+        visually obvious, omitting the re-serialise shows up as the view
+        snapping back.
+
+        No notify.  No ``render()``, no ``flush_wasm_state()``, no
+        ``set_state``.
+        """
+        with self._vtk_lock:
+            self._renderer.set_projection(parallel)
+            self._renderer.serialize_camera_state()
 
     def _restore_part_states(self, runtime_app_state: "RuntimeAppState") -> None:
         """

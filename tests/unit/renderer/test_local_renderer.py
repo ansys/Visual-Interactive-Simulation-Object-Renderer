@@ -817,6 +817,122 @@ class TestCamera:
 
         renderer._local_view.update.assert_not_called()
 
+    # -- set_projection -----------------------------------------------------
+    #
+    # The record half and the pipeline half are separate tests, and the
+    # None-record path is two more: either half can silently do nothing while
+    # the other succeeds, and the None path's two halves fail for different
+    # reasons -- a seeded record is data loss deferred, a guarded pipeline
+    # write is a projection that never reaches the view.
+
+    def test_set_projection_writes_the_record_in_place_preserving_identity(
+        self, renderer
+    ):
+        """Record half: the same object, mutated, never replaced.
+
+        This is the assertion that pins Option A against Option B.  Object
+        identity through ``get_camera_state`` is contractual -- the
+        ``sync_camera`` docstring says callers rely on it -- so a body that
+        rebuilt the record with ``model_copy`` would satisfy the value
+        assertion and fail the identity one, which is what makes the two
+        separable here.
+
+        The record is seeded through ``sync_camera`` from a hand-written
+        camera whose ``parallel_projection`` is the literal ``False``, so the
+        write is a visible transition rather than a coincidence.
+        """
+        seeded = VisorCameraState(
+            position=[1.0, 2.0, 3.0],
+            focal_point=[4.0, 5.0, 6.0],
+            view_up=[0.0, 0.0, 1.0],
+            clipping_range=[7.0, 8.0],
+            parallel_projection=False,
+            view_angle=31.0,
+            parallel_scale=9.0,
+        )
+        renderer.sync_camera(seeded)
+        before = renderer.get_camera_state()
+
+        renderer.set_projection(True)
+
+        after = renderer.get_camera_state()
+        assert before is after
+        assert after is seeded
+        assert after.parallel_projection is True
+
+    def test_set_projection_writes_false_to_the_record(self, renderer):
+        """The other direction, so a body hard-coding ``True`` fails.
+
+        Record half only.  The seed carries ``True`` so that ``False`` is a
+        transition and not the value that was already there.
+        """
+        seeded = VisorCameraState(
+            position=[1.0, 2.0, 3.0],
+            focal_point=[4.0, 5.0, 6.0],
+            view_up=[0.0, 0.0, 1.0],
+            clipping_range=[7.0, 8.0],
+            parallel_projection=True,
+            view_angle=31.0,
+            parallel_scale=9.0,
+        )
+        renderer.sync_camera(seeded)
+
+        renderer.set_projection(False)
+
+        assert renderer.get_camera_state().parallel_projection is False
+
+    def test_set_projection_applies_to_the_pipeline_camera(self, renderer):
+        """Pipeline half: exactly one setter call, with the argument.
+
+        Asserted as the whole call list, so a body that also wrote some other
+        camera property fails rather than passing on the one call that was
+        looked for.  The camera double's setters are recorded after the
+        ``sync_camera`` seed is cleared, so the seven projection writes that
+        seed performs do not appear here.
+        """
+        renderer._last_camera_state = None
+        camera = renderer._vtk_renderer.GetActiveCamera.return_value
+        camera.calls.clear()
+
+        renderer.set_projection(True)
+
+        assert camera.calls == [("SetParallelProjection", True)]
+
+    def test_set_projection_with_no_record_leaves_the_record_none(self, renderer):
+        """The ``None`` record is not seeded here, and that is deliberate.
+
+        Sub-option (ii), pinned so a later session does not quietly seed it: a
+        projection set before any camera has been written is not saved until
+        the next ``reset_camera`` reads the pipeline and imports it.  That
+        cost is named in the interface docstring, and this is the assertion
+        that holds the tree to it.
+        """
+        assert renderer.get_camera_state() is None
+
+        renderer.set_projection(True)
+
+        assert renderer.get_camera_state() is None
+
+    def test_set_projection_with_no_record_still_applies_to_the_pipeline(
+        self, renderer
+    ):
+        """...and the pipeline write happens anyway, with one debug line.
+
+        The pipeline write is unconditional, on both branches.  Its own test
+        rather than another assertion above: "did not seed the record" and
+        "still projected" are different failures, and a body that returned
+        early on a ``None`` record would pass the first while leaving the
+        toolbar click with no visible effect at all.
+        """
+        camera = renderer._vtk_renderer.GetActiveCamera.return_value
+        camera.calls.clear()
+
+        with patch("ansys.visor.viewer.renderer.local_renderer.logger") as log:
+            renderer.set_projection(True)
+
+        assert camera.calls == [("SetParallelProjection", True)]
+        assert log.debug.call_count == 1
+
 
 # ===========================================================================
 # 5.  Render / flush delegation

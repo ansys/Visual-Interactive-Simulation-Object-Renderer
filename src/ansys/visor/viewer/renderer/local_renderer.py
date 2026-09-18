@@ -302,6 +302,20 @@ class VisorLocalRenderer(IRenderer):
         self._last_camera_state = camera_state
         self._apply_to_pipeline_camera(camera_state)
 
+    def set_projection(self, parallel: bool) -> None:
+        """See :meth:`IRenderer.set_projection`.
+
+        Record first, pipeline second, for the reason :meth:`sync_camera`
+        gives.
+        """
+        if self._last_camera_state is not None:
+            self._last_camera_state.parallel_projection = parallel
+        else:
+            logger.debug(
+                "set_projection: no camera record; applying to the pipeline only."
+            )
+        self._vtk_renderer.GetActiveCamera().SetParallelProjection(parallel)
+
     def serialize_camera_state(self) -> None:
         """See :meth:`IRenderer.serialize_camera_state`.
 

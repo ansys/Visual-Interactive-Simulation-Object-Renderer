@@ -2355,3 +2355,216 @@ def test_set_part_visibility_unknown_node_id_does_not_fan_out(scene):
         scene.set_part_visibility(UNKNOWN_NODE_ID, False)
 
     assert calls == []
+
+
+# ===========================================================================
+# Projection -- the camera record's field, written by its own trigger
+#
+# Projection is not a fourth toggle and there is no store field for it.  The
+# camera record is the only holder, ``get_state`` derives the persisted
+# ``orthographic_enabled`` from it, and the coordinator re-serialises the
+# camera as part of the write.
+#
+# That re-serialisation is the story's one quiet failure: dropped, the record
+# is right, the pipeline camera is right, every other test in this module
+# passes, and the browser snaps back to the pre-toggle framing on the next
+# fetch.  The probe below is the only assertion in the suite that sees it.
+# ===========================================================================
+
+PROJECTION_ON = True
+PROJECTION_OFF = False
+
+# What a browser that was asked would answer for the persisted toggle.
+# Deliberately the opposite of the record's parallel_projection, so "derived
+# from the record" and "passed through from the reply" cannot both pass.
+REPLY_ORTHOGRAPHIC = False
+
+
+def _projection_save_scene(scene, record, reply_orthographic):
+    """Wire *scene* for a save: renderer record *record*, reply *orthographic*.
+
+    The same shape as ``_save_scene`` above, but the reply carries the
+    persisted projection toggle rather than a camera, because that is the
+    field whose source is under test.
+    """
+    double = _CameraRecordRenderer(record, _pipeline_camera(), scene=scene)
+    scene._renderer = double
+    scene._dataset_registry = VisorDatasetRegistry()
+
+    async def _get_runtime_state_async(timeout):
+        return RuntimeAppState.from_components(
+            dark_mode=False,
+            unit="m",
+            dataset_states={},
+            orthographic_enabled=reply_orthographic,
+        )
+
+    scene._get_runtime_state_async = _get_runtime_state_async
+    return double
+
+
+# ---------------------------------------------------------------------------
+# The coordinator
+# ---------------------------------------------------------------------------
+
+def test_set_projection_applies_to_the_renderer_and_then_serializes(scene):
+    """The re-serialisation follows the write, and carries production's id.
+
+    Reverted -- the write kept and the re-serialisation dropped -- the record
+    is right, the pipeline camera is right, and the client is served the
+    pre-toggle camera on its next fetch.
+
+    Also pins *where* the re-serialisation lives.  Written inside the
+    renderer's own ``set_projection`` instead of here, the lock probe below
+    would still pass; this spy sits on the coordinator's two calls, so a
+    renderer that serialised for itself would record the pair in the wrong
+    order or twice.
+
+    The spy appends ``("set_projection", <value>)`` for the write and the
+    two-tuple ``("serialize", <id>)`` for the re-serialisation; the tuple is
+    the recording format, not the argument.
+    """
+    order = []
+    real_set = scene._renderer.set_projection
+
+    def _set(parallel):
+        order.append(("set_projection", parallel))
+        return real_set(parallel)
+
+    scene._renderer.set_projection = _set
+    scene._renderer._object_manager.UpdateStateFromObject = (
+        lambda object_id: order.append(("serialize", object_id))
+    )
+
+    scene.set_projection(PROJECTION_ON)
+
+    assert order == [("set_projection", True), ("serialize", ACTIVE_CAMERA_WASM_ID)]
+
+
+def test_set_projection_holds_the_lock_across_both_halves(scene):
+    """Both halves run inside ONE critical section, at the same depth.
+
+    This is the assertion that pins the increment, and it is the only one in
+    the story that catches the quiet failure.  Three reverts, three distinct
+    signatures:
+
+    * drop ``serialize_camera_state()``  -> ``serialize_depth`` is never
+      recorded and this fails on the missing key;
+    * move it below the ``with`` block   -> ``serialize_depth`` is 0 while
+      ``write_depth`` is 1, so both the non-zero and the equality assertions
+      fail, which is what separates "outside the lock" from "absent";
+    * drop the ``with`` entirely         -> both depths are 0.
+
+    The trigger handler runs on trame's daemon thread while the VTK objects it
+    mutates belong to the caller's thread, so a re-serialisation outside the
+    lock reads the object graph while another thread is free to mutate it.
+    That failure is intermittent and never reproduces under a gate.
+    """
+    scene._vtk_lock = _LockSpy()
+    observed = {}
+    real_set = scene._renderer.set_projection
+
+    def _set(parallel):
+        observed["write_depth"] = scene._vtk_lock.depth
+        return real_set(parallel)
+
+    scene._renderer.set_projection = _set
+    scene._renderer._object_manager.UpdateStateFromObject = (
+        lambda object_id: observed.update(serialize_depth=scene._vtk_lock.depth)
+    )
+
+    scene.set_projection(PROJECTION_ON)
+
+    assert observed["write_depth"] >= 1
+    assert observed["serialize_depth"] >= 1
+    assert observed["write_depth"] == observed["serialize_depth"]
+    assert scene._vtk_lock.depth == 0
+    assert scene._vtk_lock.enter_count == scene._vtk_lock.exit_count
+
+
+def test_set_projection_writes_no_store_field(scene):
+    """The camera record is the only holder, and the scene stores nothing.
+
+    The three widget toggles have store fields because no server VTK object
+    backs them.  Projection has one, so a fourth store field would be the
+    second source the derivation exists to remove -- and a second source is
+    invisible until the two disagree, which is a save away.
+
+    Asserted both ways: the record carries the value, and the scene grew no
+    attribute to carry it as well.
+    """
+    seeded = _record_camera()
+    scene._renderer.sync_camera(seeded)
+
+    scene.set_projection(PROJECTION_OFF)
+
+    assert scene._renderer.get_camera_state().parallel_projection is False
+    assert not hasattr(scene, "_orthographic_enabled")
+    assert not hasattr(scene, "_parallel_projection")
+    assert scene._cross_section_enabled is False
+    assert scene._edges_enabled is False
+    assert scene._bounding_box_enabled is False
+
+
+def test_set_projection_does_not_notify_the_client(scene):
+    """Serialise only.  No render, no flush, no delegated push.
+
+    A notify here would look correct and would be a loop: the push rebuilds
+    the client, the rebuild re-delivers state, the reapply fires further
+    triggers, and each one pushes again.  Every gate passes with a notify in
+    place and the symptom in the browser looks like a network problem.
+    """
+    notifications = []
+    scene._renderer.render = lambda: notifications.append("render")
+    scene._renderer.render_window_only = lambda: notifications.append("render_window")
+    scene._renderer.flush_wasm_state = lambda: notifications.append("flush")
+    scene._apply_runtime_state_to_render = lambda state: notifications.append("bridge")
+
+    scene.set_projection(PROJECTION_ON)
+
+    assert notifications == []
+
+
+# ---------------------------------------------------------------------------
+# get_state -- orthographic_enabled is derived from the record
+# ---------------------------------------------------------------------------
+
+def test_get_state_derives_orthographic_enabled_from_the_camera_record(scene):
+    """The saved projection is the record's, with the browser saying otherwise.
+
+    This is the assertion that closes AC-5.  The record carries the
+    hand-written literal ``True`` while the reply carries the hand-written
+    literal ``False``; revert the derivation and the assertion reports
+    ``False``, which is the reply's answer passed through -- the behaviour
+    before this increment.
+
+    ``record_reads == 1`` is asserted here too: the record is bound once and
+    read once, so the camera and the projection are answers to a single
+    question and cannot disagree with each other.
+
+    Asserted on what get_state RETURNS -- the object that reaches the writer
+    -- not on the runtime state it was built from.
+    """
+    double = _projection_save_scene(scene, _record_camera(), REPLY_ORTHOGRAPHIC)
+
+    persisted = asyncio.run(scene.get_state(timeout=1.0))
+
+    assert persisted.scene.orthographic_enabled is True
+    assert persisted.scene.camera.parallel_projection is True
+    assert double.record_reads == 1
+
+
+def test_get_state_orthographic_enabled_is_none_when_the_record_is_empty(scene):
+    """An empty record emits ``None``, not a fabricated ``False``.
+
+    ``None`` says "nothing was ever written"; ``False`` would assert
+    perspective over a client that may be parallel.  The reply carries
+    ``True`` here, so a derivation that dropped its guard and fell back to the
+    reply would be visible rather than coincide.
+    """
+    _projection_save_scene(scene, None, True)
+
+    persisted = asyncio.run(scene.get_state(timeout=1.0))
+
+    assert persisted.scene.orthographic_enabled is None
+    assert persisted.scene.camera is None

@@ -1,8 +1,15 @@
 """Models for the widget-state trigger payloads.
 
-One model per server-tracked widget toggle.  Field names are already
-identical in snake_case and camelCase, so **no** ``Field(alias=...)`` is
-needed and none is to be added: the wire key is exactly ``visible``.
+One model per server-tracked widget toggle, plus the projection.  Field
+names are already identical in snake_case and camelCase, so **no**
+``Field(alias=...)`` is needed and none is to be added: the wire key is
+exactly ``visible`` on the three visibility payloads and exactly
+``parallel`` on ``SetProjectionPayload``.
+
+Projection is not a fourth toggle.  It has no store field on the scene: it
+is the camera record's ``parallel_projection``, written through the
+renderer and derived back out in ``get_state``, so that the projection has
+exactly one source.
 
 These live here rather than inline in ``local_app.py`` beside the six
 per-part payload models, whose own block comment scopes itself to
@@ -41,3 +48,10 @@ class SetBoundingBoxVisibilityPayload(BaseModel):
 
     visible: bool
 
+
+class SetProjectionPayload(BaseModel):
+    """Payload of the ``set_projection`` trigger."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    parallel: bool
