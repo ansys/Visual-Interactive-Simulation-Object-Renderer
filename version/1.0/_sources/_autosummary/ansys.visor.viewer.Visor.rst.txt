@@ -1,0 +1,66 @@
+﻿Visor
+=====
+
+.. currentmodule:: ansys.visor.viewer
+
+.. autoclass:: Visor
+
+   
+
+   
+   .. rubric:: Methods
+
+   .. autosummary::
+      :toctree:
+   
+      
+      
+      Visor.add_dataset
+      
+      
+      Visor.info
+      
+      
+      Visor.list_datasets
+      
+      
+      Visor.list_variables
+      
+      
+      Visor.load_state
+      
+      
+      Visor.remove_dataset
+      
+      
+      Visor.save_state
+      
+      
+      Visor.start
+      
+      
+      Visor.stop
+      
+      
+      Visor.update
+      
+      
+      Visor.update_variables
+      
+   
+   
+
+   
+   
+   .. rubric:: Attributes
+
+   .. autosummary::
+      :toctree:
+   
+      Visor.dark_mode
+      Visor.host
+      Visor.port
+      Visor.standalone
+      Visor.url
+   
+   
