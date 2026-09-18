@@ -28,6 +28,7 @@ from ansys.visor.viewer.config import settings
 from ansys.visor.viewer.core.perf_timer import PerfTimer
 from ansys.visor.viewer.core.visor_colors import VisorColors
 from ansys.visor.viewer.core.visor_logging import VisorDefaultLogger
+from ansys.visor.viewer.models.common.visor_camera_state import VisorCameraState
 from ansys.visor.viewer.models.runtime.vtk.renderer_annotation import (
     WasmNodeHandles,
     WasmRendererAnnotation,
@@ -40,7 +41,6 @@ from ansys.visor.viewer.vtk.widgets.visor_cross_section import VisorCrossSection
 from ansys.visor.viewer.vtk.widgets.visor_orientation import VisorOrientationWidget
 
 if TYPE_CHECKING:
-    from ansys.visor.viewer.models.common.visor_camera_state import VisorCameraState
     from ansys.visor.viewer.vtk.scene_graph import VisorSceneGraphPartNode
 
 logger = VisorDefaultLogger(__name__)
@@ -287,22 +287,82 @@ class VisorLocalRenderer(IRenderer):
     def reset_camera(self, bounds: list[float]) -> None:
         """See :meth:`IRenderer.reset_camera`."""
         self._vtk_renderer.ResetCamera(bounds)
+        self._last_camera_state = self._read_pipeline_camera()
 
     def get_camera_state(self) -> Optional["VisorCameraState"]:
-        """See :meth:`IRenderer.get_camera_state`.
-
-        Returns ``None`` on this branch: no coordinator caller and no
-        frontend round-trip populates the store.  Phase 3 wires the sync.
-        """
+        """See :meth:`IRenderer.get_camera_state`."""
         return self._last_camera_state
 
     def sync_camera(self, camera_state: "VisorCameraState") -> None:
         """See :meth:`IRenderer.sync_camera`.
 
-        Stores the state for :meth:`get_camera_state` to return.  No
-        coordinator caller on this branch; Phase 3 wires the round-trip.
+        Stores before projecting, so a raising VTK setter still leaves the
+        record holding what the earlier caller asked for.
         """
         self._last_camera_state = camera_state
+        self._apply_to_pipeline_camera(camera_state)
+
+    def serialize_camera_state(self) -> None:
+        """See :meth:`IRenderer.serialize_camera_state`.
+
+        ``vtklocal`` advertises each object's modification time off the live
+        VTK object but serves state out of a serialization cache, so a write
+        to the pipeline camera without this call publishes a new
+        version number against the old content: the client fetches the
+        pre-write camera and applies it over the one just installed.
+
+        ``UpdateStateFromObject`` re-serializes the single already-registered
+        id it is given and commits its dependency edges again; a mid-tree node
+        re-serialized on its own stays reachable from its parent, so naming
+        one id is safe.  It is narrower than ``UpdateStatesFromObjects``,
+        which serializes from the roots it is given and registers objects the
+        store has not seen: an id the store has never held answers ``GetId``
+        ``0``, the ROOT sentinel, and the call degrades to an error-logged
+        no-op.
+
+        No ``js_call``: that lives in ``LocalView.update``, so this
+        serialises without re-opening the rebuild race
+        ``_apply_runtime_state_to_render`` refuses.
+        """
+        self._object_manager.UpdateStateFromObject(
+            self._object_manager.GetId(self._vtk_renderer.GetActiveCamera())
+        )
+
+    # ------------------------------------------------------------------
+    # Pipeline camera helpers
+    #
+    # Neither takes a lock.  The caller-holds convention applies exactly as
+    # it does to every other IRenderer method: the scene coordinator holds
+    # ``VisorSceneBase._vtk_lock`` across every path that reaches these.
+    # ------------------------------------------------------------------
+
+    def _read_pipeline_camera(self) -> VisorCameraState:
+        """Read the active pipeline camera into a fresh camera state.
+
+        ``GetParallelProjection`` returns an ``int``; the explicit ``bool()``
+        keeps the field's type off pydantic's non-strict coercion.
+        """
+        camera = self._vtk_renderer.GetActiveCamera()
+        return VisorCameraState(
+            position=list(camera.GetPosition()),
+            focal_point=list(camera.GetFocalPoint()),
+            view_up=list(camera.GetViewUp()),
+            clipping_range=list(camera.GetClippingRange()),
+            parallel_projection=bool(camera.GetParallelProjection()),
+            view_angle=camera.GetViewAngle(),
+            parallel_scale=camera.GetParallelScale(),
+        )
+
+    def _apply_to_pipeline_camera(self, camera_state: "VisorCameraState") -> None:
+        """Write *camera_state*'s onto the active pipeline camera."""
+        camera = self._vtk_renderer.GetActiveCamera()
+        camera.SetPosition(camera_state.position)
+        camera.SetFocalPoint(camera_state.focal_point)
+        camera.SetViewUp(camera_state.view_up)
+        camera.SetClippingRange(camera_state.clipping_range)
+        camera.SetParallelProjection(camera_state.parallel_projection)
+        camera.SetViewAngle(camera_state.view_angle)
+        camera.SetParallelScale(camera_state.parallel_scale)
 
     # ------------------------------------------------------------------
     # IRenderer: widget control (cross-section, bounding box)

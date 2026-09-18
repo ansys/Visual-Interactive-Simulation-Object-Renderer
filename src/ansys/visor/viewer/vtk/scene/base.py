@@ -176,12 +176,8 @@ class VisorSceneBase(ABC):
 
         Shared work (per-part state restoration) is done here; the
         renderer-specific final step is delegated to
-        :meth:`_apply_runtime_state_to_render`.
-
-        Holds ``_vtk_lock`` for the whole body: the delegated step mutates
-        VTK and pushes to the frontend.  The critical section deliberately
-        spans the outbound bridge call and the flush that follows it — the
-        unit the lock protects is the compound sequence, not the VTK work.
+        :meth:`_apply_runtime_state_to_render`.  Holds ``_vtk_lock``
+        for the whole body, including the delegated render step.
         """
         with self._vtk_lock:
             # Apply UI settings
@@ -191,6 +187,16 @@ class VisorSceneBase(ABC):
             runtime_app_state = self._state_mapper.persisted_to_runtime(state)
 
             self._restore_part_states_from_runtime(runtime_app_state)
+
+            # Write the loaded camera to the record and the pipeline camera,
+            # so a client rebuilt from server state (refresh) gets it. Must
+            # precede the render step.  The re-serialize is required: the
+            # server advertises the camera's live MTime but serves its
+            # cached state, so without it a client fetches the pre-load
+            # camera.  A state with no camera leaves both alone.
+            if runtime_app_state.scene.camera is not None:
+                self._renderer.sync_camera(runtime_app_state.scene.camera)
+                self._renderer.serialize_camera_state()
 
             self._apply_runtime_state_to_render(runtime_app_state)
 
@@ -393,6 +399,7 @@ class VisorSceneBase(ABC):
                 return
 
             self._renderer.reset_camera(self._scene_graph.bounds)
+            self._renderer.serialize_camera_state()
 
     def pick_geometry(self, actor_wasm_id, cell_id, mode, world_x, world_y, world_z) -> dict:
         """
