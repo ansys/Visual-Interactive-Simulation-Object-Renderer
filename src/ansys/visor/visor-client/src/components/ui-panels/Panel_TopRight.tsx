@@ -218,7 +218,11 @@ export const Panel_TopRight: FC<{
             legendPanelApplyRangeButtonId
         ) as HTMLButtonElement;
 
-        const fontSize: number = getRootFontSize(14);
+        const fontSize: number = getRootFontSize(
+            14,
+            (componentContainer.closest('.visor-embed-style') ??
+                document.documentElement) as HTMLElement
+        );
 
         let collapsePanel: () => void;
         let expandPanel: () => void;

@@ -160,10 +160,17 @@ export const TreeView = <T extends ITreeViewNode<T>>(props: TreeViewProps<T>) =>
         if (sceneGraph == null) {
             return;
         }
-        const fontSize: number = getRootFontSize(14);
         const componentContainerElem = document.getElementById(
             componentContainerElemId
         ) as HTMLDivElement;
+        // Read the base font size from the nearest `.visor-embed-style` root
+        // rather than `document.documentElement`: when embedded, only the
+        // Visor root (not the host page's <html>) is scoped to Visor's font size.
+        const embedRoot = componentContainerElem.closest('.visor-embed-style');
+        const fontSize: number = getRootFontSize(
+            14,
+            (embedRoot ?? document.documentElement) as HTMLElement
+        );
         const headerContainer = document.createElement('div');
         const treeContainer = document.createElement('div');
         componentContainerElem.appendChild(headerContainer);

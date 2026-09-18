@@ -17,8 +17,9 @@ import {
 } from '../utils/JsHelpers.js';
 
 /**
- * getRootFontSize caches module-level state, so each test needs a fresh
- * instance of the module.
+ * getRootFontSize caches per-element state at module scope, so each test
+ * needs a fresh instance of the module to avoid leaking cached values
+ * between tests.
  *
  * @returns {Promise<(fallback: number) => number>}
  */
@@ -125,6 +126,24 @@ describe('getRootFontSize', () => {
         expect(getRootFontSize(16)).toBe(16);
         expect(getRootFontSize(20)).toBe(20);
         expect(getComputedStyleSpy).toHaveBeenCalledTimes(1);
+    });
+
+    test('caches independently per element, regardless of call order', async () => {
+        const getRootFontSize = await loadFreshGetRootFontSize();
+        const htmlElem = document.documentElement;
+        const embedRootElem = document.createElement('div');
+
+        jest.spyOn(globalThis, 'getComputedStyle').mockImplementation((element) => ({
+            getPropertyValue: () => (element === embedRootElem ? '14px' : '16px'),
+        }));
+
+        // The host <html> resolves first (e.g. a panel without an embed root yet)...
+        expect(getRootFontSize(16, htmlElem)).toBe(16);
+        // ...but a later call with the embed root must not reuse that cached value.
+        expect(getRootFontSize(14, embedRootElem)).toBe(14);
+        // Subsequent calls for each element still return their own cached value.
+        expect(getRootFontSize(16, htmlElem)).toBe(16);
+        expect(getRootFontSize(14, embedRootElem)).toBe(14);
     });
 });
 

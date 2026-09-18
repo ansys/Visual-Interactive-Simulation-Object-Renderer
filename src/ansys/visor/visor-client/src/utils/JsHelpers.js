@@ -1,34 +1,49 @@
-/** @type {number|null} */
-let rootFontSize = null;
+/**
+ * Per-element cache for computed root font sizes. Keyed by element (rather
+ * than a single module-level value) so callers passing different elements
+ * (e.g. `document.documentElement` vs. a `.visor-embed-style` root) don't
+ * clobber each other's cached result regardless of call order.
+ * @type {WeakMap<Element, number>}
+ */
+const rootFontSizeCache = new WeakMap();
 
 /**
- * Returns the root element's computed font size in pixels.
+ * Returns the given element's computed font size in pixels.
  *
  * If the computed font size is not expressed in pixels, the supplied fallback
  * value is returned. The computed value, or the failure to obtain one, is
- * cached for subsequent calls.
+ * cached per-element for subsequent calls.
  *
  * @param {number} fallback - Value to return when the root font size cannot be
  * determined in pixels. Must be zero or greater.
+ * @param {Element} [element] - Element whose computed font size is read.
+ * Defaults to `document.documentElement`. Pass the `.visor-embed-style` root
+ * when available, since that is where Visor's base font size is scoped to
+ * (the host page's `<html>` element is not modified when embedded).
  * @returns {number} The root font size in pixels, or the fallback value.
  * @throws {Error} If `fallback` is not a non-negative number.
  */
-export const getRootFontSize = (fallback) => {
+export const getRootFontSize = (fallback, element = document.documentElement) => {
     if (typeof fallback !== 'number' || fallback < 0) {
         throw new Error('fallback must be a number 0 or greater');
     }
 
+    let rootFontSize = rootFontSizeCache.get(element);
+
     if (rootFontSize == null) {
-        const str = getComputedStyle(document.documentElement, null).getPropertyValue('font-size');
+        const str = getComputedStyle(element, null).getPropertyValue('font-size');
 
         if (/^(?:-?\d+|-?\d*[.,]\d+)px$/i.test(str)) {
-            return (rootFontSize = parseFloat(str.slice(0, -2)));
+            rootFontSize = parseFloat(str.slice(0, -2));
+            rootFontSizeCache.set(element, rootFontSize);
+            return rootFontSize;
         }
 
         const msg = `TreeView warning: computed root element font size '${str}'`;
 
         console.warn(`${msg} is not a pixel value. Using fallback.`);
         rootFontSize = -1;
+        rootFontSizeCache.set(element, rootFontSize);
     }
 
     if (rootFontSize < 0) {

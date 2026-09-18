@@ -4,8 +4,11 @@
     border-color: rgba(var(--theme-color-borders), 1);
 }
 
-html,
-body {
+/* Theme scoping: apply these base rules only inside `.visor-embed-style` to avoid
+   leaking layout and color changes into the host application when Visor is
+   embedded as a component. Wrap the Visor content in a container with class
+   `visor-embed-style`. */
+.visor-embed-style {
     font-size: 14px;
     color: rgba(var(--theme-color-text), 1);
 }
