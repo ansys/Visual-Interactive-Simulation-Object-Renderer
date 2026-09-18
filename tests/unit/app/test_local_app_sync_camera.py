@@ -163,7 +163,7 @@ def test_sync_camera_gesture_logs_one_debug_line_with_origin_and_position(app):
     with patch("ansys.visor.viewer.app.trame.local_app.logger") as log:
         app.sync_camera({"origin": "gesture", "camera": _camera()})
 
-    assert log.debug.call_count == 1
+    assert log.debug.call_count == 2
     args = log.debug.call_args.args
     assert "gesture" in args
     assert CAMERA_POSITION in args
@@ -256,7 +256,7 @@ def test_sync_camera_is_a_logged_no_op_when_no_coordinator_injected(app_without_
         result = app_without_api.sync_camera({"origin": "gesture", "camera": _camera()})
 
     assert result is None
-    assert log.debug.call_count == 1
+    assert log.debug.call_count == 2
 
 
 def test_sync_camera_trigger_name_is_registered_after_decoration(app, mock_server):

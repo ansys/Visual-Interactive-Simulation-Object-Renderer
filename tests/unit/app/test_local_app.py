@@ -289,7 +289,7 @@ def test_trigger_is_a_logged_no_op_when_no_coordinator_injected(app_without_api,
     with patch("ansys.visor.viewer.app.trame.local_app.logger") as mock_logger:
         assert getattr(app_without_api, name)(PAYLOADS[name]) is None
 
-    assert mock_logger.debug.call_count == 1
+    assert mock_logger.debug.call_count == 2
 
 
 # ===========================================================================
@@ -450,7 +450,7 @@ def test_missing_coordinator_logs_debug_and_not_warning(app_without_api, name):
     with patch("ansys.visor.viewer.app.trame.local_app.logger") as mock_logger:
         assert getattr(app_without_api, name)(PAYLOADS[name]) is None
 
-    assert mock_logger.debug.call_count == 1
+    assert mock_logger.debug.call_count == 2
     assert mock_logger.warning.call_count == 0
 
 

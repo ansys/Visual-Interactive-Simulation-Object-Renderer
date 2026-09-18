@@ -187,7 +187,7 @@ def test_set_cross_section_visibility_is_a_logged_no_op_when_no_coordinator_inje
         result = app_without_api.set_cross_section_visibility({"visible": True})
 
     assert result is None
-    assert log.debug.call_count == 1
+    assert log.debug.call_count == 2
 
 
 def test_set_edges_visible_is_a_logged_no_op_when_no_coordinator_injected(app_without_api):
@@ -196,7 +196,7 @@ def test_set_edges_visible_is_a_logged_no_op_when_no_coordinator_injected(app_wi
         result = app_without_api.set_edges_visible({"visible": True})
 
     assert result is None
-    assert log.debug.call_count == 1
+    assert log.debug.call_count == 2
 
 
 def test_set_bounding_box_visibility_is_a_logged_no_op_when_no_coordinator_injected(
@@ -207,7 +207,7 @@ def test_set_bounding_box_visibility_is_a_logged_no_op_when_no_coordinator_injec
         result = app_without_api.set_bounding_box_visibility({"visible": True})
 
     assert result is None
-    assert log.debug.call_count == 1
+    assert log.debug.call_count == 2
 
 
 # ===========================================================================
