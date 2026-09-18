@@ -135,8 +135,11 @@ class NullRenderer(IRenderer):
 
 
     # ------------------------------------------------------------------
-    # Widget control (cross-section, bounding box)
+    # Widget control (cross-section, bounding box, edges)
     # ------------------------------------------------------------------
+
+    def set_edges_visible(self, visible: bool) -> None:
+        """No pipelines to fan out over; nothing to do."""
 
     def set_cross_section_visibility(self, visible: bool) -> None:
         pass

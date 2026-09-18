@@ -31,8 +31,20 @@ class VisorSceneDetails(BaseModel):
             dataset_states: Dict[int, RuntimeDatasetState],
             scene_graph_state: SceneGraphNodeInfo | None = None,
             renderer_annotation: RendererAnnotation | None = None,
+            orthographic_enabled: bool | None = None,
+            cross_section_enabled: bool | None = None,
+            edges_enabled: bool | None = None,
+            bounding_box_enabled: bool | None = None,
     ) -> "VisorSceneDetails":
-        """Construct an instance from components."""
+        """Construct an instance from components.
+
+        The four widget-state keywords are forwarded, not stored here: this
+        payload is how a rebuilt or reconnecting client learns the server's
+        toggles, and ``RuntimeAppState.from_components`` already accepts every
+        one of them.  No new model and no new field -- what was missing was
+        the argument passing, and a keyword dropped from the call below is
+        delivered as ``None`` and reverts that toggle in the browser.
+        """
         vtk_info = RuntimeVTKInfo(
             scene_graph=scene_graph_state,
             renderer_annotation=renderer_annotation,
@@ -41,6 +53,10 @@ class VisorSceneDetails(BaseModel):
             dark_mode=dark_mode,
             unit=unit,
             dataset_states=dataset_states,
+            orthographic_enabled=orthographic_enabled,
+            cross_section_enabled=cross_section_enabled,
+            edges_enabled=edges_enabled,
+            bounding_box_enabled=bounding_box_enabled,
         )
         return cls(
             app_state=app_state,

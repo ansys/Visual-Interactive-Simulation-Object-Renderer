@@ -454,6 +454,51 @@ class TestPerPartMutations:
 
 
 # ===========================================================================
+# 3a-bis.  Scene-wide widget state: set_edges_visible
+#
+#      The VTK effect lives on VtkNodePipeline and is asserted in
+#      tests/unit/vtk/test_node_pipeline.py.  What is asserted here is the
+#      fan-out: every registered pipeline, no node-id resolution, and no
+#      guard branch for an empty registry.
+# ===========================================================================
+
+class TestGlobalEdgeVisibility:
+
+    def test_set_edges_visible_fans_out_over_every_pipeline(self, renderer):
+        """Every registered pipeline is told, with the value as given.
+
+        Three pipelines under non-contiguous ids, so a body that iterated a
+        range or resolved a node id rather than iterating the registry's
+        values fails here.
+        """
+        pipes = {4: MagicMock(name="pipe-4"), 9: MagicMock(name="pipe-9"),
+                 17: MagicMock(name="pipe-17")}
+        renderer._pipelines.update(pipes)
+
+        assert renderer.set_edges_visible(True) is None
+
+        for pipe in pipes.values():
+            pipe.set_edge_visibility.assert_called_once_with(True)
+
+    def test_set_edges_visible_with_no_pipelines_is_a_no_op(self, renderer):
+        """An empty scene is a no-op by iteration, not by guard.
+
+        Pinned because the contract says there is no logged-no-op branch here:
+        a later session adding one would be adding a branch that can only ever
+        be wrong, and this test says the empty case is already handled.
+        """
+        renderer._pipelines.clear()
+
+        with patch(
+            "ansys.visor.viewer.renderer.local_renderer.logger"
+        ) as mock_logger:
+            assert renderer.set_edges_visible(True) is None
+
+        assert mock_logger.debug.call_count == 0
+        assert mock_logger.warning.call_count == 0
+
+
+# ===========================================================================
 # 3b.  Delegated apply bodies: visibility, opacity, diffuse colour,
 #      selection, colour variable
 #

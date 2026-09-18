@@ -13,6 +13,11 @@ from ansys.visor.viewer.core.visor_enums import VisorVtkVariableType
 from ansys.visor.viewer.core.visor_logging import VisorDefaultLogger
 from ansys.visor.viewer.models.common.visor_camera_state import VisorCameraState
 from ansys.visor.viewer.models.runtime.requests.sync_camera_payload import SyncCameraPayload
+from ansys.visor.viewer.models.runtime.requests.widget_state_payloads import (
+    SetBoundingBoxVisibilityPayload,
+    SetCrossSectionVisibilityPayload,
+    SetEdgesVisiblePayload,
+)
 
 logger = VisorDefaultLogger(__name__)
 
@@ -21,16 +26,19 @@ vtkObject.GlobalWarningDisplayOff()
 
 
 class ScenePartStateApi(Protocol):
-    """Structural type of the per-part coordinator surface LocalApp calls.
+    """Structural type of the coordinator surface LocalApp calls.
 
     Typing only: there is no ``runtime_checkable`` decoration and no
     ``isinstance`` check anywhere against it.  Declaring it here rather than
     importing the scene keeps this module free of any scene type, so the
     injected object remains LocalApp's only route to the scene.
 
-    ``sync_camera`` is not per-part, and it is declared here anyway: the one
-    production injection site passes the whole scene coordinator, so a second
-    protocol would be the same object under a second name.
+    Not all of it is per-part, and the name is historical.  ``sync_camera``
+    and the three widget-state toggles are scene-wide, and they are declared
+    here anyway: the one production injection site passes the whole scene
+    coordinator, so a second protocol would be the same object under a second
+    name.  Read this as the whole coordinator surface LocalApp calls, not only
+    the per-part part of it.
     """
 
     def set_part_visibility(self, node_id: int, visible: bool) -> None: ...
@@ -55,6 +63,12 @@ class ScenePartStateApi(Protocol):
     def clear_part_color_variable(self, node_id: int) -> None: ...
 
     def sync_camera(self, camera_state: VisorCameraState) -> None: ...
+
+    def set_cross_section_visibility(self, visible: bool) -> None: ...
+
+    def set_edges_visible(self, visible: bool) -> None: ...
+
+    def set_bounding_box_visibility(self, visible: bool) -> None: ...
 
 
 # ----------------------------------------------------------------------
@@ -184,6 +198,9 @@ class LocalApp:
         set_part_color_variable: colours one part by a scalar variable
         clear_part_color_variable: stops colouring one part by a scalar variable
         sync_camera: records a settled camera reported by the frontend
+        set_cross_section_visibility: shows or hides the cross-section plane
+        set_edges_visible: shows or hides edges on every part
+        set_bounding_box_visibility: shows or hides the bounding-box outline
         set_only_cookie: sets a cookie on the server (note: Trame server only allows a single cookie header)
     Protected Methods:
         _cleanup(): Cleans up the active actor in the visualization pipeline.
@@ -466,6 +483,57 @@ class LocalApp:
             payload.camera.position,
         )
         api.sync_camera(payload.camera)
+
+    # ------------------------------------------------------------------
+    # Widget-state triggers
+    #
+    # Frontend -> Backend.  One trigger per server-tracked toggle.  Each
+    # carries the absolute target value the client's widget settled on,
+    # never a toggle and never a delta: the toolbar buttons are toggles, so
+    # the client reads its widget back after the local write and sends the
+    # result.  A message the client suppresses as redundant is therefore
+    # indistinguishable from one that set a value the server already held,
+    # and both are correct.
+    #
+    # No ``origin`` field (RS-1).  The camera needed one because a
+    # programmatic echo re-applied a *stale* camera over a newer one; a
+    # toggle echo carries the same boolean the server already holds, so the
+    # write is idempotent and the client's own widgets damp it with their
+    # value guards.  It is the same echo the per-part deliveries already
+    # produce on load.  Separating delivery from mutation is a later story's
+    # work, not this one's.
+    #
+    # Payloads are validated at this boundary by ``@parse_payload`` exactly
+    # as the per-part ones are.  The wire key is ``visible`` on all three and
+    # carries no pydantic alias: snake_case and camelCase coincide.
+    # ------------------------------------------------------------------
+
+    @trigger("set_cross_section_visibility")
+    @parse_payload(SetCrossSectionVisibilityPayload)
+    def set_cross_section_visibility(self, payload) -> None:
+        """Frontend -> Backend: show or hide the cross-section plane."""
+        api = self._part_state_api("set_cross_section_visibility")
+        if api is None:
+            return
+        api.set_cross_section_visibility(payload.visible)
+
+    @trigger("set_edges_visible")
+    @parse_payload(SetEdgesVisiblePayload)
+    def set_edges_visible(self, payload) -> None:
+        """Frontend -> Backend: show or hide edges on every part."""
+        api = self._part_state_api("set_edges_visible")
+        if api is None:
+            return
+        api.set_edges_visible(payload.visible)
+
+    @trigger("set_bounding_box_visibility")
+    @parse_payload(SetBoundingBoxVisibilityPayload)
+    def set_bounding_box_visibility(self, payload) -> None:
+        """Frontend -> Backend: show or hide the bounding-box outline."""
+        api = self._part_state_api("set_bounding_box_visibility")
+        if api is None:
+            return
+        api.set_bounding_box_visibility(payload.visible)
 
     def set_only_cookie(self, key: str, value: str):
         """

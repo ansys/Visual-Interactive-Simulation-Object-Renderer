@@ -247,6 +247,50 @@ def test_set_visibility_false_hides_actor(poly_dataset):
 
 
 # ---------------------------------------------------------------------------
+# set_edge_visibility
+#
+# The property flag, not the actor flag.  Both literals are hand-written: VTK
+# stores edge visibility as an int, and the assertions are against 1 and 0
+# rather than against a bool, so a body that relied on bool-to-int coercion
+# and a body that wrote the wrong object are distinguishable.
+# ---------------------------------------------------------------------------
+
+def test_set_edge_visibility_true_sets_property_edge_visibility(poly_dataset):
+    """set_edge_visibility(True) sets the property's edge-visibility flag."""
+    pipe = VtkNodePipeline.from_dataset(poly_dataset)
+    pipe.actor.GetProperty().SetEdgeVisibility(0)
+
+    pipe.set_edge_visibility(True)
+
+    assert pipe.actor.GetProperty().GetEdgeVisibility() == 1
+
+
+def test_set_edge_visibility_false_clears_property_edge_visibility(poly_dataset):
+    """set_edge_visibility(False) clears the property's edge-visibility flag."""
+    pipe = VtkNodePipeline.from_dataset(poly_dataset)
+    pipe.actor.GetProperty().SetEdgeVisibility(1)
+
+    pipe.set_edge_visibility(False)
+
+    assert pipe.actor.GetProperty().GetEdgeVisibility() == 0
+
+
+def test_set_edge_visibility_does_not_touch_actor_visibility(poly_dataset):
+    """Edges are a property flag; the part's own visibility is untouched.
+
+    The two are one keystroke apart on the actor and this is the test that
+    separates them: writing ``SetVisibility`` instead would hide the part and
+    still pass a test that only read the edge flag back.
+    """
+    pipe = VtkNodePipeline.from_dataset(poly_dataset)
+    pipe.actor.SetVisibility(0)
+
+    pipe.set_edge_visibility(True)
+
+    assert pipe.actor.GetVisibility() == 0
+
+
+# ---------------------------------------------------------------------------
 # set_opacity
 # ---------------------------------------------------------------------------
 

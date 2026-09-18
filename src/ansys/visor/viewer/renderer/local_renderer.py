@@ -365,10 +365,26 @@ class VisorLocalRenderer(IRenderer):
         camera.SetParallelScale(camera_state.parallel_scale)
 
     # ------------------------------------------------------------------
-    # IRenderer: widget control (cross-section, bounding box)
+    # IRenderer: widget control (cross-section, bounding box, edges)
     #
-    # No coordinator caller on this branch. Phase 3 populates.
+    # ``set_edges_visible`` has a coordinator caller and a body.  The two
+    # visibility verbs do not, and deliberately stay no-ops: the server's
+    # cross-section and bounding-box widget objects are driven by the client
+    # through the wasm mirror, nothing in LOCAL reads their enablement, and a
+    # server-side body would be a second writer with no reader.  Edge
+    # visibility is different in kind -- it is an actor property on this
+    # renderer's own pipelines, and it has a reader here.
     # ------------------------------------------------------------------
+
+    def set_edges_visible(self, visible: bool) -> None:
+        """See :meth:`IRenderer.set_edges_visible`.
+
+        Fans out over every registered pipeline.  Scene-wide, so there is no
+        node id to resolve and no logged-no-op branch: a scene with no
+        pipelines is a no-op by iteration, not by guard.
+        """
+        for pipe in self._pipelines.values():
+            pipe.set_edge_visibility(visible)
 
     def set_cross_section_visibility(self, visible: bool) -> None:
         """No-op in Story 1.2. Phase 3 populates."""

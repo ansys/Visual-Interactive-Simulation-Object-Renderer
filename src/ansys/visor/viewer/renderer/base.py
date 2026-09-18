@@ -8,8 +8,8 @@ The scene coordinator programs against this interface. Swapping backends
 without touching scene coordination.
 
 Contract covers node lifecycle, per-part visual mutations,
-camera, widget control (cross-section, bounding box), widget fan-out (scene
-bounds, actor count), picking, and render/flush. Not covered yet:
+camera, widget control (cross-section, bounding box, edges), widget fan-out
+(scene bounds, actor count), picking, and render/flush. Not covered yet:
 state-authority hooks, trigger-facing methods, round-trip additions.
 
 """
@@ -220,8 +220,17 @@ class IRenderer(ABC):
         """
 
     # ------------------------------------------------------------------------
-    # Widget control (cross-section, bounding box)
+    # Widget control (cross-section, bounding box, edges)
     # ------------------------------------------------------------------------
+
+    @abstractmethod
+    def set_edges_visible(self, visible: bool) -> None:
+        """Show or hide edges on every part in the scene.
+
+        Scene-wide, not per-node: edges are a single global toggle and the
+        per-part surface that once mirrored it had no reader, no sender and
+        no model field.
+        """
 
     @abstractmethod
     def set_cross_section_visibility(self, visible: bool) -> None:
