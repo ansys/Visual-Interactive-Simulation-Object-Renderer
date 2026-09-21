@@ -204,9 +204,6 @@ class VisorLocalRenderer(IRenderer):
             return
         pipe.set_diffuse_color(r, g, b)
 
-    def apply_edge_visibility(self, node_id: int, edge_visible: bool) -> None:
-        """No-op in Story 1.2. Phase 3 populates."""
-
     def apply_selected(
         self, node_id: int, selected: bool, diffuse_rgb: list
     ) -> None:

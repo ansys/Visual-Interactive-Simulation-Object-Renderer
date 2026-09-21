@@ -45,6 +45,9 @@ const BOUNDING_BOX_ALGORITHM_ID = 205;
 const BOUNDING_BOX_OUTLINE_ID = 206;
 const BOUNDING_BOX_AXES_ID = 207;
 
+/** Three actor node ids for the edge fan-out. Hand-written literals. */
+const FAN_OUT_ACTOR_IDS = [11, 12, 13];
+
 /** What the wasm camera reports for `GetParallelProjection()`. */
 const PARALLEL = 1;
 const PERSPECTIVE = 0;
@@ -102,21 +105,23 @@ function makeFakeWasmObjects() {
 /**
  * A scene-graph stand-in for `attachSceneGraph`.
  *
- * `EdgesWidget` fans out through the graph node's own
- * `setEdgeVisibilityAsync`; `BoundingBoxWidget` enumerates
- * `descendantActorNodesOrSelfArray` when recomputing bounds. Neither is the
- * subject here -- what is pinned is the *send* that follows the local write.
+ * `EdgesWidget` enumerates `descendantActorNodesOrSelfArray` and calls the
+ * renderer's own per-actor `setEdgeVisibilityAsync` for each node's `id`;
+ * `BoundingBoxWidget` enumerates the same array when recomputing bounds.
+ * Neither is the subject of the send tests -- what those pin is the *send*
+ * that follows the local write, and they pass an empty actor list so the
+ * fan-out reaches nothing.
  */
-function makeSceneGraphDouble() {
+function makeSceneGraphDouble(actorIds: number[] = []) {
     return {
-        setEdgeVisibilityAsync: jest.fn(async () => undefined),
-        descendantActorNodesOrSelfArray: [],
+        descendantActorNodesOrSelfArray: actorIds.map((id) => ({ id })),
     };
 }
 
 async function makeRenderer(
     sender: TrameTriggerSender | null,
-    parallelProjection: number = PERSPECTIVE
+    parallelProjection: number = PERSPECTIVE,
+    actorIds: number[] = []
 ) {
     const objects = makeFakeWasmObjects();
     const camera = {
@@ -145,7 +150,7 @@ async function makeRenderer(
         makeAnnotation(),
         sender
     );
-    const sceneGraph = makeSceneGraphDouble();
+    const sceneGraph = makeSceneGraphDouble(actorIds);
     renderer.attachSceneGraph(sceneGraph as unknown as VisorSceneNodeExtended);
     return { renderer, camera, sceneGraph, ...objects };
 }
@@ -238,6 +243,32 @@ describe('WasmRenderer widget sends: no sender, and a failing sender', () => {
         expect(message).not.toContain('nodeId');
 
         consoleError.mockRestore();
+    });
+});
+
+describe('WasmRenderer edge fan-out reaches every actor on every call', () => {
+    test('setEdgeVisibilityGlobalAsync issues one per-actor call per actor on every call, not only when the value changes', async () => {
+        // The per-node cache that D1 deleted lived on the scene-graph node
+        // and had no invalidation, so a second toggle to the same value was
+        // a no-op and three of the six pairs below were absent. This is an
+        // id set with its value, not a call count: a count would not say
+        // which actors were reached.
+        const { renderer } = await makeRenderer(makeSender(), PERSPECTIVE, FAN_OUT_ACTOR_IDS);
+        const perActor = jest.spyOn(renderer, 'setEdgeVisibilityAsync');
+
+        await renderer.setEdgeVisibilityGlobalAsync(true);
+        await renderer.setEdgeVisibilityGlobalAsync(true);
+
+        expect(perActor.mock.calls).toEqual([
+            [11, true],
+            [12, true],
+            [13, true],
+            [11, true],
+            [12, true],
+            [13, true],
+        ]);
+
+        perActor.mockRestore();
     });
 });
 

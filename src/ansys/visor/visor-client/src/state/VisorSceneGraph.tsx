@@ -31,7 +31,6 @@ export type VisorSceneNodeExtended = Readonly<{
     diffuseRgb: Readonly<number[]>;
     visible: boolean;
     selected: boolean;
-    edgeVisibility: boolean;
     opacity: number;
     descendantsOrSelfArray: VisorSceneNodeExtended[];
     descendantsOrSelfDictionary: Record<string, VisorSceneNodeExtended>;
@@ -44,7 +43,6 @@ export type VisorSceneNodeExtended = Readonly<{
     setDiffuseColorRgbAsync: (r: number, g: number, b: number) => Promise<void>;
     setVisibilityAsync: (visible: boolean) => Promise<void>;
     setSelectedAsync: (selected: boolean) => Promise<void>;
-    setEdgeVisibilityAsync: (edgeVisibility: boolean) => Promise<void>;
     setOpacityAsync: (opacity: number) => Promise<void>;
     clearColorVariableAsync: () => Promise<void>;
     setColorVariableAsync: (id: string, component?: number | null) => Promise<void>;
@@ -99,7 +97,6 @@ export const CreateVisorSceneGraph = (() => {
         }
         let _visible: boolean = true;
         let _selected: boolean = false;
-        let _edgeVisibility: boolean = false;
         let _opacity: number = 1;
         let _spectrumId: string | null = null;
         let _spectrumComponent: number = -1;
@@ -145,9 +142,6 @@ export const CreateVisorSceneGraph = (() => {
             },
             get selected() {
                 return _selected;
-            },
-            get edgeVisibility() {
-                return _edgeVisibility;
             },
             get opacity() {
                 return _opacity;
@@ -268,21 +262,6 @@ export const CreateVisorSceneGraph = (() => {
                 // The trigger carries no colour: the server reads the part's
                 // stored colour from its own record.
                 await renderer!.sendPartSelectedAsync(nodeId, _selected);
-            },
-            async setEdgeVisibilityAsync(edgeVisibility: boolean) {
-                if (_edgeVisibility === edgeVisibility) {
-                    return;
-                }
-                _edgeVisibility = edgeVisibility;
-                if (node.isGroupNode) {
-                    const promises = [];
-                    for (const n of node.descendantActorNodesOrSelfArray) {
-                        promises.push(n.setEdgeVisibilityAsync(edgeVisibility));
-                    }
-                    await Promise.all(promises);
-                    return;
-                }
-                await renderer!.setEdgeVisibilityAsync(nodeId, edgeVisibility);
             },
             async setOpacityAsync(opacity: number) {
                 if (_opacity === opacity) {
