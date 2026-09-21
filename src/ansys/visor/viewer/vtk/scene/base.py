@@ -565,7 +565,7 @@ class VisorSceneBase(ABC):
         Restore the camera state from a runtime app state, on the load path.
 
         Write the loaded camera to the record and the pipeline camera, so a client rebuilt
-        from server state (refresh) gets it.  Must precede teh render step.  The re-serialize
+        from server state (refresh) gets it.  Must precede the render step.  The re-serialize
         is required: the server advertises the camera's live MTime but serves its cached state,
         so without it a client fetches the pre-load camera.  A state with no camera leaves both
         alone.
