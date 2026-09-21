@@ -45,7 +45,11 @@ export const Panel_TopLeft: FC<{
                 await visorState.render();
             })();
         });
-        const fontSize: number = getRootFontSize(14);
+        const fontSize: number = getRootFontSize(
+            14,
+            (reactComponentContainer.closest('.visor-embed-style') ??
+                document.documentElement) as HTMLElement
+        );
         const collapseButton = AwcIcons.getArrowHeadDownIcon(fontSize * 1.2, 3, true, [
             'theme-hover-background-3',
         ]) as HTMLButtonElement;

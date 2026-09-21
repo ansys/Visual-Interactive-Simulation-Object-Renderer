@@ -96,7 +96,7 @@ const Visordash = (props) => {
   }, [fireSnapshot]);
 
   return (
-    <div id={id} style={{ width: '100%', height: '100%' }}>
+    <div id={id} className="visor-embed-style" style={{ width: '100%', height: '100%' }}>
       <div id="VisorContainer" style={{ width: '100%', height: '100%' }} />
     </div>
   );
