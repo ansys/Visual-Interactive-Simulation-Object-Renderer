@@ -76,7 +76,7 @@ class VisorStateMapper:
 
         Returns the runtime dataset states on the ``RuntimeAppState``; it does not
         assign them to ``VisorDataset.state``.  The registry is populated by
-        :meth:`VisorSceneBase._restore_part_states_from_runtime`.
+        :meth:`VisorSceneBase._restore_part_states`.
 
         """
         # UI settings

@@ -322,7 +322,7 @@ class VisorLocalRenderer(IRenderer):
 
         No ``js_call``: that lives in ``LocalView.update``, so this
         serialises without re-opening the rebuild race
-        ``_apply_runtime_state_to_render`` refuses.
+        ``_push_runtime_state`` refuses.
         """
         self._object_manager.UpdateStateFromObject(
             self._object_manager.GetId(self._vtk_renderer.GetActiveCamera())

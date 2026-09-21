@@ -48,7 +48,7 @@ class VisorSceneBase(ABC):
 
     * :meth:`_get_runtime_state_async` — wasm path does a frontend round-trip;
       RCA/headless paths build state server-side.
-    * :meth:`_apply_runtime_state_to_render` — wasm path calls a JS
+    * :meth:`_push_runtime_state` — wasm path calls a JS
       ``set_state``; RCA path pushes camera onto ``vtkCamera``; headless
       is a no-op.
 
@@ -117,7 +117,7 @@ class VisorSceneBase(ABC):
         """
 
     @abstractmethod
-    def _apply_runtime_state_to_render(self, runtime_app_state: "RuntimeAppState") -> None:
+    def _push_runtime_state(self, runtime_app_state: "RuntimeAppState") -> None:
         """
         Push a runtime app state onto the renderer / frontend after the
         shared per-part state has already been restored.
@@ -174,10 +174,14 @@ class VisorSceneBase(ABC):
         """
         Apply a saved viewer state.
 
-        Shared work (per-part state restoration) is done here; the
-        renderer-specific final step is delegated to
-        :meth:`_apply_runtime_state_to_render`.  Holds ``_vtk_lock``
-        for the whole body, including the delegated render step.
+        One ``_restore_*`` step per state class, each making the server's own
+        copy of that class match the loaded state: its stored state, and the
+        VTK objects that the state drives.
+
+        The renderer-speific delivery step is delegated to :meth:`_push_runtime_state`,
+        and runs last, once every record above it has been written.
+
+        Holds ``_vtk_lock`` for the whole body, including the delegated render step.
         """
         with self._vtk_lock:
             # Apply UI settings
@@ -186,19 +190,14 @@ class VisorSceneBase(ABC):
             # Transform the frontend PersistedViewerStateV1 -> RuntimeAppState
             runtime_app_state = self._state_mapper.persisted_to_runtime(state)
 
-            self._restore_part_states_from_runtime(runtime_app_state)
+            # One call per state class: updates the server's stored state and its VTK objects.
+            self._restore_part_states(runtime_app_state)
+            self._restore_camera_state(runtime_app_state)
+            # TODO: restore widget state, UI state, and variable states when they are synced back to the server.
 
-            # Write the loaded camera to the record and the pipeline camera,
-            # so a client rebuilt from server state (refresh) gets it. Must
-            # precede the render step.  The re-serialize is required: the
-            # server advertises the camera's live MTime but serves its
-            # cached state, so without it a client fetches the pre-load
-            # camera.  A state with no camera leaves both alone.
-            if runtime_app_state.scene.camera is not None:
-                self._renderer.sync_camera(runtime_app_state.scene.camera)
-                self._renderer.serialize_camera_state()
-
-            self._apply_runtime_state_to_render(runtime_app_state)
+            # The server's copy is now current; deliver it to the rendering backend.
+            # wasm: set_state() to the browser; RCA: a rendered frame; headless: no-op.
+            self._push_runtime_state(runtime_app_state)
 
             # Note: There is intentionally no wasm flush here: the bridge call is fire-and-forget, so a flush
             # at this point races the client's rebuild against a half-written object graph.
@@ -525,7 +524,7 @@ class VisorSceneBase(ABC):
                 return
             self._renderer.clear_color_variable(node_id)
 
-    def _restore_part_states_from_runtime(self, runtime_app_state: "RuntimeAppState") -> None:
+    def _restore_part_states(self, runtime_app_state: "RuntimeAppState") -> None:
         """
         Restore per-part state from a runtime app state, on the load path.
 
@@ -545,7 +544,7 @@ class VisorSceneBase(ABC):
             dataset = self._dataset_registry.datasets.get(dataset_id)
             if dataset is None:
                 logger.warning(
-                    "_restore_part_states_from_runtime: dataset %s is not registered; "
+                    "_restore_part_states: dataset %s is not registered; "
                     "its part state was not applied to the pipeline.", dataset_id
                 )
                 continue
@@ -560,6 +559,22 @@ class VisorSceneBase(ABC):
                 self._restore_one_part_state(
                     part_id, part_state, variable_states, variables_by_part.get(part_id)
                 )
+
+    def _restore_camera_state(self, runtime_app_state: "RuntimeAppState") -> None:
+        """
+        Restore the camera state from a runtime app state, on the load path.
+
+        Write the loaded camera to the record and the pipeline camera, so a client rebuilt
+        from server state (refresh) gets it.  Must precede teh render step.  The re-serialize
+        is required: the server advertises the camera's live MTime but serves its cached state,
+        so without it a client fetches the pre-load camera.  A state with no camera leaves both
+        alone.
+
+        Callers must hold ``_vtk_lock``.
+        """
+        if runtime_app_state.scene.camera is not None:
+            self._renderer.sync_camera(runtime_app_state.scene.camera)
+            self._renderer.serialize_camera_state()
 
     def _restore_one_part_state(
             self,

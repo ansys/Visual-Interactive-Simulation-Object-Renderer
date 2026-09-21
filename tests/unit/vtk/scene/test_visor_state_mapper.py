@@ -251,7 +251,7 @@ def test_persisted_to_runtime_does_not_write_back_to_dataset_state(monkeypatch):
 
     It builds runtime dataset states and returns them; it never assigns them
     onto ``VisorDataset.state``.  That is the gap
-    ``VisorSceneBase._restore_part_states_from_runtime`` closes, so the
+    ``VisorSceneBase._restore_part_states`` closes, so the
     negative is pinned here rather than assumed.
     """
 

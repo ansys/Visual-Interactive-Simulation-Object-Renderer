@@ -50,7 +50,7 @@ class VisorLocalScene(VisorSceneBase):
         response = await self._frontend_bridge.request_state(timeout=timeout)
         return response.app_state
 
-    def _apply_runtime_state_to_render(self, runtime_app_state: "RuntimeAppState") -> None:
+    def _push_runtime_state(self, runtime_app_state: "RuntimeAppState") -> None:
         """
         Flush the VTK window then push the restored state to the React frontend.
 

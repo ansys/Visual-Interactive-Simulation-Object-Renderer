@@ -65,7 +65,7 @@ def test_abstract_methods():
     """VisorSceneBase declares exactly the two expected abstract hooks."""
     assert VisorSceneBase.__abstractmethods__ == {
         "_get_runtime_state_async",
-        "_apply_runtime_state_to_render",
+        "_push_runtime_state",
     }
 
 
@@ -79,7 +79,7 @@ class _ConcreteScene(VisorSceneBase):
     async def _get_runtime_state_async(self, timeout: float):
         return MagicMock(name="runtime_app_state")
 
-    def _apply_runtime_state_to_render(self, runtime_app_state) -> None:
+    def _push_runtime_state(self, runtime_app_state) -> None:
         return None
 
 
@@ -663,7 +663,7 @@ def test_update_variables_for_dataset_holds_the_lock(mocked_scene):
 def test_apply_state_holds_the_lock(mocked_scene):
     """apply_state() runs the renderer-specific step with the lock held."""
     observed = {}
-    mocked_scene._apply_runtime_state_to_render = lambda state: observed.update(
+    mocked_scene._push_runtime_state = lambda state: observed.update(
         depth=mocked_scene._vtk_lock.depth
     )
 
@@ -947,7 +947,7 @@ def test_apply_state_pushes_a_json_encodable_runtime_state(scene, registry):
     apply_state hands to the renderer-specific step, not a model in isolation.
     """
     pushed = {}
-    scene._apply_runtime_state_to_render = lambda state: pushed.update(state=state)
+    scene._push_runtime_state = lambda state: pushed.update(state=state)
 
     _apply(
         scene,
@@ -1004,7 +1004,7 @@ def test_apply_state_applies_every_part_to_the_pipeline(
 def test_apply_state_does_not_flush_after_the_bridge_call(scene, registry):
     """Exactly one flush, and it is ordered after the bridge call returns."""
     order = []
-    scene._apply_runtime_state_to_render = lambda state: order.append("bridge")
+    scene._push_runtime_state = lambda state: order.append("bridge")
     scene._renderer.flush_wasm_state = lambda: order.append("flush")
 
     _apply(scene, _runtime_state({NODE_ID: RuntimePartProperties(id=NODE_ID, opacity=0.25)}))
@@ -1162,7 +1162,7 @@ def test_apply_state_syncs_the_camera_under_the_lock_before_the_render_step(scen
     scene._renderer._object_manager.UpdateStateFromObject = (
         lambda object_id: order.append(("serialize", object_id))
     )
-    scene._apply_runtime_state_to_render = lambda state: order.append("bridge")
+    scene._push_runtime_state = lambda state: order.append("bridge")
 
     scene.apply_state(_persisted_state(_persisted_camera()))
 

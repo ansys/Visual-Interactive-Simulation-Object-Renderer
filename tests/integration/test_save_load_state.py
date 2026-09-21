@@ -471,7 +471,7 @@ class TestRegistrySourcedPartState:
 
         # No browser: the bridge push and the wasm flush are not exercised
         # in-process.  The registry restore must not depend on either.
-        iface._scene._apply_runtime_state_to_render = MagicMock()
+        iface._scene._push_runtime_state = MagicMock()
         iface._scene._renderer.flush_wasm_state = MagicMock()
 
         assert iface._scene.dataset_count == 0
