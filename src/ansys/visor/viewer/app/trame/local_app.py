@@ -18,6 +18,7 @@ from ansys.visor.viewer.models.runtime.requests.widget_state_payloads import (
     SetCrossSectionVisibilityPayload,
     SetEdgesVisiblePayload,
     SetProjectionPayload,
+    SyncCrossSectionPlanePayload,
 )
 
 logger = VisorDefaultLogger(__name__)
@@ -70,6 +71,10 @@ class SceneMutationApi(Protocol):
     def set_bounding_box_visibility(self, visible: bool) -> None: ...
 
     def set_projection(self, parallel: bool) -> None: ...
+
+    def sync_cross_section_plane(
+        self, origin: List[float], normal: List[float]
+    ) -> None: ...
 
 
 # ----------------------------------------------------------------------
@@ -203,6 +208,7 @@ class LocalApp:
         set_edges_visible: shows or hides edges on every part
         set_bounding_box_visibility: shows or hides the bounding-box outline
         set_projection: sets parallel or perspective projection on the camera record
+        sync_cross_section_plane: records a settled cross-section plane reported by the frontend
         set_only_cookie: sets a cookie on the server (note: Trame server only allows a single cookie header)
     Protected Methods:
         _cleanup(): Cleans up the active actor in the visualization pipeline.
@@ -540,6 +546,26 @@ class LocalApp:
         if api is None:
             return
         api.set_projection(payload.parallel)
+
+    @trigger("sync_cross_section_plane")
+    @parse_payload(SyncCrossSectionPlanePayload)
+    def sync_cross_section_plane(self, payload) -> None:
+        """Frontend -> Backend: a settled drag reports the cross-section plane.
+
+        Not a toggle: it carries the origin and the normal the widget settled
+        on, both required and both exactly three components.  A half-plane --
+        a missing vector, or one of the wrong length -- fails validation and
+        is a logged no-op at this boundary rather than a half-applied plane,
+        which is ``sync_camera``'s stated posture for the same reason.
+
+        The coordinator writes the record and both server VTK objects and
+        re-serialises them in one critical section; nothing is pushed from
+        here.
+        """
+        api = self._part_state_api("sync_cross_section_plane", payload)
+        if api is None:
+            return
+        api.sync_cross_section_plane(payload.origin, payload.normal)
 
     def set_only_cookie(self, key: str, value: str):
         """

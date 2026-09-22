@@ -190,6 +190,15 @@ class VisorSceneBase(ABC):
         ``orthographic_enabled`` is derived from that same record, not stored
         separately, so it can't disagree with the camera. ``None`` means
         "nothing was ever written."
+
+        The cross-section plane is the camera's twin and is taken from the
+        renderer's record on exactly the same terms.  The assignment is
+        unconditional: the renderer seeds the record from its own widget the
+        first time bounds are pushed, so in normal operation there is no
+        ``None`` case to guard, and a ``None`` record is written through as
+        ``None`` because that is what says "no plane was ever written".  The
+        guard for "absent says nothing" belongs to the load path, as it does
+        for the camera.
         """
         runtime_state = await self._get_runtime_state_async(timeout)
 
@@ -203,6 +212,7 @@ class VisorSceneBase(ABC):
             runtime_state.scene.orthographic_enabled = (
                 camera_record.parallel_projection if camera_record is not None else None
             )
+            runtime_state.scene.cross_section = self._renderer.get_cross_section_plane()
             runtime_state.scene.cross_section_enabled = self._cross_section_enabled
             runtime_state.scene.edges_enabled = self._edges_enabled
             runtime_state.scene.bounding_box_enabled = self._bounding_box_enabled
@@ -493,6 +503,22 @@ class VisorSceneBase(ABC):
             self._renderer.sync_camera(camera_state)
             self._renderer.serialize_camera_state()
 
+    def sync_cross_section_plane(
+        self, origin: list[float], normal: list[float]
+    ) -> None:
+        """Record a cross-section plane the frontend reported, and project it.
+
+        Both halves in one critical section, re-serialisation part of the
+        write, no notify -- for the reasons :meth:`sync_camera` gives.  The
+        plane has exactly one delivery channel to a rebuilt or reconnecting
+        client, the wasm state fetch that follows this re-serialisation, so an
+        id that is not re-serialised here is simply not delivered and the
+        user's drag reappears where it started after a page reload.
+        """
+        with self._vtk_lock:
+            self._renderer.sync_cross_section_plane(origin, normal)
+            self._renderer.serialize_cross_section_state()
+
     def pick_geometry(self, actor_wasm_id, cell_id, mode, world_x, world_y, world_z) -> dict:
         """
         Frontend-trigger entry point for cell picking.  Packs the world-space
@@ -768,6 +794,14 @@ class VisorSceneBase(ABC):
         compatibility and ignored here, because two readers of one
         property is the divergence this story removed.
 
+        The cross-section plane is restored here too, and both-or-neither:
+        ``sync_cross_section_plane`` takes an origin and a normal together
+        and the model allows either to be absent, so a half-plane says
+        nothing rather than half-applying.  The re-serialisation follows the
+        write for the reason :meth:`sync_cross_section_plane` gives -- a
+        loaded plane that is written but not re-serialised leaves the client
+        fetching the pre-load one.
+
         Callers must hold ``_vtk_lock``.
         """
         scene = runtime_app_state.scene
@@ -780,6 +814,11 @@ class VisorSceneBase(ABC):
         if scene.bounding_box_enabled is not None:
             self._bounding_box_enabled = scene.bounding_box_enabled
             self._renderer.set_bounding_box_visibility(scene.bounding_box_enabled)
+        if scene.cross_section is not None:
+            cs = scene.cross_section
+            if cs.origin is not None and cs.normal is not None:
+                self._renderer.sync_cross_section_plane(cs.origin, cs.normal)
+                self._renderer.serialize_cross_section_state()
 
     def _restore_one_part_state(
             self,

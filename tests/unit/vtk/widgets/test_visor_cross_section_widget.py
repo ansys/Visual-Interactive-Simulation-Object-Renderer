@@ -74,6 +74,18 @@ def test_plane_property(mocks):
     widget = VisorCrossSectionWidget(mocks['interactor'])
     assert widget.plane is widget._plane
 
+def test_plane_representation_property(mocks):
+    """Verify that plane_representation returns the internal representation.
+
+    Asserted by identity against ``_plane_representation`` and, separately,
+    as *not* the plane: the re-serialise names both objects one at a time and
+    a property that answered the plane would make it name the same object
+    twice, which is a plane-only re-serialise wearing two ids.
+    """
+    widget = VisorCrossSectionWidget(mocks['interactor'])
+    assert widget.plane_representation is widget._plane_representation
+    assert widget.plane_representation is not widget.plane
+
 def test_algorithm_filter_property(mocks):
     """Verify that the algorithm_filter property returns the internal algorithm filter object."""
     widget = VisorCrossSectionWidget(mocks['interactor'])

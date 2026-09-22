@@ -28,6 +28,7 @@ from vtkmodules.vtkFiltersSources import vtkSphereSource
 from ansys.visor.viewer.core.visor_colors import VisorColors
 from ansys.visor.viewer.core.visor_enums import VisorVtkVariableType
 from ansys.visor.viewer.models.common.visor_camera_state import VisorCameraState
+from ansys.visor.viewer.models.common.visor_cross_section_state import VisorCrossSectionState
 from ansys.visor.viewer.models.common.visor_ui_state import VisorUIState
 from ansys.visor.viewer.models.common.visor_variable_state import VisorVariableState
 from ansys.visor.viewer.models.persist.persisted_viewer_state import PersistedViewerStateV1
@@ -1030,21 +1031,35 @@ class _CameraRecordRenderer:
     Records the scene's lock depth at the moment the record is read, so the
     read can be asserted to happen with the lock *held* rather than merely
     taken at some point.
+
+    ``get_cross_section_plane`` is answered because ``get_state`` now reads
+    the plane record on every call, beside the camera's.  It defaults to
+    ``None`` -- the camera tests above say nothing about the plane and must
+    keep saying nothing -- and the plane tests below pass one in.
     """
 
-    def __init__(self, record, pipeline_camera, scene=None):
+    def __init__(self, record, pipeline_camera, scene=None, cross_section=None):
         self._record = record
         self._pipeline_camera = pipeline_camera
         self._scene = scene
+        self._cross_section = cross_section
         self.record_reads = 0
         self.pipeline_reads = 0
+        self.plane_reads = 0
         self.depth_at_read = None
+        self.plane_depth_at_read = None
 
     def get_camera_state(self):
         self.record_reads += 1
         if self._scene is not None:
             self.depth_at_read = getattr(self._scene._vtk_lock, "depth", None)
         return self._record
+
+    def get_cross_section_plane(self):
+        self.plane_reads += 1
+        if self._scene is not None:
+            self.plane_depth_at_read = getattr(self._scene._vtk_lock, "depth", None)
+        return self._cross_section
 
     def _read_pipeline_camera(self):
         self.pipeline_reads += 1
@@ -2568,3 +2583,262 @@ def test_get_state_orthographic_enabled_is_none_when_the_record_is_empty(scene):
 
     assert persisted.scene.orthographic_enabled is None
     assert persisted.scene.camera is None
+
+
+# ===========================================================================
+# The cross-section plane -- trigger path, save path, load path
+#
+# ``VisorSceneBase.sync_cross_section_plane`` is the coordinator method the
+# ``sync_cross_section_plane`` trigger routes through.  As with the camera,
+# the handler arrives on trame's daemon thread and must not touch the renderer
+# directly, so what is asserted is the whole critical section: the write, the
+# re-serialisation that follows it, and the lock held across both.
+#
+# The plane has exactly one delivery channel to a rebuilt or reconnecting
+# client -- the wasm state fetch after the re-serialisation.  It is not on the
+# scene-details payload.  That is why the re-serialisation is asserted here at
+# all: dropping it leaves the server correct, every other gate green, and the
+# user's drag snapping back on the next page reload.
+#
+# Own literals, distinct from the camera's above, so that a failure names the
+# path that broke.
+# ===========================================================================
+
+# What the renderer's record holds at save time.
+RECORD_CROSS_SECTION_ORIGIN = [51.0, 52.0, 53.0]
+RECORD_CROSS_SECTION_NORMAL = [0.0, 1.0, 0.0]
+
+# What the browser answers getState with.  Never the right answer, and
+# different in every component, so "read the record" and "read the reply"
+# cannot both pass.
+REPLY_CROSS_SECTION_ORIGIN = [61.0, 62.0, 63.0]
+REPLY_CROSS_SECTION_NORMAL = [1.0, 0.0, 0.0]
+
+# What a settled drag reports, and what a save file carries on load.
+GESTURE_CROSS_SECTION_ORIGIN = [71.0, 72.0, 73.0]
+GESTURE_CROSS_SECTION_NORMAL = [0.0, 0.0, 1.0]
+
+LOADED_CROSS_SECTION_ORIGIN = [81.0, 82.0, 83.0]
+LOADED_CROSS_SECTION_NORMAL = [0.0, 1.0, 0.0]
+
+
+def _record_plane() -> VisorCrossSectionState:
+    """The renderer's plane record, from hand-written literals."""
+    return VisorCrossSectionState(
+        origin=RECORD_CROSS_SECTION_ORIGIN,
+        normal=RECORD_CROSS_SECTION_NORMAL,
+    )
+
+
+def _reply_plane() -> VisorCrossSectionState:
+    """What the browser answers getState with.  Never the right answer."""
+    return VisorCrossSectionState(
+        origin=REPLY_CROSS_SECTION_ORIGIN,
+        normal=REPLY_CROSS_SECTION_NORMAL,
+    )
+
+
+def _plane_save_scene(scene, record_plane, reply_plane):
+    """Wire *scene* for a save: renderer record *record_plane*, reply *reply_plane*.
+
+    The same shape as ``_save_scene`` above, but the reply carries a plane
+    rather than a camera, because that is the field whose source is under
+    test.  The registry is emptied so the mapper's per-dataset loop
+    contributes nothing.
+    """
+    double = _CameraRecordRenderer(
+        None, _pipeline_camera(), scene=scene, cross_section=record_plane
+    )
+    scene._renderer = double
+    scene._dataset_registry = VisorDatasetRegistry()
+
+    async def _get_runtime_state_async(timeout):
+        return RuntimeAppState.from_components(
+            dark_mode=False,
+            unit="m",
+            dataset_states={},
+            cross_section=reply_plane,
+        )
+
+    scene._get_runtime_state_async = _get_runtime_state_async
+    return double
+
+
+# ---------------------------------------------------------------------------
+# The coordinator
+# ---------------------------------------------------------------------------
+
+def test_sync_cross_section_plane_applies_to_the_renderer_and_then_serializes(scene):
+    """The re-serialisation follows the write, and there are two of them.
+
+    Reverted -- the write kept and the re-serialisation dropped -- the record
+    is right, the server's own plane and representation are right, every other
+    test in this module still passes, and the client is served the pre-drag
+    plane on its next fetch.  The user sees a page reload snap the plane back
+    to where it was before they dragged it.
+
+    Two serialise calls, not one: ``serialize_cross_section_state`` names the
+    plane and the representation separately.  Which object each names is
+    pinned in tests/unit/renderer/test_local_renderer.py, against a widget
+    double whose two objects have distinct ids; what is pinned here is that
+    the coordinator reaches that method at all, and reaches it after the
+    write.
+    """
+    order = []
+    real_sync = scene._renderer.sync_cross_section_plane
+
+    def _sync(origin, normal):
+        order.append("plane")
+        return real_sync(origin, normal)
+
+    scene._renderer.sync_cross_section_plane = _sync
+    scene._renderer._object_manager.UpdateStateFromObject = (
+        lambda object_id: order.append("serialize")
+    )
+
+    scene.sync_cross_section_plane(
+        GESTURE_CROSS_SECTION_ORIGIN, GESTURE_CROSS_SECTION_NORMAL
+    )
+
+    assert order == ["plane", "serialize", "serialize"]
+
+
+def test_sync_cross_section_plane_holds_the_lock_across_both_halves(scene):
+    """Both halves run inside one and the same critical section.
+
+    Its own test rather than another assertion on the ordering test, on the
+    precedent of ``test_sync_camera_holds_the_lock_across_both_halves``: lock
+    depth and call order fail for different reasons and want to be readable
+    apart.  The pair discriminates precisely -- a re-serialisation that was
+    dropped fails both, one that was merely moved below the ``with`` block
+    fails only this one.
+
+    The two depths are asserted **equal** as well as non-zero.  Non-zero alone
+    would pass a body that released and re-took the lock between the write and
+    the re-serialise, which is not one critical section: another thread can
+    mutate the VTK object graph in the gap, and the client is then served a
+    half-written scene.  That failure is intermittent and never reproduces
+    under a gate.
+    """
+    scene._vtk_lock = _LockSpy()
+    observed = {}
+    real_sync = scene._renderer.sync_cross_section_plane
+
+    def _sync(origin, normal):
+        observed["write_depth"] = scene._vtk_lock.depth
+        return real_sync(origin, normal)
+
+    scene._renderer.sync_cross_section_plane = _sync
+    scene._renderer._object_manager.UpdateStateFromObject = (
+        lambda object_id: observed.update(serialize_depth=scene._vtk_lock.depth)
+    )
+
+    scene.sync_cross_section_plane(
+        GESTURE_CROSS_SECTION_ORIGIN, GESTURE_CROSS_SECTION_NORMAL
+    )
+
+    assert observed["write_depth"] >= 1
+    assert observed["serialize_depth"] >= 1
+    assert observed["serialize_depth"] == observed["write_depth"]
+    assert scene._vtk_lock.depth == 0
+    assert scene._vtk_lock.enter_count == scene._vtk_lock.exit_count
+
+
+# ---------------------------------------------------------------------------
+# get_state -- the plane comes from the record, not from the reply
+# ---------------------------------------------------------------------------
+
+def test_get_state_takes_the_cross_section_from_the_record(scene):
+    """The saved plane is the record's, with the browser saying otherwise.
+
+    The record and the reply differ in every component, so "server
+    authoritative" and "round-trips the client's answer" cannot both pass.
+    Revert the assignment and both assertions below report the reply's
+    numbers.
+
+    Asserted on what get_state RETURNS -- the object that reaches the writer
+    -- not on the runtime state it was built from.  An assignment placed after
+    ``runtime_to_persisted`` passes every assertion made against the runtime
+    object and still writes the wrong file.
+    """
+    _plane_save_scene(scene, _record_plane(), _reply_plane())
+
+    persisted = asyncio.run(scene.get_state(timeout=1.0))
+
+    assert persisted.scene.cross_section.origin == RECORD_CROSS_SECTION_ORIGIN
+    assert persisted.scene.cross_section.normal == RECORD_CROSS_SECTION_NORMAL
+
+
+def test_get_state_writes_no_cross_section_when_the_record_is_empty(scene):
+    """An empty record writes ``None`` through, reply notwithstanding.
+
+    The assignment is unconditional, exactly as the camera's, and this is the
+    only test that a guarded one -- one that skipped the write when the record
+    was ``None`` -- would fail.  The reply carries a perfectly valid plane, so
+    the guarded version would save the browser's answer and look correct
+    everywhere else.
+
+    ``None`` says "no plane was ever written".  The guard for "absent says
+    nothing" belongs to the load path, not here.
+    """
+    _plane_save_scene(scene, None, _reply_plane())
+
+    persisted = asyncio.run(scene.get_state(timeout=1.0))
+
+    assert persisted.scene.cross_section is None
+
+
+# ---------------------------------------------------------------------------
+# apply_state -- the load path writes the renderer and re-serialises
+# ---------------------------------------------------------------------------
+
+def test_apply_state_serializes_the_loaded_plane_after_syncing_it(scene):
+    """A plane in the file reaches the renderer, and is then re-serialised.
+
+    Driven with a real ``PersistedViewerStateV1`` through the real state
+    mapper, so this also exercises the mapper's plane pass-through; it is the
+    first test here that would notice if the mapper stopped handing
+    ``cross_section`` on verbatim.
+
+    ``camera=None`` keeps the camera step out of the recording, so every
+    ``"serialize"`` below is the plane's.  Reverted -- the sync kept and the
+    re-serialise dropped -- the server's plane is right and the client is
+    served the pre-load one, which is the defect the load path already had for
+    the camera and fixed for the same reason.
+    """
+    order = []
+    real_sync = scene._renderer.sync_cross_section_plane
+
+    def _sync(origin, normal):
+        order.append(("plane", list(origin), list(normal)))
+        return real_sync(origin, normal)
+
+    scene._renderer.sync_cross_section_plane = _sync
+    scene._renderer._object_manager.UpdateStateFromObject = (
+        lambda object_id: order.append("serialize")
+    )
+
+    scene.apply_state(
+        PersistedViewerStateV1.from_components(
+            ui_state=VisorUIState(dark_theme=False),
+            unit="m",
+            orthographic_enabled=None,
+            cross_section_enabled=None,
+            edges_enabled=None,
+            bounding_box_enabled=None,
+            datasets={},
+            camera=None,
+            cross_section=VisorCrossSectionState(
+                origin=LOADED_CROSS_SECTION_ORIGIN,
+                normal=LOADED_CROSS_SECTION_NORMAL,
+            ),
+        )
+    )
+
+    assert order == [
+        ("plane", LOADED_CROSS_SECTION_ORIGIN, LOADED_CROSS_SECTION_NORMAL),
+        "serialize",
+        "serialize",
+    ]
+
+
