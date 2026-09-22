@@ -39,6 +39,17 @@ updates:
       - "dependencies"
     commit-message:
       prefix: "build(deps):"
+    ignore:
+      - dependency-name: "trame"
+      - dependency-name: "trame-server"
+      - dependency-name: "trame-vtklocal"
+      - dependency-name: "vtk"
+      - dependency-name: "fastapi"
+      - dependency-name: "uvicorn"
+      - dependency-name: "numpydoc"
+      - dependency-name: "sphinx-gallery"
+      - dependency-name: "sphinxcontrib-openapi"
+      - dependency-name: "sphinx-design"
     groups:
       python-dependencies:
         patterns:
@@ -56,6 +67,13 @@ updates:
       - "dependencies"
     commit-message:
       prefix: "build(npm):"
+    ignore:
+      - dependency-name: "@kitware/trame"
+      - dependency-name: "@kitware/vtk-wasm"
+      - dependency-name: "react"
+      - dependency-name: "react-dom"
+      - dependency-name: "react-docgen"
+      - dependency-name: "ajv"
     groups:
       visor-client:
         patterns:
@@ -73,6 +91,13 @@ updates:
       - "dependencies"
     commit-message:
       prefix: "build(dash):"
+    ignore:
+      - dependency-name: "@kitware/trame"
+      - dependency-name: "@kitware/vtk-wasm"
+      - dependency-name: "react"
+      - dependency-name: "react-dom"
+      - dependency-name: "react-docgen"
+      - dependency-name: "ajv"
     groups:
       dash:
         patterns:
