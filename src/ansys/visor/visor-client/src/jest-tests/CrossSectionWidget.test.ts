@@ -98,4 +98,3 @@ describe('CrossSectionWidget writes both plane objects on the set path', () => {
         );
     });
 });
-

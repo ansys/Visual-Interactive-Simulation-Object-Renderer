@@ -336,4 +336,3 @@ describe('WasmRenderer reports the cross-section plane on the end-of-drag event'
         expect(sender).not.toHaveBeenCalled();
     });
 });
-
