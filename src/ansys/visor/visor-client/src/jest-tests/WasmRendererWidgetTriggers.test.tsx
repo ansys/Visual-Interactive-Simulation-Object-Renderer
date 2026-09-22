@@ -256,4 +256,3 @@ describe('WasmRenderer.createAsync seeds the orthographic flag from the wasm cam
         expect(renderer.isOrthographicEnabled()).toBe(false);
     });
 });
-

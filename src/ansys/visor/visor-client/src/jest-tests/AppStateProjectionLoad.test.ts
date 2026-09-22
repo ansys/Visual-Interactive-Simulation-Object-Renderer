@@ -141,4 +141,3 @@ describe('setAppStateAsync applies projection from the camera alone', () => {
         expect(renderer.setCameraParallelProjectionAsync).not.toHaveBeenCalled();
     });
 });
-
