@@ -62,6 +62,40 @@ export class WasmRenderer implements IRenderer {
         const planeWidget = vtkScene.getVtkObject(wasmPlaneWidgetId);
         planeWidget.observe('InteractionEvent', this.#crossSectionWidget.interactionHandler);
 
+        /**
+         * Report the settled plane to the server, once per handle release.
+         *
+         * `EndInteractionEvent`, not `InteractionEvent`: the per-motion event
+         * fires many times across one drag, and a report bound to it passes
+         * every other gate and floods the trigger channel. The end event
+         * fires once when the handle is released, and not on a camera orbit.
+         *
+         * A bare click on the handle with no drag also releases it, so it
+         * also reports -- carrying the plane the server already holds. That
+         * arrival is accepted as idempotent and is deliberately **not**
+         * suppressed: there is no last-sent cache and no debounce here, so a
+         * drag that produced no arrival means the observer is not wired,
+         * rather than meaning a filter swallowed it.
+         *
+         * The values come from `getOriginAsync` / `getNormalAsync`, which read
+         * the **representation** -- the object the handle actually moved, and
+         * the one whose values the client would otherwise save. The payload
+         * keys are `origin` and `normal`, snake_case and unaliased, three
+         * floats each, which is what the server's payload model requires.
+         *
+         * Deliberately not defensive: `#sendWidgetTriggerAsync` already
+         * swallows and logs a send rejection, and a `catch` around the two
+         * reads would turn a broken representation read into a silent
+         * no-report, which is the one outcome that reads as "the observer was
+         * never wired".
+         */
+        planeWidget.observe('EndInteractionEvent', async () => {
+            await this.#sendWidgetTriggerAsync('sync_cross_section_plane', {
+                origin: await this.#crossSectionWidget.getOriginAsync(),
+                normal: await this.#crossSectionWidget.getNormalAsync(),
+            });
+        });
+
         // Bounding-box ids are stashed for attachSceneGraph, which is the
         // point at which the live sceneGraph (needed by BoundingBoxWidget)
         // becomes available.

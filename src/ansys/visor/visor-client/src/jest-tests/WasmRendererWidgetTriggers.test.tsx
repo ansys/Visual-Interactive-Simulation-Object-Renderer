@@ -94,8 +94,12 @@ function makeFakeWasmObjects() {
         GetVisibility: jest.fn(async () => 0),
         SetVisibility: jest.fn(async () => undefined),
         SetBounds: jest.fn(async () => undefined),
-        GetOrigin: jest.fn(async () => [0, 0, 0]),
-        GetNormal: jest.fn(async () => [0, 0, 1]),
+        // Distinctive hand-written literals. They stand in for the
+        // *representation's* origin and normal, and they are deliberately
+        // nothing any default would produce, so a payload carrying them can
+        // only have come from reading the representation back.
+        GetOrigin: jest.fn(async () => [1.5, -2.5, 3.5]),
+        GetNormal: jest.fn(async () => [0, 1, 0]),
         SetOrigin: jest.fn(async () => undefined),
         SetNormal: jest.fn(async () => undefined),
     };
@@ -287,3 +291,49 @@ describe('WasmRenderer.createAsync seeds the orthographic flag from the wasm cam
         expect(renderer.isOrthographicEnabled()).toBe(false);
     });
 });
+
+describe('WasmRenderer reports the cross-section plane on the end-of-drag event', () => {
+    // The event itself does not exist under jsdom, so what is pinned here is
+    // the *registration*: which event the report is bound to, and what the
+    // callback bound to it sends. Whether that event ever fires is MC-5's
+    // subject and no gate reaches it.
+    test('the plane report is registered on EndInteractionEvent and sends the representation plane once', async () => {
+        const sender = makeSender();
+        const { renderer, widget } = await makeRenderer(sender);
+
+        const endCalls = widget.observe.mock.calls.filter(
+            (call) => call[0] === 'EndInteractionEvent'
+        );
+        expect(endCalls).toHaveLength(1);
+
+        await endCalls[0][1]();
+
+        expect(sender).toHaveBeenCalledTimes(1);
+        expect(sender).toHaveBeenCalledWith('sync_cross_section_plane', {
+            origin: [1.5, -2.5, 3.5],
+            normal: [0, 1, 0],
+        });
+        // `renderer` is held so the construction that registered the observer
+        // is not mistaken for dead code by a future reader.
+        expect(renderer.isCrossSectionVisible()).toBe(false);
+    });
+
+    test('no callback registered on InteractionEvent sends anything', async () => {
+        // InteractionEvent fires many times across one drag. A report bound
+        // to it would satisfy every other assertion in this module and flood
+        // the trigger channel, which is a fault no other gate can see.
+        const sender = makeSender();
+        const { widget } = await makeRenderer(sender);
+
+        const interactionCalls = widget.observe.mock.calls.filter(
+            (call) => call[0] === 'InteractionEvent'
+        );
+        expect(interactionCalls.length).toBeGreaterThan(0);
+        for (const call of interactionCalls) {
+            await call[1]();
+        }
+
+        expect(sender).not.toHaveBeenCalled();
+    });
+});
+
