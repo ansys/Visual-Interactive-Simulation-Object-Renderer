@@ -733,7 +733,7 @@ class DummyScene(VisorSceneBase):
     async def _get_runtime_state_async(self, timeout: float):
         return None
 
-    def _apply_runtime_state_to_render(self, runtime_app_state) -> None:
+    def _push_runtime_state(self, runtime_app_state) -> None:
         pass
 
     def populate_scene(self):

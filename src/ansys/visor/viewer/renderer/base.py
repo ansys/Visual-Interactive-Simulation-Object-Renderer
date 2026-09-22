@@ -179,18 +179,45 @@ class IRenderer(ABC):
 
     @abstractmethod
     def reset_camera(self, bounds: list[float]) -> None:
-        """Reset the camera to fit *bounds*."""
+        """Reset the camera to fit *bounds*, and write the result to the record.
+
+        An implementation with no pipeline camera leaves the record at its
+        previous value rather than clearing it, so that a reset cannot destroy
+        a camera the frontend reported.
+        """
 
     @abstractmethod
     def get_camera_state(self) -> "VisorCameraState | None":
         """
-        Return the last camera state synced from the frontend, or ``None`` if
-        none has been received.
+        Return the camera record, or ``None`` if nothing has written one yet.
         """
 
     @abstractmethod
     def sync_camera(self, camera_state: "VisorCameraState") -> None:
-        """Store the camera state synced back from the frontend."""
+        """
+        Write *camera_state* to the record and project it onto the pipeline
+        camera.
+
+        The record stores the object as given, without copying: callers rely
+        on object identity through :meth:`get_camera_state`.
+        """
+
+    @abstractmethod
+    def serialize_camera_state(self) -> None:
+        """Make the state served to the client current for the camera.
+
+        The camera alone; the node pipelines are
+        :meth:`serialize_pipeline_states`'s job.  Writing the pipeline camera
+        makes the server correct: it does not make the state the client is
+        served correct, and the two are separate steps that can each silently
+        do nothing.
+
+        **Serialize only; do not notify.**  Pushing to the client is
+        :meth:`flush_wasm_state`'s job and carries a rebuild race that the
+        load path deliberately refuses.
+
+        No-op on a renderer that serves the client no VTK object state.
+        """
 
     # ------------------------------------------------------------------------
     # Widget control (cross-section, bounding box)
