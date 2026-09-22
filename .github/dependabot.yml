@@ -19,7 +19,6 @@ updates:
     open-pull-requests-limit: 5
     labels:
       - "maintenance"
-      - "dependencies"
     commit-message:
       prefix: "chore(actions):"
     groups:
@@ -36,7 +35,6 @@ updates:
     open-pull-requests-limit: 5
     labels:
       - "maintenance"
-      - "dependencies"
     commit-message:
       prefix: "build(deps):"
     ignore:
@@ -64,7 +62,6 @@ updates:
     open-pull-requests-limit: 3
     labels:
       - "maintenance"
-      - "dependencies"
     commit-message:
       prefix: "build(npm):"
     ignore:
@@ -88,7 +85,6 @@ updates:
     open-pull-requests-limit: 3
     labels:
       - "maintenance"
-      - "dependencies"
     commit-message:
       prefix: "build(dash):"
     ignore:
@@ -112,7 +108,6 @@ updates:
     open-pull-requests-limit: 2
     labels:
       - "maintenance"
-      - "dependencies"
     commit-message:
       prefix: "build(docker):"
     groups:
@@ -129,7 +124,6 @@ updates:
     open-pull-requests-limit: 2
     labels:
       - "maintenance"
-      - "dependencies"
     commit-message:
       prefix: "build(docker):"
     groups:
@@ -146,7 +140,6 @@ updates:
     open-pull-requests-limit: 2
     labels:
       - "maintenance"
-      - "dependencies"
     commit-message:
       prefix: "build(docker):"
     groups:

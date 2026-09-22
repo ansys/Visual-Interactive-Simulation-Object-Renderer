@@ -10,7 +10,6 @@ on:
 
 env:
   DOCUMENTATION_CNAME: 'visor.docs.pyansys.com'
-  MAIN_PYTHON_VERSION: '3.11'
   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
 concurrency:
@@ -22,6 +21,12 @@ jobs:
     name: Build docs
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Load Visor env
+        uses: ./.github/actions/load-visor-env
+
       # Install Xvfb and Mesa for headless OpenGL rendering (needed for VTK and similar libraries)
       - name: Install Xvfb and Mesa
         run: |
