@@ -504,7 +504,7 @@ export default class VtkScene {
             }
             switch (e.key.toLowerCase()) {
                 // NOTE: the z/r key list is mirrored in CameraGestureTracker,
-                // which treats a keyup on either as active user input. Adding
+                // which treats a keydown on either as active user input. Adding
                 // a camera-mutating key here means adding it there too.
                 case 'z':
                     await renderer.ResetCamera();
