@@ -13,6 +13,7 @@ from ansys.visor.viewer.core.visor_colors import VisorColors
 from ansys.visor.viewer.core.visor_enums import VisorVtkVariableType
 from ansys.visor.viewer.core.visor_logging import VisorDefaultLogger
 from ansys.visor.viewer.core.visor_types import VisorDatasetType
+from ansys.visor.viewer.models.common.visor_camera_state import VisorCameraState
 from ansys.visor.viewer.models.persist.persisted_viewer_state import PersistedViewerStateV1
 from ansys.visor.viewer.models.runtime.visor_scene_details import VisorSceneDetails
 from ansys.visor.viewer.renderer.base import IRenderer
@@ -409,6 +410,35 @@ class VisorSceneBase(ABC):
                 return
 
             self._renderer.reset_camera(self._scene_graph.bounds)
+            self._renderer.serialize_camera_state()
+
+    def sync_camera(self, camera_state: VisorCameraState) -> None:
+        """Record a camera the frontend reported, and project it.
+
+        The trigger path's coordinator method.  It is the camera twin of the
+        per-part coordinator surface below: the trigger handler arrives on
+        trame's daemon thread and must route through a method that takes
+        ``_vtk_lock``, never call the renderer directly.
+
+        Both halves run in one critical section, and the re-serialisation is
+        part of the write rather than an afterthought.  The backend advertises
+        a version number read from the live VTK object while serving content
+        from a cache, so a write with no re-serialise publishes a new version
+        against old content: the client then fetches the *pre*-gesture camera
+        and applies it over the one the user just set, and a refresh shows the
+        framing they moved away from.  The load path proved this in
+        Increment 2b; the trigger path has the same gap for the same reason.
+
+        What this method deliberately does **not** do is notify.  No
+        ``render()``, no ``flush_wasm_state()``, no ``set_state``.  A push here
+        rebuilds the client, the rebuild re-delivers state, the reapply moves
+        the camera and emits further settle reports, and each report pushes
+        again.  It would also race the rebuild against a half-written object
+        graph -- the hazard ``_apply_runtime_state_to_render`` already refuses
+        to reopen.  Serialising without notifying is the whole point.
+        """
+        with self._vtk_lock:
+            self._renderer.sync_camera(camera_state)
             self._renderer.serialize_camera_state()
 
     def pick_geometry(self, actor_wasm_id, cell_id, mode, world_x, world_y, world_z) -> dict:

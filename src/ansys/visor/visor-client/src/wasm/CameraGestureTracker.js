@@ -13,23 +13,23 @@
  * - The report is tagged `gesture` if the user was providing input while the
  *   events were coming in, and `programmatic` if not (for example, a camera the
  *   server pushed).  "Providing input" means a mouse button is held on the
- *   canvas, or a wheel event or z/r keyup happened within the last CAMERA_SETTLE_MS.
+ *   canvas, or a wheel event or z/r keydown happened within the last CAMERA_SETTLE_MS.
  *
  * - That input check runs on every event as it arrives, and the result is
  *   remembered until the report.  It cannot run when the timer fires,
  *   because by then the user has let go of the mouse and every drag would
  *   look programmatic.
  *
- * - The wasm wheel handler and `VtkScene`'s keyup handler run before this
+ * - The wasm wheel handler and `VtkScene`'s keydown handler run before this
  *   tracker's own listeners. So for a single wheel notch or a single z/r press,
  *   the camera event can arrive before the tracker has noticed the input.
- *   To cover that, a wheel event or a z/r keyup arriving while a report is
+ *   To cover that, a wheel event or a z/r keydown arriving while a report is
  *   pending marks that report `gesture` as well.
  */
 
 /**
  * The settle debounce, in milliseconds, and equally the window during which a
- * wheel event or a z/r keyup counts as active input.
+ * wheel event or a z/r keydown counts as active input.
  *
  * Tests pin the literal 300 and must not import this constant, so that changing
  * it here fails a test rather than silently redefining what the tests assert.
@@ -39,10 +39,10 @@
 export const CAMERA_SETTLE_MS = 300;
 
 /**
- * Keys whose keyup arms the input window.
+ * Keys whose keydown arms the input window.
  *
  * Kept in step with the `z` / `r` cases of `VtkScene.#setupCamera`'s window
- * `keyup` handler, which is what actually mutates the camera. If a key is
+ * `keydown` handler, which is what actually mutates the camera. If a key is
  * added there, add it here.
  *
  * @type{ReadonlyArray<string>}
@@ -86,7 +86,13 @@ export default class CameraGestureTracker {
         const onWheel = () => {
             this.#markImpulse();
         };
-        const onKeyUp = /**@param {KeyboardEvent} e*/ (e) => {
+        const onKeyDown = /**@param {KeyboardEvent} e*/ (e) => {
+            // Ctrl+R, Cmd+R and auto-repeat must not move the camera.
+            // VtkScene applies the same rule: change both together.
+            if (e.ctrlKey || e.metaKey || e.altKey || e.repeat) {
+                return;
+            }
+
             if (e.key != null && CAMERA_KEYS.includes(e.key.toLowerCase())) {
                 this.#markImpulse();
             }
@@ -96,7 +102,7 @@ export default class CameraGestureTracker {
         this.#addListener(canvasDiv, 'mouseup', onMouseUp, true);
         this.#addListener(canvasDiv, 'mouseout', onInputLost, true);
         this.#addListener(canvas, 'wheel', onWheel, { passive: true });
-        this.#addListener(window, 'keyup', onKeyUp, false);
+        this.#addListener(window, 'keydown', onKeyDown, false);
         this.#addListener(window, 'blur', onInputLost, false);
     }
 
