@@ -47,6 +47,7 @@ jobs:
           DISPLAY: ":99"  # Use the virtual X server started by Xvfb
           VTK_DEFAULT_RENDER_WINDOW_OFFSCREEN: "1"  # Force VTK to use offscreen rendering
         with:
+          checkout: false
           python-version: ${{ env.MAIN_PYTHON_VERSION }}
           check-links: false
           sphinxopts: '-j auto'
