@@ -247,6 +247,25 @@ class VisorSceneBase(ABC):
             self._restore_camera_state(runtime_app_state)
             # TODO: restore UI state and variable states when they are synced back to the server.
 
+            # Finalize here, not on the load path.  On a cold load -- viewer started with no dataset,
+            # then a state loaded -- load_state adds the datasets and only then calls apply_state, so a
+            # finalize on the load path syncs wasm from a scene that predates every restore above: the
+            # client was served a scene with no cross-section plane, and neither the plane nor its
+            # handle ever rendered.  Finalizing here syncs after the restores.
+            #
+            # Before _push_runtime_state, never after.  finalize_scene -> render() ends in
+            # LocalView.update(), the same wasm flush flush_wasm_state performs; placed after the push
+            # it *is* the flush the note below refuses, racing the client's rebuild against the
+            # fire-and-forget set_state.  See VisorLocalScene._push_runtime_state, which is written on
+            # the assumption that the full render and wasm sync have already happened by the time it runs.
+            #
+            # Correct only after _restore_widget_state: populate_scene reaches IRenderer.update_bounds,
+            # which writes an existing cross-section record back to the widget rather than seeding from
+            # the widget's defaults.  With no record -- which is what the load path had on a cold load --
+            # that branch seeds the defaults instead.
+            if self.dataset_count > 0:
+                self.finalize_scene(skip_reset_camera=True)
+
             # The server's copy is now current; deliver it to the rendering backend.
             # wasm: set_state() to the browser; RCA: a rendered frame; headless: no-op.
             self._push_runtime_state(runtime_app_state)

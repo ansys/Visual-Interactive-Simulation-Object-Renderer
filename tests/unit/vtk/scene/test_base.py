@@ -1238,15 +1238,37 @@ def test_apply_state_applies_every_part_to_the_pipeline(
     assert second_pipeline.actor.GetProperty().GetOpacity() == pytest.approx(0.25)
 
 
-def test_apply_state_does_not_flush_after_the_bridge_call(scene, registry):
-    """Exactly one flush, and it is ordered after the bridge call returns."""
+def test_apply_state_flushes_before_the_bridge_call(scene, registry):
+    """Exactly one flush, and it is ordered before the bridge call.
+
+    This is the assertion that pins the placement of the ``finalize_scene``
+    call in ``apply_state``.  The flush is what carries the restored object
+    graph -- the cross-section plane above all -- to the client, so it has to
+    run *after* every restore and *before* the fire-and-forget ``set_state``
+    the bridge call issues.  A flush after the push races the client's rebuild
+    against that call, which is the loss ``VisorLocalScene._push_runtime_state``
+    documents.
+
+    The spy is on ``_local_view.update`` and not on ``flush_wasm_state``,
+    deliberately.  ``flush_wasm_state`` *is* ``_local_view.update()``, and
+    ``render()`` ends in the same call, so only a spy at that boundary sees the
+    flush whichever route it arrives by.  The previous version of this test
+    spied ``flush_wasm_state`` and was therefore blind to the flush
+    ``finalize_scene`` performs: it stayed green with the call before the push,
+    after the push, and absent entirely.
+
+    Three wrong placements, one failing assertion: after the push gives
+    ``["bridge", "flush"]``, removed gives ``["bridge"]``, and returned to the
+    load path also gives ``["bridge"]``, since nothing in this module drives
+    ``load_state``.
+    """
     order = []
     scene._push_runtime_state = lambda state: order.append("bridge")
-    scene._renderer.flush_wasm_state = lambda: order.append("flush")
+    scene._renderer._local_view.update = lambda: order.append("flush")
 
     _apply(scene, _runtime_state({NODE_ID: RuntimePartProperties(id=NODE_ID, opacity=0.25)}))
 
-    assert order == ["bridge"]
+    assert order == ["flush", "bridge"]
 
 
 # ---------------------------------------------------------------------------
@@ -1960,11 +1982,24 @@ class _ToggleSpyRenderer:
     is an AttributeError here rather than a silently absorbed no-op, and so
     that the lock depth can be read at the moment of the call rather than
     after the fact.
+
+    ``update_bounds``, ``update_actor_count`` and ``render`` are the scene
+    surface ``apply_state`` reaches through its ``finalize_scene`` call, and
+    are the only three names added for it: with a toggle-only state the part
+    loop makes no renderer call, the cross-section and camera restores are
+    both guarded off, and ``skip_reset_camera=True`` keeps ``reset_camera``
+    out.  Anything else is still an AttributeError, which is the point of the
+    double.  They record into ``scene_calls`` rather than ``calls`` so that
+    the toggle assertions keep their exact meaning; nothing asserts
+    ``scene_calls``, which exists so a failure dump shows what was reached.
+    The placement of the finalize call is pinned in
+    ``test_apply_state_flushes_before_the_bridge_call``.
     """
 
     def __init__(self, scene):
         self._scene = scene
         self.calls = []
+        self.scene_calls = []
         self.depths = {}
 
     def _record(self, name, visible):
@@ -1979,6 +2014,15 @@ class _ToggleSpyRenderer:
 
     def set_bounding_box_visibility(self, visible):
         self._record("set_bounding_box_visibility", visible)
+
+    def update_bounds(self, bounds):
+        self.scene_calls.append("update_bounds")
+
+    def update_actor_count(self, count):
+        self.scene_calls.append("update_actor_count")
+
+    def render(self):
+        self.scene_calls.append("render")
 
 
 class _SceneDetailsRenderer:
