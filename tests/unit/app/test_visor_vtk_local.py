@@ -560,8 +560,8 @@ def test_local_app_receives_the_scene_as_the_part_state_api(local_app_call):
     """The scene itself is injected, not a wrapper or a set of lambdas."""
     call, scene, instance = local_app_call
 
-    assert call.kwargs["scene_part_state_api"] is scene
-    assert call.kwargs["scene_part_state_api"] is instance._scene
+    assert call.kwargs["scene_mutation_api"] is scene
+    assert call.kwargs["scene_mutation_api"] is instance._scene
 
 
 def test_local_app_still_receives_the_pre_existing_arguments(local_app_call):

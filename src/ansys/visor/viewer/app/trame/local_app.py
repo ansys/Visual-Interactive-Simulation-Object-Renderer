@@ -26,7 +26,7 @@ logger = VisorDefaultLogger(__name__)
 vtkObject.GlobalWarningDisplayOff()
 
 
-class ScenePartStateApi(Protocol):
+class SceneMutationApi(Protocol):
     """Structural type of the coordinator surface LocalApp calls.
 
     Typing only: there is no ``runtime_checkable`` decoration and no
@@ -34,12 +34,10 @@ class ScenePartStateApi(Protocol):
     importing the scene keeps this module free of any scene type, so the
     injected object remains LocalApp's only route to the scene.
 
-    Not all of it is per-part, and the name is historical.  ``sync_camera``,
-    the three widget-state toggles and ``set_projection`` are scene-wide, and
-    they are declared here anyway: the one production injection site passes
-    the whole scene coordinator, so a second protocol would be the same object
-    under a second name.  Read this as the whole coordinator surface LocalApp calls, not only
-    the per-part part of it.
+    Covers both per-part mutations (visibility, opacity, colour, selection)
+    and scene-wide ones (camera sync, the widget-state toggles, projection,
+    cross-section plane).  The one production injection site passes the
+    whole scene coordinator, so this protocol describes that whole surface.
     """
 
     def set_part_visibility(self, node_id: int, visible: bool) -> None: ...
@@ -217,7 +215,7 @@ class LocalApp:
             standalone: bool = True,
             trame_logger: Logger | None = None,
             pick_geometry=None,
-            scene_part_state_api: ScenePartStateApi | None = None,
+            scene_mutation_api: SceneMutationApi | None = None,
     ):
         self.server = server
         # Callable to get the scene details in JSON format
@@ -226,10 +224,10 @@ class LocalApp:
         self._handle_save_state_response = handle_save_state_response
         # Callable for sub-geometry picking (optional)
         self._pick_geometry = pick_geometry
-        # Per-part visual state coordinator (see ScenePartStateApi).  The one
+        # Per-part visual state coordinator (see SceneMutationApi).  The one
         # production construction site always supplies it; it is optional so
         # that the class stays constructible without a scene.
-        self._scene_part_state_api = scene_part_state_api
+        self._scene_mutation_api = scene_mutation_api
         # logger for logging trame server lifecycle info
         self.__trame_logger = trame_logger
 
@@ -354,13 +352,13 @@ class LocalApp:
     # body.
     # ------------------------------------------------------------------
 
-    def _part_state_api(self, trigger_name: str, payload: BaseModel) -> ScenePartStateApi | None:
+    def _part_state_api(self, trigger_name: str, payload: BaseModel) -> SceneMutationApi | None:
         """Return the injected coordinator, or ``None`` after logging."""
         logger.debug("[trigger] %s arrived: %s.", trigger_name, payload)
-        if self._scene_part_state_api is None:
+        if self._scene_mutation_api is None:
             logger.debug("%s: no scene part-state API injected; ignoring.", trigger_name)
             return None
-        return self._scene_part_state_api
+        return self._scene_mutation_api
 
     @trigger("set_part_visibility")
     @parse_payload(SetPartVisibilityPayload)
@@ -492,31 +490,14 @@ class LocalApp:
     # ------------------------------------------------------------------
     # Widget-state triggers
     #
-    # Frontend -> Backend.  One trigger per server-tracked toggle.  Each
-    # carries the absolute target value the client's widget settled on,
-    # never a toggle and never a delta: the toolbar buttons are toggles, so
-    # the client reads its widget back after the local write and sends the
-    # result.  A message the client suppresses as redundant is therefore
-    # indistinguishable from one that set a value the server already held,
-    # and both are correct.
+    # Frontend -> Backend.  One trigger per server-tracked toggle. Each
+    # carries the absolute target value, not a delta, so a redundant
+    # message is indistinguishable from a no-op one, and both are fine.
+    # No ``origin`` field: unlike the camera, a toggle echo is idempotent.
     #
-    # No ``origin`` field (RS-1).  The camera needed one because a
-    # programmatic echo re-applied a *stale* camera over a newer one; a
-    # toggle echo carries the same boolean the server already holds, so the
-    # write is idempotent and the client's own widgets damp it with their
-    # value guards.  It is the same echo the per-part deliveries already
-    # produce on load.  Separating delivery from mutation is a later story's
-    # work, not this one's.
-    #
-    # Payloads are validated at this boundary by ``@parse_payload`` exactly
-    # as the per-part ones are.  The wire key is ``visible`` on the three
-    # visibility triggers and ``parallel`` on ``set_projection``; none carries
-    # a pydantic alias, snake_case and camelCase coinciding on all four.
-    #
-    # ``set_projection`` sits in this block because it arrives from the same
-    # toolbar and under the same absolute-value rule, but it is not a fourth
-    # toggle: the server keeps no projection field, the camera record holds
-    # it, and the coordinator re-serialises the camera as part of the write.
+    # ``set_projection`` lives here too: it is delivered the same way, but
+    # it writes the camera record's projection field rather than a toggle
+    # of its own.
     # ------------------------------------------------------------------
 
     @trigger("set_cross_section_visibility")
