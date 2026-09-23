@@ -85,17 +85,15 @@ export class WasmRenderer implements IRenderer {
     /**
      * Read the orthographic flag out of the wasm camera, once, at construction.
      *
-     * This is the only asynchronous seam in building a renderer, and it exists
-     * because the orthographic widget's cached flag is otherwise `false` no
-     * matter what the camera says. By the time `createAsync` runs, the wasm
-     * state fetch has already completed, so the camera read here is a read of
-     * the *delivered* camera -- which is what makes `isOrthographicEnabled()`
-     * a projection of server state rather than an independent source.
+     * The only async seam in building a renderer: without it, the
+     * orthographic widget's cached flag starts `false` regardless of what the
+     * camera says. `createAsync` runs after the wasm state fetch completes,
+     * so this reads the *delivered* camera -- making `isOrthographicEnabled()`
+     * a projection of server state, not an independent source.
      *
-     * Deliberately not defensive: a seed that swallowed its own failure would
-     * leave the flag at `false` against a parallel camera, which is precisely
-     * the save-corrupting fault this seed was added to remove, and it would be
-     * invisible to every gate.
+     * Deliberately not defensive: swallowing a failure here would leave the
+     * flag at `false` against a parallel camera -- the exact save-corrupting
+     * fault this seed exists to remove -- invisibly to every gate.
      */
     async #seedOrthographicFlagAsync(): Promise<void> {
         await this.#orthographicWidget.seedFromCameraAsync();
@@ -417,14 +415,11 @@ export class WasmRenderer implements IRenderer {
     /**
      * Send one view-level widget payload to its server trigger.
      *
-     * The sibling of `#sendTriggerAsync` above, whose rationale -- no sender
-     * means no send, a rejection is logged and swallowed, the catch is
-     * unnarrowed -- applies here unchanged and is not repeated.
+     * Sibling of `#sendTriggerAsync` above; same no-sender/no-op and
+     * logged-and-swallowed-rejection rationale, not repeated here.
      *
-     * It exists separately only because a widget trigger has no `nodeId`.
-     * That helper takes one purely to name it in the error line, and passing a
-     * sentinel would put a fictitious node id in the one message a failed send
-     * produces. The prefix here is correspondingly distinct and greppable.
+     * Separate only because a widget trigger has no `nodeId` to name in the
+     * error line, so the log prefix here is distinct and greppable on its own.
      */
     async #sendWidgetTriggerAsync(
         triggerName: string,
@@ -502,25 +497,16 @@ export class WasmRenderer implements IRenderer {
 
     // ---- View-level widgets -------------------------------------------------
     /**
-     * The four methods below each report to the server *after* the local
-     * write, and each reads its own widget back rather than forwarding the
-     * argument it was given.
+     * The four methods below report to the server *after* the local write,
+     * reading their own widget back rather than forwarding the argument they
+     * were given -- required, not stylistic: the toolbar calls all four with
+     * **no argument** (`Panel_BottomMiddle.tsx`), so each widget resolves the
+     * absent argument by negating its own cached flag, and only it knows what
+     * it settled on. The read-back uses the same getter `getAppStateAsync`
+     * does, so the value sent and the value saved cannot disagree.
      *
-     * That read-back is required, not stylistic. The toolbar calls all four
-     * with **no argument** -- see `Panel_BottomMiddle.tsx` -- and each widget
-     * resolves the absent argument itself by negating its cached flag. The
-     * argument is therefore not the value; only the widget knows what it
-     * settled on. Forwarding the argument would put `undefined` on the wire
-     * on every toolbar click, which type-checks and lints and fails only at
-     * the server's payload boundary.
-     *
-     * Each reads back through the same getter `getAppStateAsync` uses, so the
-     * value sent and the value saved cannot disagree.
-     *
-     * Every payload is absolute, never a toggle and never a delta, so a send
-     * that is suppressed, duplicated or reordered is harmless. A delivered
-     * state therefore echoes back one send per toggle; that echo is
-     * idempotent by construction and is accepted.
+     * Every payload is absolute, never a toggle or delta, so a send that is
+     * suppressed, duplicated, or reordered is harmless.
      */
     async setCrossSectionVisibilityAsync(visible?: boolean): Promise<void> {
         await this.#crossSectionWidget.setVisibilityAsync(visible);

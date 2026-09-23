@@ -187,17 +187,9 @@ class VisorSceneBase(ABC):
         "absent says nothing" belongs to the load path, in :meth:`apply_state`,
         not here.
 
-        ``orthographic_enabled`` is derived from that same record rather than
-        stored, and it is **emitted here and not read on load**.  The record
-        is bound once and read once: the camera and the projection cannot
-        disagree because there is nothing for them to disagree about.  The
-        load path takes projection off ``camera.parallel_projection`` alone
-        and ignores this field, because two independent fields writing one
-        camera property is exactly the divergence that made a saved file
-        report one projection while the view showed the other.  A ``None``
-        record emits ``None``, which says "nothing was ever written" rather
-        than asserting perspective.  Restoring the load-side read would
-        reopen the divergence; it is not a missing feature.
+        ``orthographic_enabled`` is derived from that same record, not stored
+        separately, so it can't disagree with the camera. ``None`` means
+        "nothing was ever written."
         """
         runtime_state = await self._get_runtime_state_async(timeout)
 
@@ -255,24 +247,19 @@ class VisorSceneBase(ABC):
     def get_scene_details(self) -> VisorSceneDetails:
         """Return the VisorState.
 
-        This payload is how a rebuilt or reconnecting client learns the
-        server's widget toggles.  Everything else in this story makes the
-        server *authoritative*; this method is what makes it *deliver*, and
-        the three client branches that apply these fields already exist and
-        were dead only because nothing ever populated them.
+        How a rebuilt or reconnecting client learns the server's widget
+        toggles; the client branches that apply these fields already existed
+        and were dead only because nothing populated them.
 
-        ``orthographic_enabled`` is derived from the camera record rather than
-        stored, so that the projection has exactly one source.  A ``None``
-        record delivers ``None``, which says "nothing was ever written" and
-        leaves the client's own flag alone.
+        ``orthographic_enabled`` is derived from the camera record, not
+        stored, so it can't disagree with the camera. ``None`` means
+        "nothing was ever written."
 
-        No ``_vtk_lock`` (RS-8).  What is read here is three independent
-        boolean loads and one field off the camera record; nothing consumes
-        them as a mutually consistent snapshot, and the two larger reads
-        already in this method are already unlocked.  Locking a request-path
-        read against the trigger thread, with the lock ordering on that path
-        untraced, belongs with the round-trip and thread-affinity work.  The
-        accepted exposure is one stale field in a delivered payload.
+        No ``_vtk_lock``: the reads here (three booleans, one camera field)
+        aren't consumed as a mutually consistent snapshot, and locking a
+        request-path read against the trigger thread belongs with the
+        round-trip/thread-affinity work, not here. Accepted exposure: one
+        stale field in a delivered payload.
         """
         if self._scene_graph is None:
             self._initialize_scene_graph()

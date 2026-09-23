@@ -204,21 +204,15 @@ class IRenderer(ABC):
 
     @abstractmethod
     def set_projection(self, parallel: bool) -> None:
-        """Set parallel projection on the camera record, and project it.
+        """Set parallel projection on the camera record, then project it.
 
-        Writes ``parallel_projection`` on the existing record **in place**,
-        preserving the object identity :meth:`sync_camera` documents, then
-        applies to the pipeline camera.  Record first, pipeline second, so a
-        raising VTK setter still leaves the record holding what the caller
-        asked for.
-
-        A ``None`` record is not seeded here.  The write to the pipeline
-        still happens and the record stays ``None``, logged at debug; the
-        next :meth:`reset_camera` reads the pipeline and imports it.  The
-        cost is named: a projection set before any camera has been written
-        is not saved until then.
-
-        Re-serialisation is the coordinator's, not this method's.
+        Writes ``parallel_projection`` on the existing record in place
+        (preserving :meth:`sync_camera`'s identity contract) before applying
+        to the pipeline camera, so a raising VTK setter still leaves the
+        record holding what was asked. A ``None`` record is not seeded: the
+        pipeline write still happens, but the value is lost until the next
+        :meth:`reset_camera` imports it. Does not re-serialise; that is the
+        coordinator's job.
         """
 
     @abstractmethod

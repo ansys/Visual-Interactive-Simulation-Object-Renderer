@@ -26,14 +26,13 @@ export class OrthographicWidget {
     /**
      * Seed the cached flag from the wasm camera.
      *
-     * `#enabled` is initialised to `false` unconditionally at construction,
-     * and nothing else reads the real camera except the toggle path. A
-     * renderer built against a camera the server has already made parallel
-     * would therefore report perspective, and `getAppStateAsync` reads that
-     * cached flag -- so on a rebuild the wrong value is what gets saved.
+     * `#enabled` starts `false` unconditionally, and only the toggle path
+     * otherwise reads the real camera. Without this seed, a renderer built
+     * against a camera the server already made parallel would report
+     * perspective, and `getAppStateAsync` would save that wrong cached value.
      *
-     * Awaited from `WasmRenderer.createAsync`, after the wasm state fetch has
-     * completed, which is what makes the value read here the delivered one.
+     * Awaited from `WasmRenderer.createAsync`, after the wasm state fetch
+     * completes, so the value read here is the delivered one.
      */
     seedFromCameraAsync = async (): Promise<void> => {
         this.#enabled = await this.isOrthographicAsync();

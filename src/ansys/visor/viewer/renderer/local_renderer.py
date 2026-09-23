@@ -381,13 +381,11 @@ class VisorLocalRenderer(IRenderer):
     # ------------------------------------------------------------------
     # IRenderer: widget control (cross-section, bounding box, edges)
     #
-    # ``set_edges_visible`` has a coordinator caller and a body.  The two
-    # visibility verbs do not, and deliberately stay no-ops: the server's
-    # cross-section and bounding-box widget objects are driven by the client
-    # through the wasm mirror, nothing in LOCAL reads their enablement, and a
-    # server-side body would be a second writer with no reader.  Edge
-    # visibility is different in kind -- it is an actor property on this
-    # renderer's own pipelines, and it has a reader here.
+    # ``set_cross_section_visibility`` and ``set_bounding_box_visibility``
+    # stay no-ops: those widgets are driven client-side via the wasm mirror,
+    # and nothing in LOCAL reads their enablement. Edge visibility differs --
+    # it's an actor property on this renderer's own pipelines, with a reader
+    # here.
     # ------------------------------------------------------------------
 
     def set_edges_visible(self, visible: bool) -> None:
