@@ -128,17 +128,29 @@ export default class RemoteVtkScene {
         let wasmUrl = config.wasmUrl;
         const trameInterface = await TrameInterface.getInstanceAsync(webSocketUrl, refNameStateKey);
 
-        // trame-vtklocal registers wasm files under a versioned path and
-        // exposes it as `__trame_vtklocal_wasm_url` in Trame state.
-        // We derive the absolute wasm base URL from the WebSocket origin +
-        // that state value so we always fetch from the server that actually
-        // has the files, regardless of which port the Dash app runs on.
-        const trameWasmUrl = trameInterface.getState('__trame_vtklocal_wasm_url');
-        if (trameWasmUrl && typeof trameWasmUrl === 'string') {
-            // webSocketUrl is e.g. "ws://127.0.0.1:44473/ws"
-            // We need "http://127.0.0.1:44473/__trame_vtklocal/wasm/9.6.1"
-            const wsOrigin = webSocketUrl.replace(/^ws(s?):\/\//, 'http$1://').replace(/\/ws$/, '');
-            wasmUrl = `${wsOrigin}/${trameWasmUrl}`;
+        // trame-vtklocal registers wasm files under a versioned path.
+        // Older versions exposed a plain string under
+        // `__trame_vtklocal_wasm_url`. Newer versions expose an object under
+        // keys like `__trame_vtklocal_wasm32` / `__trame_vtklocal_wasm64` with
+        // a `url` property. Try multiple possible state keys and use the
+        // first one we find.
+        const wsOrigin = webSocketUrl.replace(/^ws(s?):\/\//, 'http$1://').replace(/\/ws$/, '');
+        const wasmStateCandidates = [
+            '__trame_vtklocal_wasm_url',
+            '__trame_vtklocal_wasm',
+            '__trame_vtklocal_wasm32',
+            '__trame_vtklocal_wasm64',
+        ];
+        for (const key of wasmStateCandidates) {
+            const val = trameInterface.getState(key);
+            if (typeof val === 'string' && val.length > 0) {
+                wasmUrl = `${wsOrigin}/${val}`;
+                break;
+            }
+            if (val && typeof val === 'object' && typeof val.url === 'string') {
+                wasmUrl = `${wsOrigin}/${val.url}`;
+                break;
+            }
         }
 
         const wasmIds = trameInterface.getState(wasmIdsStateKey);
