@@ -79,9 +79,6 @@ class NullRenderer(IRenderer):
     def apply_diffuse_color(self, node_id: int, r: float, g: float, b: float) -> None:
         pass
 
-    def apply_edge_visibility(self, node_id: int, edge_visible: bool) -> None:
-        pass
-
     def apply_selected(self, node_id: int, selected: bool, diffuse_rgb: list) -> None:
         pass
 
