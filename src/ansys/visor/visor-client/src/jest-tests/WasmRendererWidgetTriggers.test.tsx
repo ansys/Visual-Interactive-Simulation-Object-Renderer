@@ -374,4 +374,3 @@ describe('WasmRenderer marks an orientation-widget move as a gesture', () => {
         expect(sender).not.toHaveBeenCalled();
     });
 });
-
