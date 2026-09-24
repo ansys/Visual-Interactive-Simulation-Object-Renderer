@@ -191,14 +191,12 @@ class VisorSceneBase(ABC):
         separately, so it can't disagree with the camera. ``None`` means
         "nothing was ever written."
 
-        The cross-section plane is the camera's twin and is taken from the
-        renderer's record on exactly the same terms.  The assignment is
-        unconditional: the renderer seeds the record from its own widget the
-        first time bounds are pushed, so in normal operation there is no
-        ``None`` case to guard, and a ``None`` record is written through as
-        ``None`` because that is what says "no plane was ever written".  The
-        guard for "absent says nothing" belongs to the load path, as it does
-        for the camera.
+        The cross-section plane is the camera's twin, taken from the
+        renderer's record on exactly the same terms -- see the camera
+        paragraph above for why the assignment is unconditional and what
+        ``None`` means.  In normal operation there is no ``None`` case to
+        guard because the renderer seeds the record from its own widget the
+        first time bounds are pushed.
         """
         runtime_state = await self._get_runtime_state_async(timeout)
 
