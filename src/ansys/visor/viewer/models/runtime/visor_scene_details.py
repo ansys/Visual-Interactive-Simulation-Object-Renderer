@@ -31,6 +31,10 @@ class VisorSceneDetails(BaseModel):
             dataset_states: Dict[int, RuntimeDatasetState],
             scene_graph_state: SceneGraphNodeInfo | None = None,
             renderer_annotation: RendererAnnotation | None = None,
+            orthographic_enabled: bool | None = None,
+            cross_section_enabled: bool | None = None,
+            edges_enabled: bool | None = None,
+            bounding_box_enabled: bool | None = None,
     ) -> "VisorSceneDetails":
         """Construct an instance from components."""
         vtk_info = RuntimeVTKInfo(
@@ -41,6 +45,10 @@ class VisorSceneDetails(BaseModel):
             dark_mode=dark_mode,
             unit=unit,
             dataset_states=dataset_states,
+            orthographic_enabled=orthographic_enabled,
+            cross_section_enabled=cross_section_enabled,
+            edges_enabled=edges_enabled,
+            bounding_box_enabled=bounding_box_enabled,
         )
         return cls(
             app_state=app_state,

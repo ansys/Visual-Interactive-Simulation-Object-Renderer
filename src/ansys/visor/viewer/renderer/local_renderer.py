@@ -302,6 +302,20 @@ class VisorLocalRenderer(IRenderer):
         self._last_camera_state = camera_state
         self._apply_to_pipeline_camera(camera_state)
 
+    def set_projection(self, parallel: bool) -> None:
+        """See :meth:`IRenderer.set_projection`.
+
+        Record first, pipeline second, for the reason :meth:`sync_camera`
+        gives.
+        """
+        if self._last_camera_state is not None:
+            self._last_camera_state.parallel_projection = parallel
+        else:
+            logger.debug(
+                "set_projection: no camera record; applying to the pipeline only."
+            )
+        self._vtk_renderer.GetActiveCamera().SetParallelProjection(parallel)
+
     def serialize_camera_state(self) -> None:
         """See :meth:`IRenderer.serialize_camera_state`.
 
@@ -365,10 +379,24 @@ class VisorLocalRenderer(IRenderer):
         camera.SetParallelScale(camera_state.parallel_scale)
 
     # ------------------------------------------------------------------
-    # IRenderer: widget control (cross-section, bounding box)
+    # IRenderer: widget control (cross-section, bounding box, edges)
     #
-    # No coordinator caller on this branch. Phase 3 populates.
+    # ``set_cross_section_visibility`` and ``set_bounding_box_visibility``
+    # stay no-ops: those widgets are driven client-side via the wasm mirror,
+    # and nothing in LOCAL reads their enablement. Edge visibility differs --
+    # it's an actor property on this renderer's own pipelines, with a reader
+    # here.
     # ------------------------------------------------------------------
+
+    def set_edges_visible(self, visible: bool) -> None:
+        """See :meth:`IRenderer.set_edges_visible`.
+
+        Fans out over every registered pipeline.  Scene-wide, so there is no
+        node id to resolve and no logged-no-op branch: a scene with no
+        pipelines is a no-op by iteration, not by guard.
+        """
+        for pipe in self._pipelines.values():
+            pipe.set_edge_visibility(visible)
 
     def set_cross_section_visibility(self, visible: bool) -> None:
         """No-op in Story 1.2. Phase 3 populates."""

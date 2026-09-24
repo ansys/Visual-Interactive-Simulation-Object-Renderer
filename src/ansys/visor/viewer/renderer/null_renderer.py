@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Optional
 
+from ansys.visor.viewer.core.visor_logging import VisorDefaultLogger
 from ansys.visor.viewer.renderer.base import IRenderer
 
 if TYPE_CHECKING:
@@ -25,6 +26,8 @@ if TYPE_CHECKING:
 
     from ansys.visor.viewer.models.common.visor_camera_state import VisorCameraState
     from ansys.visor.viewer.vtk.scene_graph import VisorSceneGraphPartNode
+
+logger = VisorDefaultLogger(__name__)
 
 
 class NullRenderer(IRenderer):
@@ -127,6 +130,18 @@ class NullRenderer(IRenderer):
         """See :meth:`IRenderer.sync_camera`."""
         self._last_camera_state = camera_state
 
+    def set_projection(self, parallel: bool) -> None:
+        """See :meth:`IRenderer.set_projection`.
+
+        Record only: there is no pipeline camera to project onto.
+        """
+        if self._last_camera_state is not None:
+            self._last_camera_state.parallel_projection = parallel
+        else:
+            logger.debug(
+                "set_projection: no camera record; nothing to write."
+            )
+
     def serialize_camera_state(self) -> None:
         """See :meth:`IRenderer.serialize_camera_state`.
 
@@ -135,8 +150,11 @@ class NullRenderer(IRenderer):
 
 
     # ------------------------------------------------------------------
-    # Widget control (cross-section, bounding box)
+    # Widget control (cross-section, bounding box, edges)
     # ------------------------------------------------------------------
+
+    def set_edges_visible(self, visible: bool) -> None:
+        """No pipelines to fan out over; nothing to do."""
 
     def set_cross_section_visibility(self, visible: bool) -> None:
         pass

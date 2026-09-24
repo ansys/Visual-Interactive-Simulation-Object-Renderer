@@ -9,6 +9,8 @@ camera mutation writes the record": ``reset_camera`` leaves the record alone.
 
 from __future__ import annotations
 
+from unittest.mock import patch
+
 from ansys.visor.viewer.models.common.visor_camera_state import VisorCameraState
 from ansys.visor.viewer.renderer.null_renderer import NullRenderer
 
@@ -116,6 +118,48 @@ def test_serialize_camera_state_is_a_no_op_and_leaves_the_record_alone():
     renderer.serialize_camera_state()
 
     assert renderer.get_camera_state() is cam
+
+
+# ===========================================================================
+# Projection: the record half owed in full, the pipeline half not at all
+# ===========================================================================
+
+def test_set_projection_writes_the_record_in_place_preserving_identity():
+    """The record is mutated, not replaced, exactly as on the local renderer.
+
+    The record half of the projection contract is not optional on any
+    implementation.  Identity is asserted as well as value because callers
+    rely on object identity through ``get_camera_state``, and a body that
+    rebuilt the record would satisfy the value assertion alone.
+
+    The seed carries the literal ``False`` so the write is a transition.
+    """
+    renderer = NullRenderer()
+    cam = _camera_state()
+    renderer.sync_camera(cam)
+
+    renderer.set_projection(True)
+
+    assert renderer.get_camera_state() is cam
+    assert cam.parallel_projection is True
+
+
+def test_set_projection_with_no_record_is_a_logged_no_op():
+    """With no record there is nothing to write, and nothing to project onto.
+
+    This renderer has no pipeline camera, so unlike the local renderer there
+    is no second half to fall through to: the whole method is the record, and
+    an empty record makes the whole method a logged no-op.  Asserted as "still
+    ``None``" rather than "did not raise", because a body that seeded a record
+    here would also not raise.
+    """
+    renderer = NullRenderer()
+
+    with patch("ansys.visor.viewer.renderer.null_renderer.logger") as log:
+        renderer.set_projection(True)
+
+    assert renderer.get_camera_state() is None
+    assert log.debug.call_count == 1
 
 
 

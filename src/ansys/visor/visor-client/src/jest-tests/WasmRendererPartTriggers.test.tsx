@@ -105,6 +105,14 @@ async function makeRenderer(sender: TrameTriggerSender | null) {
         canvasDiv: document.createElement('div'),
         render: jest.fn(),
         clearObserversAndEventListeners: jest.fn(),
+        // createAsync seeds the orthographic flag from the wasm camera, so a
+        // double that cannot answer GetParallelProjection fails construction
+        // before any test in this module runs. Perspective (0) is the value a
+        // scene that has never been made parallel reports; nothing here reads
+        // it back.
+        camera: {
+            GetParallelProjection: jest.fn(async () => 0),
+        },
         getVtkObject: (wasmId: number) => {
             switch (wasmId) {
                 case ACTOR_ID:

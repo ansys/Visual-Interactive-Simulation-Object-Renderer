@@ -210,7 +210,19 @@ export interface IRenderer {
     sendClearPartColorVariableAsync(nodeId: NodeId): Promise<void>;
 
     // ---- View-level widgets (state is renderer-owned; see arch rule (a)) ---
+    //
+    // The four cached-bool getters below (isCrossSectionVisible,
+    // isBoundingBoxVisible, isOrthographicEnabled, areEdgesVisibleGlobally)
+    // share one contract: each returns the last value the server delivered,
+    // or the last value this client set locally, whichever happened later.
+    // Each widget's cached flag is a projection of that value, not an
+    // independent source. A write followed by an immediate read returns the
+    // **pre-push** value -- the write is local and the server's confirmation
+    // arrives on a later fetch, so none of these is a read-after-write on the
+    // server's store.
+
     setCrossSectionVisibilityAsync(visible?: boolean): Promise<void>;
+    /** Whether the cross-section plane is shown. See contract note above. */
     isCrossSectionVisible(): boolean; // cached bool, sync
     updateCrossSectionBoundsAsync(): Promise<void>;
     getCrossSectionOriginAsync(): Promise<readonly number[]>;
@@ -219,13 +231,21 @@ export interface IRenderer {
     setCrossSectionNormalAsync(normal: readonly number[]): Promise<void>;
 
     setBoundingBoxVisibilityAsync(visible?: boolean): Promise<void>;
+    /** Whether the bounding-box outline is shown. See contract note above. */
     isBoundingBoxVisible(): boolean;
     updateBoundingBoxBoundsAsync(): Promise<void>;
 
     setOrthographicModeAsync(enable?: boolean): Promise<void>;
+    /**
+     * Whether the view is in parallel (orthographic) projection. See contract
+     * note above; additionally, the server-delivered value is seeded from the
+     * wasm camera when the renderer is built. The camera is the single place
+     * projection lives -- this flag only reflects it.
+     */
     isOrthographicEnabled(): boolean;
 
     setEdgeVisibilityGlobalAsync(visible?: boolean): Promise<void>;
+    /** Whether edges are shown on every part in the scene. See contract note above. */
     areEdgesVisibleGlobally(): boolean;
 
     toggleFullScreenAsync(): Promise<void>;
