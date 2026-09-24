@@ -1022,3 +1022,263 @@ class TestPickGeometry:
         res = renderer.pick_geometry(1, 0, "INVALID_MODE", (0.0, 0.0, 0.0))
         assert res == {"found": False}
 
+
+# ===========================================================================
+# 7.  The cross-section plane record
+#
+# Hand-written widget double rather than a MagicMock, on the precedent
+# ``_CameraDouble`` sets in this module: the seed reads ``GetOrigin`` and
+# ``GetNormal`` back into a pydantic model, which rejects Mock attributes, and
+# the ordering tests need one shared call list across three widget methods
+# rather than three independent recorders.
+#
+# Every literal below is hand-written.  None is computed the way
+# ``_get_default_plane_info`` computes it and none originates from VTK, so no
+# assertion here can be satisfied by a VTK-constructed default.
+# ===========================================================================
+
+# What the widget's own update_bounds left on the plane, read back by the seed.
+SEEDED_PLANE_ORIGIN = [1.0, 2.0, 3.0]
+SEEDED_PLANE_NORMAL = [0.0, 0.0, 1.0]
+
+# What a settled drag reports through sync_cross_section_plane.
+REPORTED_PLANE_ORIGIN = [4.0, 5.0, 6.0]
+REPORTED_PLANE_NORMAL = [0.0, 1.0, 0.0]
+
+# What an already-present record holds when update_bounds runs again.  Every
+# component differs from both sets above, so "wrote the record back" and
+# "re-seeded from the widget" cannot both pass.
+RECORDED_PLANE_ORIGIN = [7.0, 8.0, 9.0]
+RECORDED_PLANE_NORMAL = [1.0, 0.0, 0.0]
+
+# One literal per object, so asserting these two fails -- rather than
+# coincides -- if production names the widget, the render window or anything
+# else.  Distinct from the camera's literals above for the same reason.
+CROSS_SECTION_PLANE_WASM_ID = 11
+CROSS_SECTION_REPRESENTATION_WASM_ID = 12
+
+
+class _PlaneDouble:
+    """Stand-in for the widget's ``vtkPlane``.
+
+    Answers the two getters the seed reads with hand-written literals, so the
+    seeded record is asserted against values that never passed through VTK.
+    """
+
+    def GetOrigin(self):  # noqa: N802
+        return tuple(SEEDED_PLANE_ORIGIN)
+
+    def GetNormal(self):  # noqa: N802
+        return tuple(SEEDED_PLANE_NORMAL)
+
+
+class _CrossSectionWidgetDouble:
+    """Stand-in for ``VisorCrossSectionWidget``.
+
+    ``calls`` is one shared, ordered list across ``update_bounds``,
+    ``set_origin`` and ``set_normal``, because what has to be pinned is their
+    order relative to each other and not merely that each happened.
+
+    ``plane`` and ``plane_representation`` are two distinct objects, so an id
+    lookup keyed on identity can tell them apart and a re-serialise that named
+    the same object twice fails.
+    """
+
+    def __init__(self):
+        self.calls = []
+        self._plane = _PlaneDouble()
+        self._plane_representation = object()
+
+    @property
+    def plane(self):
+        return self._plane
+
+    @property
+    def plane_representation(self):
+        return self._plane_representation
+
+    def update_bounds(self, bounds):
+        self.calls.append(("update_bounds", list(bounds)))
+
+    def set_origin(self, origin):
+        self.calls.append(("set_origin", list(origin)))
+
+    def set_normal(self, normal):
+        self.calls.append(("set_normal", list(normal)))
+
+
+@pytest.fixture
+def widget(renderer):
+    """Install the hand-written cross-section widget double on *renderer*."""
+    double = _CrossSectionWidgetDouble()
+    renderer._cross_section_widget = double
+    return double
+
+
+BOUNDS = [-1.0, 1.0, -2.0, 2.0, -3.0, 3.0]
+
+
+class TestCrossSectionPlane:
+    """The record, the two VTK writes, the two-id re-serialise, and the seed."""
+
+    # -- sync_cross_section_plane -------------------------------------------
+    #
+    # The record half and the VTK half are separate tests: either can silently
+    # do nothing while the other succeeds, and a record that is never
+    # projected leaves the server's own clip plane where it was while
+    # ``get_state`` reports the new one.
+
+    def test_sync_cross_section_plane_writes_the_record(self, renderer, widget):
+        """Store half: a reported plane becomes the server's record."""
+        renderer.sync_cross_section_plane(REPORTED_PLANE_ORIGIN, REPORTED_PLANE_NORMAL)
+
+        record = renderer.get_cross_section_plane()
+        assert record.origin == REPORTED_PLANE_ORIGIN
+        assert record.normal == REPORTED_PLANE_NORMAL
+
+    def test_sync_cross_section_plane_writes_both_vtk_objects(self, renderer, widget):
+        """Apply half: the origin and the normal both reach the widget.
+
+        Asserted as the whole call list, not with two ``assert_called_with``:
+        a body that wrote the origin twice, or that wrote the normal and not
+        the origin, is caught by the list and not by the pair.  ``set_origin``
+        and ``set_normal`` each write the plane *and* the representation, so
+        naming both here is what stops the clip and the handle diverging.
+        """
+        renderer.sync_cross_section_plane(REPORTED_PLANE_ORIGIN, REPORTED_PLANE_NORMAL)
+
+        assert widget.calls == [
+            ("set_origin", REPORTED_PLANE_ORIGIN),
+            ("set_normal", REPORTED_PLANE_NORMAL),
+        ]
+
+    # -- serialize_cross_section_state --------------------------------------
+
+    def test_serialize_cross_section_state_names_the_plane_and_the_representation_ids(
+        self, renderer, widget
+    ):
+        """The re-serialise names exactly two objects: the plane and the handle.
+
+        This is the assertion that pins the increment.  The id source is keyed
+        on object identity, so every object other than those two resolves to a
+        third, equally distinctive literal; asserting these two therefore
+        fails -- rather than coincides -- if production names the widget, the
+        render window or the renderer.
+
+        Revert to a plane-only re-serialise and the call count is 1.  That
+        revert leaves the server correct and the client saving a stale handle,
+        which no other assertion in this suite sees.
+
+        No render is in this test at all, which is what pins the "never relies
+        on a render following" clause: the two calls are the whole mechanism.
+        """
+        renderer._object_manager.GetId.side_effect = (
+            lambda obj: CROSS_SECTION_PLANE_WASM_ID
+            if obj is widget.plane
+            else CROSS_SECTION_REPRESENTATION_WASM_ID
+            if obj is widget.plane_representation
+            else WRONG_OBJECT_WASM_ID
+        )
+
+        renderer.serialize_cross_section_state()
+
+        calls = renderer._object_manager.UpdateStateFromObject.call_args_list
+        assert len(calls) == 2
+        assert [call.args[0] for call in calls] == [
+            CROSS_SECTION_PLANE_WASM_ID,
+            CROSS_SECTION_REPRESENTATION_WASM_ID,
+        ]
+
+    # -- update_bounds: the seed --------------------------------------------
+
+    def test_update_bounds_seeds_the_record_when_there_is_none(self, renderer, widget):
+        """With no record, the record is seeded from the widget's own plane.
+
+        This is what lets ``get_state`` assign the plane unconditionally, as
+        it does the camera.  Reverted, the record stays ``None`` past the
+        first populate and a save of a scene nobody has dragged writes no
+        plane at all.
+        """
+        assert renderer.get_cross_section_plane() is None
+
+        renderer.update_bounds(BOUNDS)
+
+        record = renderer.get_cross_section_plane()
+        assert record.origin == SEEDED_PLANE_ORIGIN
+        assert record.normal == SEEDED_PLANE_NORMAL
+
+    def test_update_bounds_seeds_after_the_widgets_own_update_bounds(
+        self, renderer, widget
+    ):
+        """The seed reads the plane *after* the widget has rewritten it.
+
+        Its own test, and not an extra assertion above, because the failure is
+        different in kind: a seed written before the widget call records the
+        *previous* plane, so the record is one populate behind and lags the
+        scene by one dataset load.  The values test above still passes in that
+        arrangement whenever the two planes happen to agree, which is most of
+        the time.
+
+        Asserted on the widget's own ordered call list, with the read-back
+        taken after the call returns: the widget call must have been made, and
+        the record must hold what the double reports *now*.
+        """
+        renderer.update_bounds(BOUNDS)
+
+        assert widget.calls == [("update_bounds", BOUNDS)]
+        assert renderer.get_cross_section_plane().origin == SEEDED_PLANE_ORIGIN
+
+    # -- update_bounds: an existing record wins -----------------------------
+    #
+    # ``set_part_visibility`` fans out to ``_update_widget_bounds``, so this
+    # method runs on every part toggle and every dataset add, not once per
+    # scene.  The two tests below are what stop that fan-out discarding a
+    # plane the user dragged.  They are separate because a body that wrote the
+    # record back to the widget *and* re-seeded it afterwards passes the first
+    # and fails the second.
+
+    def test_update_bounds_with_a_record_writes_the_record_back_to_the_widget(
+        self, renderer, widget
+    ):
+        """An existing record is pushed back over the widget's defaults.
+
+        The widget's own ``update_bounds`` unconditionally rewrites both VTK
+        objects to the default plane for the new bounds, so without this
+        write-back a part toggle moves the clip and the handle even though the
+        record still holds the dragged plane.
+
+        Ordered after the widget call, and asserted as one list for that
+        reason: written before it, the widget's defaults win and the drag is
+        lost with every assertion on the record still passing.
+        """
+        renderer.sync_cross_section_plane(RECORDED_PLANE_ORIGIN, RECORDED_PLANE_NORMAL)
+        widget.calls.clear()
+
+        renderer.update_bounds(BOUNDS)
+
+        assert widget.calls == [
+            ("update_bounds", BOUNDS),
+            ("set_origin", RECORDED_PLANE_ORIGIN),
+            ("set_normal", RECORDED_PLANE_NORMAL),
+        ]
+
+    def test_update_bounds_with_a_record_leaves_the_record_unchanged(
+        self, renderer, widget
+    ):
+        """The record is not re-seeded from the widget when it already exists.
+
+        The negative twin of the test above.  The widget double reports the
+        seed literals, which differ in every component from the record's, so a
+        body that wrote back *and* then re-seeded passes the write-back test
+        and fails this one -- and in the running application would still throw
+        the dragged plane away on the next save.
+        """
+        renderer.sync_cross_section_plane(RECORDED_PLANE_ORIGIN, RECORDED_PLANE_NORMAL)
+
+        renderer.update_bounds(BOUNDS)
+
+        record = renderer.get_cross_section_plane()
+        assert record.origin == RECORDED_PLANE_ORIGIN
+        assert record.normal == RECORDED_PLANE_NORMAL
+
+

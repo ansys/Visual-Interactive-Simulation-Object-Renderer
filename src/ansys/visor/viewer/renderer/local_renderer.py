@@ -29,6 +29,7 @@ from ansys.visor.viewer.core.perf_timer import PerfTimer
 from ansys.visor.viewer.core.visor_colors import VisorColors
 from ansys.visor.viewer.core.visor_logging import VisorDefaultLogger
 from ansys.visor.viewer.models.common.visor_camera_state import VisorCameraState
+from ansys.visor.viewer.models.common.visor_cross_section_state import VisorCrossSectionState
 from ansys.visor.viewer.models.runtime.vtk.renderer_annotation import (
     WasmNodeHandles,
     WasmRendererAnnotation,
@@ -62,12 +63,14 @@ class VisorLocalRenderer(IRenderer):
     # Increment I5; mutated exclusively via register_node / deregister_node.
     _pipelines: dict[int, VtkNodePipeline]
     _last_camera_state: Optional["VisorCameraState"]
+    _last_cross_section_state: Optional["VisorCrossSectionState"]
 
     def __init__(self, server: Server):
         """Build the full local-mode VTK infrastructure and seed wasm state."""
         self._server = server
         self._pipelines = {}
         self._last_camera_state = None
+        self._last_cross_section_state = None
 
         self._vtk_renderer = self._initialize_vtk_renderer()
         self._render_window = self._initialize_render_window()
@@ -401,7 +404,47 @@ class VisorLocalRenderer(IRenderer):
     def sync_cross_section_plane(
         self, origin: list[float], normal: list[float]
     ) -> None:
-        """No-op in Story 1.2. Phase 3 populates."""
+        """See :meth:`IRenderer.sync_cross_section_plane`.
+
+        Writes the record, then both VTK objects.  ``set_origin`` and
+        ``set_normal`` each write the plane *and* the representation, so the
+        clip function and the draggable handle cannot diverge on this path --
+        which is the defect the client's own set/get asymmetry has.
+        """
+        self._last_cross_section_state = VisorCrossSectionState(
+            origin=list(origin), normal=list(normal)
+        )
+        self._cross_section_widget.set_origin(origin)
+        self._cross_section_widget.set_normal(normal)
+
+    def get_cross_section_plane(self) -> Optional["VisorCrossSectionState"]:
+        """See :meth:`IRenderer.get_cross_section_plane`."""
+        return self._last_cross_section_state
+
+    def serialize_cross_section_state(self) -> None:
+        """See :meth:`IRenderer.serialize_cross_section_state`.
+
+        Two ids, named one at a time, each derived the way
+        :meth:`serialize_camera_state` derives the camera's: ``GetId`` on the
+        object itself, not the id ``register_vtk_object`` returned.  Deriving
+        it this way means the equivalence of those two id spaces never has to
+        be established.
+
+        The plane is the clip function every pipeline holds; the
+        representation is the visible handle and is also what the client
+        reads on save.  A plane-only re-serialise leaves the client saving a
+        stale handle.
+
+        The widget id is deliberately not named: ``set_origin`` and
+        ``set_normal`` do not write the widget, whose changing state is
+        enablement.  See MC-6.
+        """
+        self._object_manager.UpdateStateFromObject(
+            self._object_manager.GetId(self._cross_section_widget.plane)
+        )
+        self._object_manager.UpdateStateFromObject(
+            self._object_manager.GetId(self._cross_section_widget.plane_representation)
+        )
 
     def set_bounding_box_visibility(self, visible: bool) -> None:
         """No-op in Story 1.2. Phase 3 populates."""
@@ -411,9 +454,40 @@ class VisorLocalRenderer(IRenderer):
     # ------------------------------------------------------------------
 
     def update_bounds(self, bounds: list[float]) -> None:
-        """See :meth:`IRenderer.update_bounds`."""
+        """See :meth:`IRenderer.update_bounds`.
+
+        Seeds the cross-section record from the values the widget's own
+        ``update_bounds`` just wrote through ``set_origin``/``set_normal``, so
+        the record is never ``None`` once a scene has been populated and
+        ``get_state`` can assign it unconditionally, as it does the camera's.
+
+        **The seed runs only when there is no record.**  This method is not
+        reached once per scene: ``set_part_visibility`` fans out to
+        ``_update_widget_bounds``, so a part toggle or a dataset add reaches
+        here too.  Seeding unconditionally would therefore discard a plane the
+        user had dragged, on the next toggle, and the widget's own
+        ``update_bounds`` would already have overwritten both VTK objects with
+        the default plane.  With a record present this writes the record
+        *back* to the widget instead -- after the widget's own call, never
+        before -- and leaves the record itself untouched.
+
+        Ordering is load-bearing in both branches.  Seeded before the widget
+        call, the record holds the previous plane and is one populate behind;
+        written back before it, the widget's defaults win and the drag is
+        lost.  Either compiles, and either passes any test that does not
+        assert the order.
+        """
         self._cross_section_widget.update_bounds(bounds)
         self._bounding_box_widget.update_bounds(bounds)
+        if self._last_cross_section_state is None:
+            plane = self._cross_section_widget.plane
+            self._last_cross_section_state = VisorCrossSectionState(
+                origin=list(plane.GetOrigin()),
+                normal=list(plane.GetNormal()),
+            )
+        else:
+            self._cross_section_widget.set_origin(self._last_cross_section_state.origin)
+            self._cross_section_widget.set_normal(self._last_cross_section_state.normal)
 
     def update_actor_count(self, count: int) -> None:
         """See :meth:`IRenderer.update_actor_count`."""

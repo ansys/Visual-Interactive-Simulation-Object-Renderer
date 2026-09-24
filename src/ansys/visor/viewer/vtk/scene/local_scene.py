@@ -59,8 +59,8 @@ class VisorLocalScene(VisorSceneBase):
         the React frontend, which clears the setState event listener while it
         rebuilds the scene.  If the set_state() JS call below arrives during
         that window the persisted state is silently lost.
-        finalize_scene() (called just before apply_state when loading from an
-        empty scene) has already done a full render + wasm sync; all we need
+        finalize_scene() (called from apply_state, in the statement immediately
+        before this one) has already done a full render + wasm sync; all we need
         here is a lightweight VTK flush before the JS payload is sent.
         """
         self._renderer.render_window_only()

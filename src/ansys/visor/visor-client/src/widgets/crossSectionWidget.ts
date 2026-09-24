@@ -76,10 +76,32 @@ export class CrossSectionWidget {
     getNormalAsync: () => Promise<number[]> = async () => {
         return await this.#rep.GetNormal();
     };
+    /**
+     * Write a plane to **both** objects: the representation first, then the
+     * plane.
+     *
+     * The two setters below and the two getters above are deliberately no
+     * longer symmetric in what they touch. The getters read the
+     * representation, because that is the object the draggable handle moves.
+     * The setters write the representation *and* the plane, because the
+     * representation is the handle and the plane is the clip function every
+     * pipeline holds, and a write that reached only one of them left the two
+     * disagreeing: a load set the clip while the handle stayed where it was,
+     * and the next end-of-drag report then carried that stale handle to the
+     * server.
+     *
+     * Representation first, plane second, matching the order the server's own
+     * `VisorCrossSectionWidget.set_origin` / `set_normal` write them in. The
+     * order is consistency with the server rather than a correctness
+     * requirement of its own -- these are two independent objects and neither
+     * write feeds the other.
+     */
     setOriginAsync: (origin: number[]) => Promise<void> = async (origin) => {
+        await this.#rep.SetOrigin(origin);
         await this.#plane.SetOrigin(origin);
     };
     setNormalAsync: (normal: number[]) => Promise<void> = async (normal) => {
+        await this.#rep.SetNormal(normal);
         await this.#plane.SetNormal(normal);
     };
     setVisibilityAsync: (visible?: boolean) => Promise<void>;
