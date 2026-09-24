@@ -9,7 +9,7 @@ it carries two three-component vectors and is scene-wide -- so adding a name
 there would multiply the per-part tests by one more and rewrite them.
 
 Two tests, not six.  The no-coordinator path and the not-a-mapping path run
-through ``_part_state_api`` and ``parse_payload``, which three sibling trigger
+through ``_mutation_api`` and ``parse_payload``, which three sibling trigger
 modules already pin against the same two functions; repeating them here would
 be a third and fourth copy of one failure mode rather than a new one.  What is
 unique to this trigger is that it forwards *two* vectors in a fixed order, and

@@ -562,7 +562,7 @@ class LocalApp:
         re-serialises them in one critical section; nothing is pushed from
         here.
         """
-        api = self._part_state_api("sync_cross_section_plane", payload)
+        api = self._mutation_api("sync_cross_section_plane", payload)
         if api is None:
             return
         api.sync_cross_section_plane(payload.origin, payload.normal)
