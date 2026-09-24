@@ -523,7 +523,7 @@ def test_load_state_passes_correct_metadata_to_add_dataset(tmp_path, iface):
 # LocalApp injection boundary
 # ================================================================== #
 
-PART_STATE_API_METHODS = [
+SCENE_MUTATION_API_METHODS = [
     "set_part_visibility",
     "set_part_opacity",
     "set_part_diffuse_color",
@@ -556,7 +556,7 @@ def local_app_call():
         return mock_local_app.call_args, mock_scene_inst, instance
 
 
-def test_local_app_receives_the_scene_as_the_part_state_api(local_app_call):
+def test_local_app_receives_the_scene_as_the_scene_mutation_api(local_app_call):
     """The scene itself is injected, not a wrapper or a set of lambdas."""
     call, scene, instance = local_app_call
 
@@ -591,7 +591,7 @@ def test_the_pre_existing_lambdas_still_delegate_to_the_scene(local_app_call):
     scene.pick_geometry.assert_called_once_with(2, 3, "vertex", 0.0, 1.0, 2.0)
 
 
-@pytest.mark.parametrize("name", PART_STATE_API_METHODS)
+@pytest.mark.parametrize("name", SCENE_MUTATION_API_METHODS)
 def test_local_scene_satisfies_the_part_state_protocol(name):
     """VisorLocalScene structurally provides every method the triggers call."""
     from ansys.visor.viewer.vtk.scene.local_scene import VisorLocalScene
