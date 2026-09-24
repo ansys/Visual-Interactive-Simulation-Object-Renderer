@@ -599,7 +599,7 @@ def mocked_scene(renderer):
     # must return a real RuntimeAppState rather than a MagicMock (whose
     # dataset_states would be a MagicMock and raise on iteration).
     s._state_mapper.persisted_to_runtime.return_value = RuntimeAppState.from_components(
-        dark_mode=False, unit="m", dataset_states={}
+        ui=VisorUIState(dark_theme=False), unit="m", dataset_states={}
     )
     s._vtk_lock = _LockSpy()
     return s
@@ -803,7 +803,7 @@ def _seed_part_variables(registry, variables, part_id=NODE_ID, dataset_id=1):
 def _runtime_state(part_states, variable_states=None, dataset_id=1):
     """A real RuntimeAppState carrying the given per-part records."""
     return RuntimeAppState.from_components(
-        dark_mode=False,
+        ui=VisorUIState(dark_theme=False),
         unit="m",
         dataset_states={
             dataset_id: RuntimeDatasetState(id=dataset_id, part_states=part_states)
@@ -820,7 +820,7 @@ def _frontend_state():
     output from frontend-sourced output.
     """
     return RuntimeAppState.from_components(
-        dark_mode=False,
+        ui=VisorUIState(dark_theme=False),
         unit="m",
         dataset_states={
             FRONTEND_DATASET_ID: RuntimeDatasetState(
@@ -1075,7 +1075,7 @@ def _save_scene(scene, record, reply_camera):
 
     async def _get_runtime_state_async(timeout):
         return RuntimeAppState.from_components(
-            dark_mode=False,
+            ui=VisorUIState(dark_theme=False),
             unit="m",
             dataset_states={},
             camera=reply_camera,
@@ -2069,7 +2069,7 @@ def _toggle_save_scene(scene, reply_toggle):
 
     async def _get_runtime_state_async(timeout):
         return RuntimeAppState.from_components(
-            dark_mode=False,
+            ui=VisorUIState(dark_theme=False),
             unit="m",
             dataset_states={},
             cross_section_enabled=reply_toggle,
@@ -2235,7 +2235,7 @@ def test_get_state_discards_the_toggles_the_browser_returned(scene):
 def _toggle_runtime_state(**toggles):
     """A real RuntimeAppState carrying only the toggles named."""
     return RuntimeAppState.from_components(
-        dark_mode=False,
+        ui=VisorUIState(dark_theme=False),
         unit="m",
         dataset_states={},
         **toggles,
@@ -2452,7 +2452,7 @@ def _projection_save_scene(scene, record, reply_orthographic):
 
     async def _get_runtime_state_async(timeout):
         return RuntimeAppState.from_components(
-            dark_mode=False,
+            ui=VisorUIState(dark_theme=False),
             unit="m",
             dataset_states={},
             orthographic_enabled=reply_orthographic,
@@ -2698,7 +2698,7 @@ def _plane_save_scene(scene, record_plane, reply_plane):
 
     async def _get_runtime_state_async(timeout):
         return RuntimeAppState.from_components(
-            dark_mode=False,
+            ui=VisorUIState(dark_theme=False),
             unit="m",
             dataset_states={},
             cross_section=reply_plane,
@@ -2884,5 +2884,295 @@ def test_apply_state_serializes_the_loaded_plane_after_syncing_it(scene):
         "serialize",
         "serialize",
     ]
+
+
+# ===========================================================================
+# UI panel state -- the store, the read, the restore
+#
+# The four panel fields are the browser's chrome, recorded on the server so
+# that a refresh restores them.  They have no renderer half: nothing the
+# server renders depends on which panel is collapsed, so each coordinator
+# writes one store field and stops.  That is why there is no apply-half test
+# here to match the toggles' pair above -- there is no apply.
+#
+# Every expected value below is a hand-written literal.  ``True, True, True,
+# 1`` is used as the value the client reports, because the server's own
+# initial values are the literals ``False, False, False, 0``, so a body that
+# wrote a default rather than its argument fails.
+# ===========================================================================
+
+PANEL_COLLAPSED = True
+PANEL_TAB_INDEX = 1
+
+# What a browser that was asked would answer.  Deliberately the opposite of
+# what the store holds in the derivation test, so that "read the store" and
+# "read the reply" cannot both pass.
+REPLY_PANEL_COLLAPSED = False
+REPLY_PANEL_TAB_INDEX = 0
+
+# The theme pair.  The server holds one value and the browser reports the
+# other, so that "wrote dark_mode" and "passed the reply through" are
+# distinguishable in a single assertion.
+SERVER_DARK_MODE = True
+REPLY_DARK_THEME = False
+
+
+class _PanelStoreLockSpy(_LockSpy):
+    """Lock spy that reads the tab-index store field as the lock is released.
+
+    The panel coordinators make no renderer call, so there is no inner call
+    to probe the way ``_ToggleSpyRenderer`` probes the toggles.  What can be
+    observed instead is the store itself at the moment the critical section
+    ends: if the write happened inside ``with self._vtk_lock:`` the field
+    already carries the new value when the lock is released, and the depth
+    read here is the depth the write ran at.  With the ``with`` removed the
+    lock is never entered at all and both recordings stay ``None``.
+    """
+
+    def __init__(self, scene):
+        super().__init__()
+        self._scene = scene
+        self.value_at_release = None
+        self.depth_at_release = None
+
+    def __exit__(self, exc_type, exc, tb):
+        self.value_at_release = self._scene._panel_top_right_tab_index
+        self.depth_at_release = self.depth
+        return super().__exit__(exc_type, exc, tb)
+
+
+def _reply_ui(
+    panel_top_left_panel_collapsed,
+    panel_top_right_panel_collapsed,
+    panel_top_right_legend_collapsed,
+    panel_top_right_tab_index,
+    dark_theme=REPLY_DARK_THEME,
+):
+    """The ``ui`` block a browser round trip answers with."""
+    return VisorUIState(
+        dark_theme=dark_theme,
+        panel_top_left_panel_collapsed=panel_top_left_panel_collapsed,
+        panel_top_right_panel_collapsed=panel_top_right_panel_collapsed,
+        panel_top_right_legend_collapsed=panel_top_right_legend_collapsed,
+        panel_top_right_tab_index=panel_top_right_tab_index,
+    )
+
+
+def _ui_save_scene(scene, reply_ui):
+    """Wire *scene* for a save whose browser reply carries *reply_ui*.
+
+    The same shape as ``_toggle_save_scene`` above; the registry is emptied so
+    the mapper's per-dataset loop contributes nothing, and what is under test
+    is the ``ui`` block of the persisted state.
+    """
+    scene._dataset_registry = VisorDatasetRegistry()
+
+    async def _get_runtime_state_async(timeout):
+        return RuntimeAppState.from_components(
+            ui=reply_ui,
+            unit="m",
+            dataset_states={},
+        )
+
+    scene._get_runtime_state_async = _get_runtime_state_async
+
+
+def _panel_runtime_state(ui):
+    """A real RuntimeAppState carrying only the UI record named."""
+    return RuntimeAppState.from_components(
+        ui=ui,
+        unit="m",
+        dataset_states={},
+    )
+
+
+# ---------------------------------------------------------------------------
+# The coordinator surface
+# ---------------------------------------------------------------------------
+
+def test_panel_coordinators_write_the_store(scene):
+    """Each of the four coordinators records what it was told.
+
+    One test and not four: the four bodies are the same statement against
+    four fields, and a swap between two of them fails this test exactly as
+    visibly as four separate ones would.  The four literals are distinct from
+    the four initial values, so a body that wrote its default rather than its
+    argument fails here too.
+    """
+    scene.set_panel_top_left_panel_collapsed(PANEL_COLLAPSED)
+    scene.set_panel_top_right_panel_collapsed(PANEL_COLLAPSED)
+    scene.set_panel_top_right_legend_collapsed(PANEL_COLLAPSED)
+    scene.set_panel_top_right_tab_index(PANEL_TAB_INDEX)
+
+    assert scene._panel_top_left_panel_collapsed is True
+    assert scene._panel_top_right_panel_collapsed is True
+    assert scene._panel_top_right_legend_collapsed is True
+    assert scene._panel_top_right_tab_index == 1
+
+
+def test_set_panel_top_right_tab_index_holds_the_lock_at_the_store_write(scene):
+    """The lock is *held* at the moment the store is written.
+
+    One of the four and not all four: the precedent pins the lock once per
+    surface rather than once per method.  Remove ``with self._vtk_lock:`` from
+    the coordinator and the spy records nothing at all -- the value and the
+    depth both stay ``None`` -- because the lock is never entered.
+
+    The trigger handler runs on trame's daemon thread while this store is read
+    on the caller's thread by ``get_state``; a write outside the lock would
+    interleave with the assembly of the record being saved.  That failure is
+    intermittent and never reproduces under a gate.
+    """
+    spy = _PanelStoreLockSpy(scene)
+    scene._vtk_lock = spy
+
+    scene.set_panel_top_right_tab_index(PANEL_TAB_INDEX)
+
+    assert spy.depth_at_release >= 1
+    assert spy.value_at_release == 1
+    assert spy.depth == 0
+    assert spy.enter_count == spy.exit_count
+
+
+# ---------------------------------------------------------------------------
+# get_state -- the UI record comes from the server, not from the reply
+# ---------------------------------------------------------------------------
+
+def test_get_state_takes_the_ui_panel_state_from_the_store(scene):
+    """The saved panel state is the server's, with the browser saying otherwise.
+
+    This is the assertion that pins the change.  The store holds the
+    hand-written literals ``True, True, True, 1`` while the reply carries
+    ``False, False, False, 0``; delete the ``runtime_state.ui`` assignment in
+    get_state and every assertion below reports the reply's value instead.
+
+    Asserted on what get_state RETURNS -- the object that reaches the writer --
+    not on the runtime state it was built from.
+    """
+    scene.set_panel_top_left_panel_collapsed(PANEL_COLLAPSED)
+    scene.set_panel_top_right_panel_collapsed(PANEL_COLLAPSED)
+    scene.set_panel_top_right_legend_collapsed(PANEL_COLLAPSED)
+    scene.set_panel_top_right_tab_index(PANEL_TAB_INDEX)
+    _ui_save_scene(
+        scene,
+        _reply_ui(
+            REPLY_PANEL_COLLAPSED,
+            REPLY_PANEL_COLLAPSED,
+            REPLY_PANEL_COLLAPSED,
+            REPLY_PANEL_TAB_INDEX,
+        ),
+    )
+
+    persisted = asyncio.run(scene.get_state(timeout=1.0))
+
+    assert persisted.ui.panel_top_left_panel_collapsed is True
+    assert persisted.ui.panel_top_right_panel_collapsed is True
+    assert persisted.ui.panel_top_right_legend_collapsed is True
+    assert persisted.ui.panel_top_right_tab_index == 1
+
+
+def test_get_state_discards_the_ui_panel_state_the_browser_returned(scene):
+    """The browser's panel state does not survive into the persisted state.
+
+    The mirror of the test above and its own test for the same reason the
+    camera and toggle pairs are split: "wrote the store" and "did not write
+    the reply" are the same only while the round trip still carries a ``ui``
+    block at all, and the round trip is not being removed.  Here the store is
+    left at its initial values and the reply carries ``True, True, True, 1``.
+
+    The four expected values are the hand-written literals ``False``,
+    ``False``, ``False`` and ``0``, not a read of the store: a store
+    initialised to ``None`` -- the silent failure the delivery decision
+    turns on -- fails this test on value.
+    """
+    _ui_save_scene(
+        scene,
+        _reply_ui(
+            PANEL_COLLAPSED,
+            PANEL_COLLAPSED,
+            PANEL_COLLAPSED,
+            PANEL_TAB_INDEX,
+        ),
+    )
+
+    persisted = asyncio.run(scene.get_state(timeout=1.0))
+
+    assert persisted.ui.panel_top_left_panel_collapsed is False
+    assert persisted.ui.panel_top_right_panel_collapsed is False
+    assert persisted.ui.panel_top_right_legend_collapsed is False
+    assert persisted.ui.panel_top_right_tab_index == 0
+
+
+def test_get_state_takes_dark_theme_from_the_server_not_the_browser(scene):
+    """The saved theme is ``dark_mode``, with the browser saying otherwise.
+
+    Its own test rather than a fifth assertion above, because it is a
+    different source: the other four come from the panel store, this one from
+    the public ``dark_mode`` attribute, and no trigger writes it.  The reply
+    carries the opposite literal, which is what a Dash host prop override
+    produces in the browser today; before this change that value reached the
+    file and, on the next load, the server's own ``dark_mode``.
+    """
+    scene.dark_mode = SERVER_DARK_MODE
+    _ui_save_scene(
+        scene,
+        _reply_ui(
+            REPLY_PANEL_COLLAPSED,
+            REPLY_PANEL_COLLAPSED,
+            REPLY_PANEL_COLLAPSED,
+            REPLY_PANEL_TAB_INDEX,
+            dark_theme=REPLY_DARK_THEME,
+        ),
+    )
+
+    persisted = asyncio.run(scene.get_state(timeout=1.0))
+
+    assert persisted.ui.dark_theme is True
+
+
+# ---------------------------------------------------------------------------
+# apply_state -- the load path writes the store
+# ---------------------------------------------------------------------------
+
+def test_apply_state_restores_the_ui_panel_state_to_the_store(scene):
+    """A state carrying panel fields becomes the server's store."""
+    _apply(
+        scene,
+        _panel_runtime_state(
+            VisorUIState(
+                dark_theme=False,
+                panel_top_left_panel_collapsed=PANEL_COLLAPSED,
+                panel_top_right_panel_collapsed=PANEL_COLLAPSED,
+                panel_top_right_legend_collapsed=PANEL_COLLAPSED,
+                panel_top_right_tab_index=PANEL_TAB_INDEX,
+            )
+        ),
+    )
+
+    assert scene._panel_top_left_panel_collapsed is True
+    assert scene._panel_top_right_panel_collapsed is True
+    assert scene._panel_top_right_legend_collapsed is True
+    assert scene._panel_top_right_tab_index == 1
+
+
+def test_apply_state_leaves_an_absent_ui_panel_field_alone(scene):
+    """Absent says nothing: a state with no panel fields is not a state of defaults.
+
+    The guard belongs to this path and not to get_state, and this is the test
+    that says so.  The store is seeded through the coordinators first, so a
+    body that wrote the model's own ``None`` default through would be caught;
+    a file written before this record existed carries exactly this shape.
+    """
+    scene.set_panel_top_left_panel_collapsed(PANEL_COLLAPSED)
+    scene.set_panel_top_right_panel_collapsed(PANEL_COLLAPSED)
+    scene.set_panel_top_right_legend_collapsed(PANEL_COLLAPSED)
+    scene.set_panel_top_right_tab_index(PANEL_TAB_INDEX)
+
+    _apply(scene, _panel_runtime_state(VisorUIState(dark_theme=False)))
+
+    assert scene._panel_top_left_panel_collapsed is True
+    assert scene._panel_top_right_panel_collapsed is True
+    assert scene._panel_top_right_legend_collapsed is True
+    assert scene._panel_top_right_tab_index == 1
 
 

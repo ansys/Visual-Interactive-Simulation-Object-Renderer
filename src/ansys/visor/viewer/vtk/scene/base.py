@@ -14,6 +14,7 @@ from ansys.visor.viewer.core.visor_enums import VisorVtkVariableType
 from ansys.visor.viewer.core.visor_logging import VisorDefaultLogger
 from ansys.visor.viewer.core.visor_types import VisorDatasetType
 from ansys.visor.viewer.models.common.visor_camera_state import VisorCameraState
+from ansys.visor.viewer.models.common.visor_ui_state import VisorUIState
 from ansys.visor.viewer.models.persist.persisted_viewer_state import PersistedViewerStateV1
 from ansys.visor.viewer.models.runtime.visor_scene_details import VisorSceneDetails
 from ansys.visor.viewer.renderer.base import IRenderer
@@ -67,6 +68,10 @@ class VisorSceneBase(ABC):
     _cross_section_enabled: bool
     _edges_enabled: bool
     _bounding_box_enabled: bool
+    _panel_top_left_panel_collapsed: bool
+    _panel_top_right_panel_collapsed: bool
+    _panel_top_right_legend_collapsed: bool
+    _panel_top_right_tab_index: int
 
     def __init__(
             self,
@@ -87,6 +92,22 @@ class VisorSceneBase(ABC):
         self._cross_section_enabled: bool = False
         self._edges_enabled: bool = False
         self._bounding_box_enabled: bool = False
+
+        # Server-tracked UI panel layout.  Absolute values, never toggles, and
+        # written only by the four panel triggers.  Initialised to the client
+        # panels' own mount defaults -- Panel_TopLeft's ``isPanelCollapsed``
+        # and both of Panel_TopRight's ``isCollapsed`` closures start false and
+        # are mount-clicked to false, and its ``tabIndex`` starts at 0 -- for
+        # the reason the toggle store gives above, and for a second one: these
+        # are delivered through a dump that excludes ``None``, so a field left
+        # unset here is simply omitted from the payload and the client shows
+        # its own defaults instead of the server's record.  There is
+        # deliberately no ``_dark_theme`` field: the theme is ``dark_mode``,
+        # and a second copy of it is the divergence set_projection refuses.
+        self._panel_top_left_panel_collapsed: bool = False
+        self._panel_top_right_panel_collapsed: bool = False
+        self._panel_top_right_legend_collapsed: bool = False
+        self._panel_top_right_tab_index: int = 0
 
         self._server = server
         self._scene_graph = None
@@ -178,6 +199,17 @@ class VisorSceneBase(ABC):
         this object's own store, and the camera from the renderer's record; the
         reply is consulted for none of the three.
 
+        The UI record is the fourth.  ``runtime_state.ui`` is replaced
+        wholesale with this object's own record -- the theme from
+        ``dark_mode`` and the four panel-layout fields from the store the
+        panel triggers write -- so the browser's ``ui`` block is discarded
+        entire.  The assignment is unconditional, as the camera and toggle
+        assignments are, and it is what makes the saved theme the server's
+        rather than the embedding host's: under Dash the host prop overrides
+        the delivered theme in the browser, so a reply that was trusted here
+        would write the host's value into the file and, on the next load, into
+        ``dark_mode``.
+
         The camera comes from the renderer's record, which is authoritative, rather than
         from the reply or from the pipeline ``vtkCamera``: the pipeline is the
         record's projection, and reading it back would re-import whatever drift
@@ -214,6 +246,7 @@ class VisorSceneBase(ABC):
             runtime_state.scene.cross_section_enabled = self._cross_section_enabled
             runtime_state.scene.edges_enabled = self._edges_enabled
             runtime_state.scene.bounding_box_enabled = self._bounding_box_enabled
+            runtime_state.ui = self._build_ui_state()
         runtime_state.scene.dataset_states = registry_dataset_states
 
         persisted = self._state_mapper.runtime_to_persisted(runtime_state)
@@ -242,8 +275,9 @@ class VisorSceneBase(ABC):
             # One call per state class: updates the server's stored state and its VTK objects.
             self._restore_part_states(runtime_app_state)
             self._restore_widget_state(runtime_app_state)
+            self._restore_ui_state(runtime_app_state)
             self._restore_camera_state(runtime_app_state)
-            # TODO: restore UI state and variable states when they are synced back to the server.
+            # TODO: restore variable states when they are synced back to the server.
 
             # Finalize here, not on the load path.  On a cold load -- viewer started with no dataset,
             # then a state loaded -- load_state adds the datasets and only then calls apply_state, so a
@@ -282,11 +316,11 @@ class VisorSceneBase(ABC):
         stored, so it can't disagree with the camera. ``None`` means
         "nothing was ever written."
 
-        No ``_vtk_lock``: the reads here (three booleans, one camera field)
-        aren't consumed as a mutually consistent snapshot, and locking a
-        request-path read against the trigger thread belongs with the
-        round-trip/thread-affinity work, not here. Accepted exposure: one
-        stale field in a delivered payload.
+        No ``_vtk_lock``: the reads here (three booleans, one camera field,
+        and the five the UI record is assembled from) aren't consumed as a
+        mutually consistent snapshot, and locking a request-path read against
+        the trigger thread belongs with the round-trip/thread-affinity work,
+        not here. Accepted exposure: one stale field in a delivered payload.
         """
         if self._scene_graph is None:
             self._initialize_scene_graph()
@@ -294,7 +328,7 @@ class VisorSceneBase(ABC):
         scene_graph_state = self._build_scene_graph_state()
         camera_record = self._renderer.get_camera_state()
         return VisorSceneDetails.from_components(
-            dark_mode=self.dark_mode,
+            ui=self._build_ui_state(),
             unit=self._dataset_registry.unit,
             dataset_states=self._dataset_registry.runtime_state_dict,
             scene_graph_state=scene_graph_state,
@@ -743,6 +777,48 @@ class VisorSceneBase(ABC):
             self._renderer.set_projection(parallel)
             self._renderer.serialize_camera_state()
 
+    # =========================================================================
+    # UI panel layout — coordinator surface
+    #
+    # The same shape as the widget toggles above, minus the renderer half:
+    # each writes one store field under ``_vtk_lock`` and stops.  There is no
+    # ``IRenderer`` seam to fill, because nothing the server renders depends
+    # on panel layout -- it is browser-side chrome whose only server-side job
+    # is to survive a refresh.
+    #
+    # No notify, for the reason the surfaces above give: no ``render()``, no
+    # ``flush_wasm_state()``, no ``set_state``.
+    #
+    # Every value that arrives here is absolute, never relative, and an echo
+    # is idempotent: after a delivered apply the client reports back the value
+    # the server just sent it.
+    # =========================================================================
+
+    def set_panel_top_left_panel_collapsed(self, collapsed: bool) -> None:
+        """Record whether the top-left panel is collapsed."""
+        with self._vtk_lock:
+            self._panel_top_left_panel_collapsed = collapsed
+
+    def set_panel_top_right_panel_collapsed(self, collapsed: bool) -> None:
+        """Record whether the top-right panel is collapsed."""
+        with self._vtk_lock:
+            self._panel_top_right_panel_collapsed = collapsed
+
+    def set_panel_top_right_legend_collapsed(self, collapsed: bool) -> None:
+        """Record whether the top-right legend overlay is collapsed."""
+        with self._vtk_lock:
+            self._panel_top_right_legend_collapsed = collapsed
+
+    def set_panel_top_right_tab_index(self, tab_index: int) -> None:
+        """Record which top-right tab is active.
+
+        The value is stored opaquely and is never interpreted here; it is
+        only ever handed back to the client's ``selectTab``, which is where
+        the range guard lives.
+        """
+        with self._vtk_lock:
+            self._panel_top_right_tab_index = tab_index
+
     def _restore_part_states(self, runtime_app_state: "RuntimeAppState") -> None:
         """
         Restore per-part state from a runtime app state, on the load path.
@@ -836,6 +912,31 @@ class VisorSceneBase(ABC):
             if cs.origin is not None and cs.normal is not None:
                 self._renderer.sync_cross_section_plane(cs.origin, cs.normal)
                 self._renderer.serialize_cross_section_state()
+
+    def _restore_ui_state(self, runtime_app_state: "RuntimeAppState") -> None:
+        """
+        Restore the UI panel layout from a runtime app state, on the load path.
+
+        Absent says nothing: a state that does not carry a panel field leaves
+        the server's value alone.  Four independent guards and not one, because
+        a file can carry any subset -- anything written before this record
+        existed carries none of them.
+
+        ``dark_theme`` is deliberately not read here.  It is
+        :meth:`apply_state`'s own line, and two readers of one property is the
+        divergence this epic has been removing.
+
+        Callers must hold ``_vtk_lock``.
+        """
+        ui = runtime_app_state.ui
+        if ui.panel_top_left_panel_collapsed is not None:
+            self._panel_top_left_panel_collapsed = ui.panel_top_left_panel_collapsed
+        if ui.panel_top_right_panel_collapsed is not None:
+            self._panel_top_right_panel_collapsed = ui.panel_top_right_panel_collapsed
+        if ui.panel_top_right_legend_collapsed is not None:
+            self._panel_top_right_legend_collapsed = ui.panel_top_right_legend_collapsed
+        if ui.panel_top_right_tab_index is not None:
+            self._panel_top_right_tab_index = ui.panel_top_right_tab_index
 
     def _restore_one_part_state(
             self,
@@ -1020,6 +1121,28 @@ class VisorSceneBase(ABC):
     def _update_actor_count(self):
         """Update the bounding box widget with the current part-node count."""
         self._renderer.update_actor_count(self._scene_graph.descendant_part_count())
+
+    def _build_ui_state(self) -> VisorUIState:
+        """Assemble the server's UI record: the theme and the four panel fields.
+
+        Every field is concrete by construction -- ``dark_mode`` is a ``bool``
+        and the four panel attributes are initialised to the client's mount
+        defaults -- so the record never carries a ``None``.  That matters on
+        the way out: the scene-details dump excludes ``None``, so an unset
+        field would be omitted from the payload and the client would fall back
+        to its own defaults rather than the server's record.
+
+        No lock of its own.  A caller that needs a mutually consistent
+        snapshot holds ``_vtk_lock`` around the call; :meth:`get_state` does,
+        :meth:`get_scene_details` deliberately does not.
+        """
+        return VisorUIState(
+            dark_theme=self.dark_mode,
+            panel_top_left_panel_collapsed=self._panel_top_left_panel_collapsed,
+            panel_top_right_panel_collapsed=self._panel_top_right_panel_collapsed,
+            panel_top_right_legend_collapsed=self._panel_top_right_legend_collapsed,
+            panel_top_right_tab_index=self._panel_top_right_tab_index,
+        )
 
     def _build_scene_graph_state(self):
         """Assemble the pure scene-graph ``SceneGraphNodeInfo`` tree.

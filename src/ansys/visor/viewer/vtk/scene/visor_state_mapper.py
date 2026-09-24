@@ -79,7 +79,9 @@ class VisorStateMapper:
         :meth:`VisorSceneBase._restore_part_states`.
 
         """
-        # UI settings
+        # UI settings.  The record crosses whole: the four panel fields are as
+        # much the server's as the theme is, and splitting one field out here
+        # is what dropped them on the load path before.
         ui_state = state.ui
 
         # scene state
@@ -108,7 +110,7 @@ class VisorStateMapper:
             runtime_dataset_states[dataset.id] = runtime_state
 
         return RuntimeAppState.from_components(
-            dark_mode=ui_state.dark_theme,
+            ui=ui_state,
             unit=unit,
             camera=camera,
             cross_section=scene_state.cross_section,
