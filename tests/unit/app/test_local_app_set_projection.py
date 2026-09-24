@@ -167,14 +167,14 @@ def test_set_projection_non_mapping_payload_is_a_logged_no_op(app, api):
 def test_set_projection_is_a_logged_no_op_when_no_coordinator_injected(app_without_api):
     """With nothing injected the trigger logs and returns without raising.
 
-    Two debug lines, both from ``_part_state_api`` and neither from this
+    Two debug lines, both from ``_mutation_api`` and neither from this
     handler: the arrival line every trigger emits, and the "no scene
     part-state API injected" line that says why nothing was delegated.  The
     handler adds no logging of its own, so counting arrivals in the server log
     stays a sound measurement, and the trigger name appears on both lines so
     the count is attributable.
 
-    The literal ``2`` is hand-written from what ``_part_state_api`` does, not
+    The literal ``2`` is hand-written from what ``_mutation_api`` does, not
     copied from the neighbouring trigger modules, which assert ``1`` and are
     red at this increment's base commit for exactly that reason.
     """

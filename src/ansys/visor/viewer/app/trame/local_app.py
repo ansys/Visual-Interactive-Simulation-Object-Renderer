@@ -352,7 +352,7 @@ class LocalApp:
     # body.
     # ------------------------------------------------------------------
 
-    def _part_state_api(self, trigger_name: str, payload: BaseModel) -> SceneMutationApi | None:
+    def _mutation_api(self, trigger_name: str, payload: BaseModel) -> SceneMutationApi | None:
         """Return the injected coordinator, or ``None`` after logging."""
         logger.debug("[trigger] %s arrived: %s.", trigger_name, payload)
         if self._scene_mutation_api is None:
@@ -364,7 +364,7 @@ class LocalApp:
     @parse_payload(SetPartVisibilityPayload)
     def set_part_visibility(self, payload) -> None:
         """Frontend -> Backend: set whether one part is visible."""
-        api = self._part_state_api("set_part_visibility", payload)
+        api = self._mutation_api("set_part_visibility", payload)
         if api is None:
             return
         api.set_part_visibility(payload.node_id, payload.visible)
@@ -377,7 +377,7 @@ class LocalApp:
         An opacity outside ``[0.0, 1.0]`` fails validation and is a logged
         no-op; it does not reach VTK to be clamped.
         """
-        api = self._part_state_api("set_part_opacity", payload)
+        api = self._mutation_api("set_part_opacity", payload)
         if api is None:
             return
         api.set_part_opacity(payload.node_id, payload.opacity)
@@ -392,7 +392,7 @@ class LocalApp:
         or a colour that is not exactly three components, is a logged
         no-op -- nothing is delegated, so nothing is written to the store.
         """
-        api = self._part_state_api("set_part_diffuse_color", payload)
+        api = self._mutation_api("set_part_diffuse_color", payload)
         if api is None:
             return
         api.set_part_diffuse_color(payload.node_id, payload.diffuse_rgb)
@@ -405,7 +405,7 @@ class LocalApp:
         No colour crosses this trigger: the server reads the part's stored
         diffuse colour from its own record.
         """
-        api = self._part_state_api("set_part_selected", payload)
+        api = self._mutation_api("set_part_selected", payload)
         if api is None:
             return
         api.set_part_selected(payload.node_id, payload.selected)
@@ -423,7 +423,7 @@ class LocalApp:
         name.  ``variableId`` is forwarded verbatim and is never parsed by
         the server.
         """
-        api = self._part_state_api("set_part_color_variable", payload)
+        api = self._mutation_api("set_part_color_variable", payload)
         if api is None:
             return
         api.set_part_color_variable(
@@ -440,7 +440,7 @@ class LocalApp:
     @parse_payload(ClearPartColorVariablePayload)
     def clear_part_color_variable(self, payload) -> None:
         """Frontend -> Backend: stop colouring one part by a scalar variable."""
-        api = self._part_state_api("clear_part_color_variable", payload)
+        api = self._mutation_api("clear_part_color_variable", payload)
         if api is None:
             return
         api.clear_part_color_variable(payload.node_id)
@@ -477,7 +477,7 @@ class LocalApp:
         if payload.origin != "gesture":
             logger.debug("sync_camera: origin=%s; dropping.", payload.origin)
             return
-        api = self._part_state_api("sync_camera", payload)
+        api = self._mutation_api("sync_camera", payload)
         if api is None:
             return
         logger.debug(
@@ -504,7 +504,7 @@ class LocalApp:
     @parse_payload(SetCrossSectionVisibilityPayload)
     def set_cross_section_visibility(self, payload) -> None:
         """Frontend -> Backend: show or hide the cross-section plane."""
-        api = self._part_state_api("set_cross_section_visibility", payload)
+        api = self._mutation_api("set_cross_section_visibility", payload)
         if api is None:
             return
         api.set_cross_section_visibility(payload.visible)
@@ -513,7 +513,7 @@ class LocalApp:
     @parse_payload(SetEdgesVisiblePayload)
     def set_edges_visible(self, payload) -> None:
         """Frontend -> Backend: show or hide edges on every part."""
-        api = self._part_state_api("set_edges_visible", payload)
+        api = self._mutation_api("set_edges_visible", payload)
         if api is None:
             return
         api.set_edges_visible(payload.visible)
@@ -522,7 +522,7 @@ class LocalApp:
     @parse_payload(SetBoundingBoxVisibilityPayload)
     def set_bounding_box_visibility(self, payload) -> None:
         """Frontend -> Backend: show or hide the bounding-box outline."""
-        api = self._part_state_api("set_bounding_box_visibility", payload)
+        api = self._mutation_api("set_bounding_box_visibility", payload)
         if api is None:
             return
         api.set_bounding_box_visibility(payload.visible)
@@ -536,7 +536,7 @@ class LocalApp:
         own: the coordinator writes the record and re-serialises the
         camera in one critical section.
         """
-        api = self._part_state_api("set_projection", payload)
+        api = self._mutation_api("set_projection", payload)
         if api is None:
             return
         api.set_projection(payload.parallel)
