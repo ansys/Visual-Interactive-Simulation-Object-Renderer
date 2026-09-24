@@ -218,6 +218,40 @@ export class VisorFrontend {
             uiScaffoldUtilSet = true;
             uiScaffoldUtilResolve(uiScaffoldUtil);
         };
+        // UI panel state -- the four send methods below report one panel field
+        // each to its server trigger.  They close over the `triggerSender`
+        // constructor parameter, which is required and supplied at every
+        // construction site, so there is no no-transport state to guard.
+        //
+        // A rejection is logged under one fixed, greppable prefix and
+        // swallowed, never rethrown: these run inside synchronous UI handlers
+        // that behaved a certain way before the call existed, and the client
+        // applies its own change independently of the report.
+        const sendUiPanelTriggerAsync = async (
+            triggerName: string,
+            payload: Record<string, unknown>
+        ): Promise<void> => {
+            try {
+                await triggerSender(triggerName, payload);
+            } catch (err) {
+                console.error(`[VISOR] ui panel trigger send failed: trigger='${triggerName}'`, err);
+            }
+        };
+        // Each of the four forwards the argument it was given and reads
+        // nothing back.  This is deliberately the opposite of `WasmRenderer`'s
+        // widget sends, which read their widget back because the toolbar calls
+        // them with no argument: here the caller is the panel handler that has
+        // just written the closure, so the argument is the settled value by
+        // construction, and the util it would be read back from may not exist
+        // yet.
+        this.sendPanelTopLeftPanelCollapsedAsync = (collapsed) =>
+            sendUiPanelTriggerAsync('set_panel_top_left_panel_collapsed', { collapsed });
+        this.sendPanelTopRightPanelCollapsedAsync = (collapsed) =>
+            sendUiPanelTriggerAsync('set_panel_top_right_panel_collapsed', { collapsed });
+        this.sendPanelTopRightLegendCollapsedAsync = (collapsed) =>
+            sendUiPanelTriggerAsync('set_panel_top_right_legend_collapsed', { collapsed });
+        this.sendPanelTopRightTabIndexAsync = (tabIndex) =>
+            sendUiPanelTriggerAsync('set_panel_top_right_tab_index', { tabIndex });
         this.toggleFullScreenAsync = () => renderer.toggleFullScreenAsync();
         this.setEdgeVisibilityAsync = (visible) => renderer.setEdgeVisibilityGlobalAsync(visible);
         this.setCrossSectionVisibilityAsync = (visible) =>
@@ -555,6 +589,14 @@ export class VisorFrontend {
     setPanelTopLeftUtil: (panelTopRightUtil: Panel_TopLeft_Util) => void;
     setPanelTopRightUtil: (panelTopRightUtil: Panel_TopRight_Util) => void;
     setUiScaffoldUtil: (uiScaffoldUtil: UiScaffoldUtil) => void;
+    /**
+     * Report one panel-layout field to the server.  Each carries the absolute
+     * value it was given for exactly one field; no send reads any other field.
+     */
+    sendPanelTopLeftPanelCollapsedAsync: (collapsed: boolean) => Promise<void>;
+    sendPanelTopRightPanelCollapsedAsync: (collapsed: boolean) => Promise<void>;
+    sendPanelTopRightLegendCollapsedAsync: (collapsed: boolean) => Promise<void>;
+    sendPanelTopRightTabIndexAsync: (tabIndex: number) => Promise<void>;
     treeViewUtilPromise: Promise<TreeViewUtil<VisorSceneNodeExtended>>;
     panelTopLeftUtilPromise: Promise<Panel_TopLeft_Util>;
     panelTopRightUtilPromise: Promise<Panel_TopRight_Util>;
