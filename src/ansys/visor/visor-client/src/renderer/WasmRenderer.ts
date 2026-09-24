@@ -99,28 +99,13 @@ export class WasmRenderer implements IRenderer {
         /**
          * Attribute an orientation-widget camera move to the user.
          *
-         * Clicking a face of the orientation cube moves the camera entirely
-         * inside wasm: no button is held on `canvasDiv`, no wheel turns and no
-         * z/r key is pressed, so `CameraGestureTracker` sees only camera
-         * events with no input and the whole move settles as `programmatic`.
-         * The server then drops it, and the move is lost on the next load.
-         * Story 3.2's camera input inventory named the drag, the z and r keys
-         * and the wheel, and missed this one.
-         *
-         * `EndInteractionEvent`, not `InteractionEvent`, for the reason the
-         * plane report gives above: the per-motion event fires many times
-         * across one interaction.
-         *
-         * The callback **marks and returns**. It sends nothing, reads no
-         * camera and is not `async`: the report is still the settle's, through
-         * the unchanged `sync_camera` path, with the unchanged payload. What
-         * this changes is the one word that path already carries.
-         *
-         * The widget animates the camera over `AnimatorTotalFrames` frames
-         * (20 by default, which the server-side `VisorOrientationWidget` does
-         * not alter). Neither that duration nor whether the end event precedes
-         * or follows the animation can be determined from this tree, and
-         * neither has to be: see `CameraGestureTracker.noteWidgetGesture`.
+         * Clicking a face of the cube moves the camera entirely inside wasm,
+         * with no DOM input `CameraGestureTracker` can see, so without this
+         * mark the move settles as `programmatic` and the server drops it.
+         * `EndInteractionEvent` (not `InteractionEvent`) fires once per
+         * interaction rather than per animation frame. The callback only
+         * marks the gesture; the report itself is still the settle's,
+         * unchanged, via `sync_camera`.
          */
         const orientationWidget = vtkScene.getVtkObject(annotation.widgets.orientationWidgetId);
         orientationWidget.observe('EndInteractionEvent', () => {

@@ -196,28 +196,14 @@ export default class CameraGestureTracker {
     };
 
     /**
-     * The orientation widget's end-of-interaction mark.
+     * The orientation widget's end-of-interaction mark, called via
+     * `VtkScene.noteWidgetGesture` from the `EndInteractionEvent` observer in
+     * `WasmRenderer`. A face click involves no button, wheel or z/r key, so
+     * without this mark the move settles as `programmatic`.
      *
-     * Called from the `EndInteractionEvent` observer registered in
-     * `WasmRenderer`'s constructor, by way of `VtkScene.noteWidgetGesture`.
-     * A face click on the orientation cube moves the camera, but it involves
-     * no button held on `canvasDiv`, no wheel and no z/r key, so without this
-     * the whole move settles as `programmatic` and the server drops it.
-     *
-     * Deliberately the *same* window and stickiness as a wheel notch or a z/r
-     * press -- it delegates to `#markImpulse` rather than opening a window of
-     * its own -- so the settle constant keeps one meaning. That matters more
-     * here than it does for the wheel: the widget animates the camera over
-     * `AnimatorTotalFrames` frames (20, the VTK default, which the server-side
-     * `VisorOrientationWidget` leaves alone), and how long that runs, and
-     * whether the end event is invoked before or after it, cannot be
-     * determined from this tree. Neither has to be known, because `#sawGesture`
-     * is sticky: every frame restarts the settle, so the mark survives to the
-     * one report however many frames follow it, and a mark arriving *after*
-     * the last frame is caught by `#markImpulse`'s pending-report branch.
-     *
-     * Carries no camera data and sends nothing. The report itself is still the
-     * settle's, unchanged.
+     * Delegates to `#markImpulse` to reuse the same window and retroactive
+     * stickiness as a wheel notch or z/r press, so a mark landing before or
+     * after the camera events it belongs to is still caught.
      *
      * @return {void}
      */

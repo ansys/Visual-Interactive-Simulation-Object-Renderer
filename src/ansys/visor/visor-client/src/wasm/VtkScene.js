@@ -161,15 +161,9 @@ export default class VtkScene {
     };
     /**
      * Mark the settle window now open as a user gesture, on behalf of a wasm
-     * widget whose interaction is not a DOM input this scene can see.
-     *
-     * The orientation widget is the one caller: `WasmRenderer` registers an
-     * `EndInteractionEvent` observer on it and calls this from there. The
-     * tracker is `#private` and this is its only way out; a field, not a
-     * method assigned later, because `getInstanceAsync` freezes the instance.
-     *
-     * The `?.` matches the `ModifiedEvent` call site above: a scene without a
-     * tracker drops the mark rather than throwing.
+     * widget (the orientation widget) whose interaction is not a DOM input
+     * this scene can see. `WasmRenderer` calls this from its
+     * `EndInteractionEvent` observer, since `#cameraGestureTracker` is private.
      *
      * @return {void}
      */
