@@ -25,6 +25,11 @@
  *   the camera event can arrive before the tracker has noticed the input.
  *   To cover that, a wheel event or a z/r keydown arriving while a report is
  *   pending marks that report `gesture` as well.
+ *
+ * - The orientation widget is not a DOM input at all: its face click reaches
+ *   the camera inside wasm. It is marked explicitly, through
+ *   `noteWidgetGesture`, from the observer `WasmRenderer` registers on the
+ *   widget's `EndInteractionEvent`.
  */
 
 /**
@@ -188,6 +193,36 @@ export default class CameraGestureTracker {
             clearTimeout(this.#settleTimer);
         }
         this.#settleTimer = setTimeout(this.#reportSettled, CAMERA_SETTLE_MS);
+    };
+
+    /**
+     * The orientation widget's end-of-interaction mark.
+     *
+     * Called from the `EndInteractionEvent` observer registered in
+     * `WasmRenderer`'s constructor, by way of `VtkScene.noteWidgetGesture`.
+     * A face click on the orientation cube moves the camera, but it involves
+     * no button held on `canvasDiv`, no wheel and no z/r key, so without this
+     * the whole move settles as `programmatic` and the server drops it.
+     *
+     * Deliberately the *same* window and stickiness as a wheel notch or a z/r
+     * press -- it delegates to `#markImpulse` rather than opening a window of
+     * its own -- so the settle constant keeps one meaning. That matters more
+     * here than it does for the wheel: the widget animates the camera over
+     * `AnimatorTotalFrames` frames (20, the VTK default, which the server-side
+     * `VisorOrientationWidget` leaves alone), and how long that runs, and
+     * whether the end event is invoked before or after it, cannot be
+     * determined from this tree. Neither has to be known, because `#sawGesture`
+     * is sticky: every frame restarts the settle, so the mark survives to the
+     * one report however many frames follow it, and a mark arriving *after*
+     * the last frame is caught by `#markImpulse`'s pending-report branch.
+     *
+     * Carries no camera data and sends nothing. The report itself is still the
+     * settle's, unchanged.
+     *
+     * @return {void}
+     */
+    noteWidgetGesture = () => {
+        this.#markImpulse();
     };
 
     /**

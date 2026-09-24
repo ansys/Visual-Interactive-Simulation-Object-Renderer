@@ -103,7 +103,14 @@ function makeFakeWasmObjects() {
         SetOrigin: jest.fn(async () => undefined),
         SetNormal: jest.fn(async () => undefined),
     };
-    return { actor, property, widget };
+    // The orientation widget is its own double, not the shared `widget`
+    // above. Both are observed on `EndInteractionEvent`, and one double for
+    // both cannot tell those two registrations apart: the plane's own test
+    // asserts exactly one such registration, and would see two.
+    const orientationWidget = {
+        observe: jest.fn(),
+    };
+    return { actor, property, widget, orientationWidget };
 }
 
 /**
@@ -137,6 +144,10 @@ async function makeRenderer(
         canvasDiv: document.createElement('div'),
         render: jest.fn(),
         clearObserversAndEventListeners: jest.fn(),
+        // The tracker itself is `#private` to VtkScene, so what the renderer
+        // can reach is this one passthrough, and this is what the orientation
+        // registration is pinned against.
+        noteWidgetGesture: jest.fn(),
         camera,
         getVtkObject: (wasmId: number) => {
             switch (wasmId) {
@@ -144,6 +155,8 @@ async function makeRenderer(
                     return objects.actor;
                 case PROPERTY_ID:
                     return objects.property;
+                case ORIENTATION_WIDGET_ID:
+                    return objects.orientationWidget;
                 default:
                     return objects.widget;
             }
@@ -156,7 +169,7 @@ async function makeRenderer(
     );
     const sceneGraph = makeSceneGraphDouble(actorIds);
     renderer.attachSceneGraph(sceneGraph as unknown as VisorSceneNodeExtended);
-    return { renderer, camera, sceneGraph, ...objects };
+    return { renderer, camera, scene, sceneGraph, ...objects };
 }
 
 /** A sender that records its calls and resolves. */
@@ -336,3 +349,29 @@ describe('WasmRenderer reports the cross-section plane on the end-of-drag event'
         expect(sender).not.toHaveBeenCalled();
     });
 });
+
+describe('WasmRenderer marks an orientation-widget move as a gesture', () => {
+    // As above, the event does not exist under jsdom, so what is pinned is
+    // the *registration*: which event the mark is bound to, that there is
+    // exactly one of it on the orientation widget, and that the callback
+    // marks and sends nothing. Whether the wasm widget invokes that event at
+    // all is MC-I6's subject and no gate reaches it.
+    test('the orientation widget is observed once on EndInteractionEvent and the callback marks a widget gesture', async () => {
+        const sender = makeSender();
+        const { scene, orientationWidget } = await makeRenderer(sender);
+
+        const endCalls = orientationWidget.observe.mock.calls.filter(
+            (call) => call[0] === 'EndInteractionEvent'
+        );
+        expect(endCalls).toHaveLength(1);
+        expect(scene.noteWidgetGesture).not.toHaveBeenCalled();
+
+        await endCalls[0][1]();
+
+        expect(scene.noteWidgetGesture).toHaveBeenCalledTimes(1);
+        // The mark carries no payload and triggers no send: the report stays
+        // the settle's, through the unchanged sync_camera path.
+        expect(sender).not.toHaveBeenCalled();
+    });
+});
+

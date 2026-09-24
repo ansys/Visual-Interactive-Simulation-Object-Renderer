@@ -211,6 +211,30 @@ describe('CameraGestureTracker', () => {
         expect(onSettled).toHaveBeenCalledWith('programmatic');
     });
 
+    // ---- the orientation widget's mark --------------------------------------
+
+    test('a camera event followed by the widget mark within 300 ms reports gesture', () => {
+        // The orientation widget's face click raises its camera events inside
+        // wasm, with no DOM input of any kind, and its end-of-interaction
+        // event is delivered across the wasm bridge -- so the mark can arrive
+        // *after* the camera events it belongs to. That is the order written
+        // here, and it is the one that fails if noteWidgetGesture marks
+        // nothing: with the settle already pending, only the retroactive
+        // branch can still reach this report.
+        //
+        // The mark-first order is deliberately not a second test here. It
+        // travels the impulse window, which 'an event within 300 ms of a
+        // wheel reports gesture' above already pins through the same code.
+        tracker.noteCameraEvent();
+        jest.advanceTimersByTime(299);
+
+        tracker.noteWidgetGesture();
+        jest.advanceTimersByTime(300);
+
+        expect(onSettled).toHaveBeenCalledTimes(1);
+        expect(onSettled).toHaveBeenCalledWith('gesture');
+    });
+
     // ---- listener management and teardown ----------------------------------
 
     test('the remover returned by addSettledListener stops reports', () => {
