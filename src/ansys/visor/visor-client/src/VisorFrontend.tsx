@@ -578,10 +578,6 @@ export class VisorFrontend {
     setPanelTopLeftUtil: (panelTopRightUtil: Panel_TopLeft_Util) => void;
     setPanelTopRightUtil: (panelTopRightUtil: Panel_TopRight_Util) => void;
     setUiScaffoldUtil: (uiScaffoldUtil: UiScaffoldUtil) => void;
-    /**
-     * Report one panel-layout field to the server.  Each carries the absolute
-     * value it was given for exactly one field; no send reads any other field.
-     */
     sendPanelTopLeftPanelCollapsedAsync: (collapsed: boolean) => Promise<void>;
     sendPanelTopRightPanelCollapsedAsync: (collapsed: boolean) => Promise<void>;
     sendPanelTopRightLegendCollapsedAsync: (collapsed: boolean) => Promise<void>;
