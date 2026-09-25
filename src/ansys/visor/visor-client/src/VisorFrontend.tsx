@@ -218,6 +218,29 @@ export class VisorFrontend {
             uiScaffoldUtilSet = true;
             uiScaffoldUtilResolve(uiScaffoldUtil);
         };
+        // Reports one panel field per call; errors are logged, not rethrown,
+        // since the client already applied the change locally.
+        const sendUiPanelTriggerAsync = async (
+            triggerName: string,
+            payload: Record<string, unknown>
+        ): Promise<void> => {
+            try {
+                await triggerSender(triggerName, payload);
+            } catch (err) {
+                console.error(
+                    `[VISOR] ui panel trigger send failed: trigger='${triggerName}'`,
+                    err
+                );
+            }
+        };
+        this.sendPanelTopLeftPanelCollapsedAsync = (collapsed) =>
+            sendUiPanelTriggerAsync('set_panel_top_left_panel_collapsed', { collapsed });
+        this.sendPanelTopRightPanelCollapsedAsync = (collapsed) =>
+            sendUiPanelTriggerAsync('set_panel_top_right_panel_collapsed', { collapsed });
+        this.sendPanelTopRightLegendCollapsedAsync = (collapsed) =>
+            sendUiPanelTriggerAsync('set_panel_top_right_legend_collapsed', { collapsed });
+        this.sendPanelTopRightTabIndexAsync = (tabIndex) =>
+            sendUiPanelTriggerAsync('set_panel_top_right_tab_index', { tabIndex });
         this.toggleFullScreenAsync = () => renderer.toggleFullScreenAsync();
         this.setEdgeVisibilityAsync = (visible) => renderer.setEdgeVisibilityGlobalAsync(visible);
         this.setCrossSectionVisibilityAsync = (visible) =>
@@ -555,6 +578,10 @@ export class VisorFrontend {
     setPanelTopLeftUtil: (panelTopRightUtil: Panel_TopLeft_Util) => void;
     setPanelTopRightUtil: (panelTopRightUtil: Panel_TopRight_Util) => void;
     setUiScaffoldUtil: (uiScaffoldUtil: UiScaffoldUtil) => void;
+    sendPanelTopLeftPanelCollapsedAsync: (collapsed: boolean) => Promise<void>;
+    sendPanelTopRightPanelCollapsedAsync: (collapsed: boolean) => Promise<void>;
+    sendPanelTopRightLegendCollapsedAsync: (collapsed: boolean) => Promise<void>;
+    sendPanelTopRightTabIndexAsync: (tabIndex: number) => Promise<void>;
     treeViewUtilPromise: Promise<TreeViewUtil<VisorSceneNodeExtended>>;
     panelTopLeftUtilPromise: Promise<Panel_TopLeft_Util>;
     panelTopRightUtilPromise: Promise<Panel_TopRight_Util>;

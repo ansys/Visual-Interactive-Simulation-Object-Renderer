@@ -79,7 +79,9 @@ class VisorStateMapper:
         :meth:`VisorSceneBase._restore_part_states`.
 
         """
-        # UI settings
+        # UI settings. Crossed whole: the server owns every field on the
+        # record (theme and the four panel-layout fields alike), so it is
+        # never split here.
         ui_state = state.ui
 
         # scene state
@@ -108,7 +110,7 @@ class VisorStateMapper:
             runtime_dataset_states[dataset.id] = runtime_state
 
         return RuntimeAppState.from_components(
-            dark_mode=ui_state.dark_theme,
+            ui=ui_state,
             unit=unit,
             camera=camera,
             cross_section=scene_state.cross_section,

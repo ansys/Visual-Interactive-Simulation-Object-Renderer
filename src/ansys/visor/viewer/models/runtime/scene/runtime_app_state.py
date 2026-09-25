@@ -30,7 +30,7 @@ class RuntimeAppState(BaseModel):
     @classmethod
     def from_components(
             cls,
-            dark_mode: bool,
+            ui: VisorUIState,
             unit: str | None,
             dataset_states: Dict[int, RuntimeDatasetState],
             orthographic_enabled: bool | None = None,
@@ -41,8 +41,12 @@ class RuntimeAppState(BaseModel):
             camera: VisorCameraState | None = None,
             variable_states: Dict[str, VisorVariableState] | None = None,
     ) -> "RuntimeAppState":
-        """Construct a RuntimeAppState from the given components."""
-        ui_state = VisorUIState(dark_theme=dark_mode)
+        """Construct a RuntimeAppState from the given components.
+
+        ``ui`` is taken whole and stored as-is: the server owns every one of
+        its fields (theme plus the four panel-layout fields) and assembles
+        them in one place, so this constructor never reaches into it.
+        """
         runtime_scene_state = RuntimeSceneState(
             unit=unit,
             camera=camera,
@@ -55,6 +59,6 @@ class RuntimeAppState(BaseModel):
             spectrum_states=variable_states or {},
         )
         return cls(
-            ui=ui_state,
+            ui=ui,
             scene=runtime_scene_state,
         )

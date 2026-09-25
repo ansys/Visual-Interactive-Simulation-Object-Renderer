@@ -448,7 +448,7 @@ class TestRegistrySourcedPartState:
         # the same dataset.  A pass therefore proves the file came from the
         # registry rather than from the frontend round trip.
         frontend_state = RuntimeAppState.from_components(
-            dark_mode=False,
+            ui=VisorUIState(dark_theme=False),
             unit="m",
             dataset_states={
                 dataset_id: RuntimeDatasetState(
@@ -547,7 +547,7 @@ class TestRegistrySourcedPartState:
         # The browser answers getState with a different camera in every field.
         # A pass therefore proves the file came from the record.
         frontend_state = RuntimeAppState.from_components(
-            dark_mode=False,
+            ui=VisorUIState(dark_theme=False),
             unit="m",
             dataset_states={},
             camera=_reply_camera(),

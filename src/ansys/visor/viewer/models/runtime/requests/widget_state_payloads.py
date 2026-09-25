@@ -18,6 +18,15 @@ the client's drag settled on, reported at end of interaction, and it
 carries two three-component vectors rather than a boolean.  It lives here
 rather than beside the per-part models for the same reason the four above
 do: it is scene-wide and carries no ``nodeId``.
+
+The four ``SetPanelTopLeft*`` / ``SetPanelTopRight*`` models carry UI panel
+layout, not widget state, but are here on the same terms: scene-wide, no
+``nodeId``, one absolute field each.  Their echoes are idempotent like a
+toggle's.
+
+``tab_index`` is deliberately unbounded: the client only ever sends ``0``
+or ``1``, and ``Panel_TopRight_Util.selectTab`` already ignores anything
+else, so the bound lives there, not here.
 """
 
 from typing import List
@@ -64,4 +73,37 @@ class SyncCrossSectionPlanePayload(BaseModel):
 
     origin: List[float] = Field(min_length=3, max_length=3)
     normal: List[float] = Field(min_length=3, max_length=3)
+
+
+class SetPanelTopLeftPanelCollapsedPayload(BaseModel):
+    """Payload of the ``set_panel_top_left_panel_collapsed`` trigger."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    collapsed: bool
+
+
+class SetPanelTopRightPanelCollapsedPayload(BaseModel):
+    """Payload of the ``set_panel_top_right_panel_collapsed`` trigger."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    collapsed: bool
+
+
+class SetPanelTopRightLegendCollapsedPayload(BaseModel):
+    """Payload of the ``set_panel_top_right_legend_collapsed`` trigger."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    collapsed: bool
+
+
+class SetPanelTopRightTabIndexPayload(BaseModel):
+    """Payload of the ``set_panel_top_right_tab_index`` trigger."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    tab_index: int = Field(alias="tabIndex")
+
 

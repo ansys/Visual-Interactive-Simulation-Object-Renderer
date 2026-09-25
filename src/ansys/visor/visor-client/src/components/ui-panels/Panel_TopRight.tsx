@@ -230,6 +230,7 @@ export const Panel_TopRight: FC<{
         let collapseLegend: () => void;
         let expandLegend: () => void;
         let getIsLegendCollapsed: () => boolean;
+        let sendEnabled = false;
 
         {
             // set up top right panel collapse/expand buttons
@@ -248,6 +249,9 @@ export const Panel_TopRight: FC<{
                 collapseButton.remove();
                 collapseButtonContainer.appendChild(expandButton);
                 isCollapsed = true;
+                if (sendEnabled) {
+                    void visorState.sendPanelTopRightPanelCollapsedAsync(isCollapsed);
+                }
             };
             expandButton.onclick = (e) => {
                 componentContainer.style.removeProperty('width');
@@ -256,6 +260,9 @@ export const Panel_TopRight: FC<{
                 expandButton.remove();
                 collapseButtonContainer.appendChild(collapseButton);
                 isCollapsed = false;
+                if (sendEnabled) {
+                    void visorState.sendPanelTopRightPanelCollapsedAsync(isCollapsed);
+                }
             };
             expandButton.click();
             collapsePanel = () => {
@@ -283,6 +290,9 @@ export const Panel_TopRight: FC<{
                 collapseButton.remove();
                 legendCollapseButtonContainer.appendChild(expandButton);
                 isCollapsed = true;
+                if (sendEnabled) {
+                    void visorState.sendPanelTopRightLegendCollapsedAsync(isCollapsed);
+                }
             };
             expandButton.onclick = (e) => {
                 legendOverlayElem.style.removeProperty('width');
@@ -290,6 +300,9 @@ export const Panel_TopRight: FC<{
                 expandButton.remove();
                 legendCollapseButtonContainer.appendChild(collapseButton);
                 isCollapsed = false;
+                if (sendEnabled) {
+                    void visorState.sendPanelTopRightLegendCollapsedAsync(isCollapsed);
+                }
             };
             expandButton.click();
             collapseLegend = () => {
@@ -317,6 +330,9 @@ export const Panel_TopRight: FC<{
             legendPanelElem.style.display = 'none';
             legendTabTextContainer.style.display = 'none';
             tabIndex = 0;
+            if (sendEnabled) {
+                void visorState.sendPanelTopRightTabIndexAsync(tabIndex);
+            }
         };
         legendTabElem.onclick = () => {
             propertyTabElem.classList.remove('theme-background-1');
@@ -326,6 +342,9 @@ export const Panel_TopRight: FC<{
             legendPanelElem.style.removeProperty('display');
             legendTabTextContainer.style.removeProperty('display');
             tabIndex = 1;
+            if (sendEnabled) {
+                void visorState.sendPanelTopRightTabIndexAsync(tabIndex);
+            }
         };
         propertyTabElem.onclick(null!);
 
@@ -454,7 +473,12 @@ export const Panel_TopRight: FC<{
                 await visorState.render();
             });
 
-            await onSelectionChangeAsync([]);
+            // Seed from the tree's current selection instead of an empty list:
+            // a selection made before this panel mounted (e.g. during a
+            // refresh/rebuild) is applied via `synchronize()`, which doesn't
+            // fire the selection-change listener, so it would otherwise never
+            // reach this panel.
+            await onSelectionChangeAsync(treeViewUtil.selectedNodes);
             const util = new Panel_TopRight_Util(
                 expandPanel,
                 collapsePanel,
@@ -472,6 +496,10 @@ export const Panel_TopRight: FC<{
                 () => tabIndex
             );
             visorState.setPanelTopRightUtil(util);
+            // Must stay on the line after the util handoff: it suppresses the three mount writes
+            // above and is open before any delivered apply awaiting the util promise can click;
+            // scaffolding, removed when delivery is separated from mutation.
+            sendEnabled = true;
             onLoad(util);
         })();
 
