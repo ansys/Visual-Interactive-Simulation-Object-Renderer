@@ -79,28 +79,21 @@ class VisorSceneBase(ABC):
         """Initialize the scene coordinator and its local renderer backend."""
         logger.debug("Initializing %s", type(self).__name__)
 
-        # The server's UI record, held as its model rather than as loose
-        # scalars -- the same shape the camera record is held in.  Built first,
-        # because ``dark_mode`` is a property over its ``dark_theme`` field and
-        # every later read or write of the theme goes through it.
+        # The server's UI record, held as a model like the camera record.
+        # Built first because ``dark_mode`` is a property over its
+        # ``dark_theme`` field.
         #
-        # The theme is the constructor's; the four panel fields are initialised
-        # to the client panels' own mount defaults -- Panel_TopLeft's
-        # ``isPanelCollapsed`` and both of Panel_TopRight's ``isCollapsed``
-        # closures start false and are mount-clicked to false, and its
-        # ``tabIndex`` starts at 0.  Initialised rather than left unset for two
-        # reasons: a get_state before the client has ever spoken then reports
-        # what the client would report, and the record is delivered through a
-        # dump that excludes ``None``, so a field left unset here is simply
-        # omitted from the payload and the client shows its own defaults
+        # The theme comes from the constructor; the four panel fields match
+        # the client panels' own mount defaults (collapsed=False,
+        # tab_index=0), so a get_state before the client has spoken reports
+        # what the client would.  They're initialised rather than left unset
+        # because the payload dump excludes ``None``, and an unset field
+        # would be omitted, letting the client fall back to its own default
         # instead of the server's record.
         #
-        # Written only by the four panel triggers and by the load path.
-        # Absolute values, never toggles.  There is still exactly one copy of
-        # the theme: ``dark_theme`` is it, and ``dark_mode`` is the property
-        # over it, not a second field -- a second copy is the divergence
-        # set_projection refuses.  Projection is deliberately absent for the
-        # same reason: it is derived from the camera record.
+        # Written only by the four panel triggers and the load path, always
+        # as absolute values, never toggles.  Projection is deliberately
+        # absent here: it's derived from the camera record, not stored twice.
         self._ui_state = VisorUIState(
             dark_theme=dark_mode,
             panel_top_left_panel_collapsed=False,
@@ -187,19 +180,12 @@ class VisorSceneBase(ABC):
     def dark_mode(self) -> bool | None:
         """Whether the viewer is in dark theme.
 
-        A property over the UI record's ``dark_theme`` field rather than an
-        attribute of its own: the theme has exactly one holder, and a second
-        copy of it is the divergence :meth:`set_projection` refuses.  Every
-        existing reader and writer of ``scene.dark_mode`` -- the construction
-        sites, the scene-details read, and :meth:`apply_state`'s own line --
-        goes through this pair unchanged.
+        A property over the UI record's ``dark_theme`` field rather than a
+        separate attribute, so the theme has exactly one holder.
 
-        Typed as the record's field is, ``bool | None`` rather than ``bool``:
-        the constructor always supplies a ``bool``, but :meth:`apply_state`
-        writes ``state.ui.dark_theme`` through unguarded, and that field is
-        optional.  The previous plain attribute was annotated ``bool`` and
-        took the same value; the annotation is what changes here, not what
-        can arrive.
+        Typed ``bool | None`` to match that field: the constructor always
+        supplies a ``bool``, but :meth:`apply_state` writes
+        ``state.ui.dark_theme`` through unguarded, and that field is optional.
         """
         return self._ui_state.dark_theme
 
@@ -236,20 +222,17 @@ class VisorSceneBase(ABC):
         reply is consulted for none of the three.
 
         The UI record is the fourth.  ``runtime_state.ui`` is replaced
-        wholesale with a copy of this object's own record -- the theme in its
-        ``dark_theme`` field and the four panel-layout fields the panel
-        triggers write -- so the browser's ``ui`` block is discarded
-        entire.  A copy and never the instance: the record is handed to the
-        mapper and survives by identity onto the object the writer receives,
-        so passing the instance would let a panel trigger landing after this
-        read mutate the state being saved.  That is the registry snapshot's
-        reason, applied to the one other live object that leaves here.  The
-        assignment is unconditional, as the camera and toggle
-        assignments are, and it is what makes the saved theme the server's
-        rather than the embedding host's: under Dash the host prop overrides
-        the delivered theme in the browser, so a reply that was trusted here
-        would write the host's value into the file and, on the next load, into
-        ``dark_mode``.
+        wholesale with a copy of this object's own record, so the browser's
+        ``ui`` block is discarded entirely.  A copy and never the instance:
+        the mapper holds onto the object it's given, so passing the instance
+        would let a panel trigger landing after this read mutate the state
+        being saved.
+
+        The assignment is unconditional, which is what makes the saved theme
+        the server's rather than the embedding host's: under Dash the host
+        prop overrides the delivered theme in the browser, so a reply that
+        was trusted here would write the host's value into the file and,
+        on the next load, into ``dark_mode``.
 
         The camera comes from the renderer's record, which is authoritative, rather than
         from the reply or from the pipeline ``vtkCamera``: the pipeline is the
@@ -307,9 +290,6 @@ class VisorSceneBase(ABC):
         Holds ``_vtk_lock`` for the whole body, including the delegated render step.
         """
         with self._vtk_lock:
-            # Apply UI settings
-            self.dark_mode = state.ui.dark_theme
-
             # Transform the frontend PersistedViewerStateV1 -> RuntimeAppState
             runtime_app_state = self._state_mapper.persisted_to_runtime(state)
 
@@ -825,18 +805,12 @@ class VisorSceneBase(ABC):
     # =========================================================================
     # UI panel layout — coordinator surface
     #
-    # The same shape as the widget toggles above, minus the renderer half:
-    # each writes one store field under ``_vtk_lock`` and stops.  There is no
-    # ``IRenderer`` seam to fill, because nothing the server renders depends
-    # on panel layout -- it is browser-side chrome whose only server-side job
-    # is to survive a refresh.
+    # Same shape as the widget toggles above, minus the renderer half: each
+    # writes one store field under ``_vtk_lock`` and stops.  No ``IRenderer``
+    # seam to fill, no notify — panel layout is browser-side chrome, and the
+    # reasons are the same as above.
     #
-    # No notify, for the reason the surfaces above give: no ``render()``, no
-    # ``flush_wasm_state()``, no ``set_state``.
-    #
-    # Every value that arrives here is absolute, never relative, and an echo
-    # is idempotent: after a delivered apply the client reports back the value
-    # the server just sent it.
+    # Every value that arrives here is absolute, never relative.
     # =========================================================================
 
     def set_panel_top_left_panel_collapsed(self, collapsed: bool) -> None:
@@ -967,13 +941,12 @@ class VisorSceneBase(ABC):
         a file can carry any subset -- anything written before this record
         existed carries none of them.
 
-        ``dark_theme`` is deliberately not read here.  It is
-        :meth:`apply_state`'s own line, and two readers of one property is the
-        divergence this epic has been removing.
-
         Callers must hold ``_vtk_lock``.
         """
         ui = runtime_app_state.ui
+
+        if ui.dark_theme is not None:
+            self.dark_mode = ui.dark_theme
         if ui.panel_top_left_panel_collapsed is not None:
             self._ui_state.panel_top_left_panel_collapsed = ui.panel_top_left_panel_collapsed
         if ui.panel_top_right_panel_collapsed is not None:
