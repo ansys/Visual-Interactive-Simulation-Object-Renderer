@@ -96,6 +96,12 @@ export class WasmRenderer implements IRenderer {
             });
         });
 
+        // No proxy of the orientation widget: getVtkObject on it serializes the
+        // widget's graph, and the client-only ids that allocates collide with the
+        // next add_dataset's objects. Fixed after VTK 9.6.1 by
+        // SetAllocateIdsDescending; on that upgrade the gesture mark can move back
+        // onto the widget's EndInteractionEvent, from CameraGestureTracker's.
+
         // Bounding-box ids are stashed for attachSceneGraph, which is the
         // point at which the live sceneGraph (needed by BoundingBoxWidget)
         // becomes available.

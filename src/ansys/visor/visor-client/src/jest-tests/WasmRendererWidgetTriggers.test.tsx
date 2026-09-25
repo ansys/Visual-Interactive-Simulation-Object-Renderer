@@ -138,7 +138,9 @@ async function makeRenderer(
         render: jest.fn(),
         clearObserversAndEventListeners: jest.fn(),
         camera,
-        getVtkObject: (wasmId: number) => {
+        // A jest.fn, so the ids the renderer asks for are recorded: the
+        // orientation widget's id must never be among them.
+        getVtkObject: jest.fn((wasmId: number) => {
             switch (wasmId) {
                 case ACTOR_ID:
                     return objects.actor;
@@ -147,7 +149,7 @@ async function makeRenderer(
                 default:
                     return objects.widget;
             }
-        },
+        }),
     };
     const renderer = await WasmRenderer.createAsync(
         scene as unknown as VtkScene,
@@ -156,7 +158,7 @@ async function makeRenderer(
     );
     const sceneGraph = makeSceneGraphDouble(actorIds);
     renderer.attachSceneGraph(sceneGraph as unknown as VisorSceneNodeExtended);
-    return { renderer, camera, sceneGraph, ...objects };
+    return { renderer, camera, scene, sceneGraph, ...objects };
 }
 
 /** A sender that records its calls and resolves. */
@@ -334,5 +336,18 @@ describe('WasmRenderer reports the cross-section plane on the end-of-drag event'
         }
 
         expect(sender).not.toHaveBeenCalled();
+    });
+});
+
+describe('WasmRenderer builds no proxy of the orientation widget', () => {
+    // Building a proxy of the orientation widget serializes its graph, and the
+    // client-only ids that allocates collide with the next add_dataset's on
+    // VTK 9.6.1. The gesture mark is taken at the DOM level instead.
+    test('the orientation widget id is never requested through getVtkObject', async () => {
+        const { scene } = await makeRenderer(makeSender());
+
+        const requestedIds = scene.getVtkObject.mock.calls.map((call) => call[0]);
+
+        expect(requestedIds).not.toContain(ORIENTATION_WIDGET_ID);
     });
 });

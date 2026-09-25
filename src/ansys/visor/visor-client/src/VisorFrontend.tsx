@@ -52,7 +52,10 @@ export class VisorFrontend {
         } = getPromiseResolver<UiScaffoldUtil>();
         let darkMode: boolean = true;
 
-        // TODO: uncomment these lines when the dataset addition bug is fixed
+        // TODO: uncomment these lines once VTK is upgraded past 9.6.1. getVtkObject
+        // on the orientation widget serializes the widget's graph, and the client-only
+        // ids the proxy allocates then collide with the next add_dataset's objects.
+        // Fixed after 9.6.1 by SetAllocateIdsDescending.
         // const orientationWidget = vtkScene.getVtkObject(vtkInfo.orientationWidgetWasmId);
         // use "void" here to suppress the "no await" IDE warning
         // void orientationWidget.SetShouldResetCamera(false);
