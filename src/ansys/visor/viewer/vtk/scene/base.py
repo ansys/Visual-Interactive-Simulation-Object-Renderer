@@ -327,11 +327,11 @@ class VisorSceneBase(ABC):
         stored, so it can't disagree with the camera. ``None`` means
         "nothing was ever written."
 
-        No ``_vtk_lock``: the reads here (three booleans, one camera field,
-        and the UI record's five) aren't consumed as a mutually consistent
-        snapshot, and locking a request-path read against the trigger thread
-        belongs with the round-trip/thread-affinity work, not here. Accepted
-        exposure: one stale field in a delivered payload.
+        No ``_vtk_lock``: the reads here (three booleans, one camera field)
+        aren't consumed as a mutually consistent snapshot, and locking a
+        request-path read against the trigger thread belongs with the
+        round-trip/thread-affinity work, not here. Accepted exposure: one
+        stale field in a delivered payload.
 
         The UI record is passed as a copy and never as the instance, for the
         reason :meth:`get_state` gives: a panel trigger landing after this
