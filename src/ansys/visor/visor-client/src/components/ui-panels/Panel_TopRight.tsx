@@ -473,13 +473,11 @@ export const Panel_TopRight: FC<{
                 await visorState.render();
             });
 
-            // Initialize from the tree's current selection, not from an empty
-            // list: a selection delivered before this panel mounted -- a
-            // refresh, a rebuild -- is already on the rows and on the mesh, and
-            // `synchronize()` reaches it without running the selection-change
-            // listeners, so nothing else would ever hand it to this panel.
-            // Read here, after the util promise settled, so the array is the
-            // live one the listener above is subscribed to.
+            // Seed from the tree's current selection instead of an empty list:
+            // a selection made before this panel mounted (e.g. during a
+            // refresh/rebuild) is applied via `synchronize()`, which doesn't
+            // fire the selection-change listener, so it would otherwise never
+            // reach this panel.
             await onSelectionChangeAsync(treeViewUtil.selectedNodes);
             const util = new Panel_TopRight_Util(
                 expandPanel,
@@ -498,7 +496,9 @@ export const Panel_TopRight: FC<{
                 () => tabIndex
             );
             visorState.setPanelTopRightUtil(util);
-            // Must stay on the line after the util handoff: it suppresses the three mount writes above and is open before any delivered apply awaiting the util promise can click; scaffolding, removed when delivery is separated from mutation.
+            // Must stay on the line after the util handoff: it suppresses the three mount writes
+            // above and is open before any delivered apply awaiting the util promise can click;
+            // scaffolding, removed when delivery is separated from mutation.
             sendEnabled = true;
             onLoad(util);
         })();

@@ -204,6 +204,7 @@ export default class CameraGestureTracker {
         this.#settleTimer = setTimeout(this.#reportSettled, CAMERA_SETTLE_MS);
     };
 
+
     /**
      * @return {void}
      */

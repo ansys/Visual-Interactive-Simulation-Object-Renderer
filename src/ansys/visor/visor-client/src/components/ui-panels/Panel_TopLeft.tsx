@@ -93,7 +93,9 @@ export const Panel_TopLeft: FC<{
             }
         );
         visorState.setPanelTopLeftUtil(util);
-        // Must stay on the line after the util handoff: it suppresses the mount click above and is open before any delivered apply awaiting the util promise can click; scaffolding, removed when delivery is separated from mutation.
+        // Must stay on the line after the util handoff: it suppresses the mount click above and is
+        // open before any delivered apply awaiting the util promise can click; scaffolding,
+        // removed when delivery is separated from mutation.
         sendEnabled = true;
         onLoad(util);
     }, []);
