@@ -1,0 +1,6 @@
+dark\_mode
+==========
+
+.. currentmodule:: ansys.visor.viewer
+
+.. autoproperty:: Visor.dark_mode

@@ -1,0 +1,6 @@
+list\_variables
+===============
+
+.. currentmodule:: ansys.visor.viewer
+
+.. automethod:: Visor.list_variables

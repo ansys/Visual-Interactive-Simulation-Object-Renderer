@@ -1,0 +1,6 @@
+add\_dataset
+============
+
+.. currentmodule:: ansys.visor.viewer
+
+.. automethod:: Visor.add_dataset
