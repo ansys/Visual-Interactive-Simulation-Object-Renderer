@@ -218,15 +218,8 @@ export class VisorFrontend {
             uiScaffoldUtilSet = true;
             uiScaffoldUtilResolve(uiScaffoldUtil);
         };
-        // UI panel state -- the four send methods below report one panel field
-        // each to its server trigger.  They close over the `triggerSender`
-        // constructor parameter, which is required and supplied at every
-        // construction site, so there is no no-transport state to guard.
-        //
-        // A rejection is logged under one fixed, greppable prefix and
-        // swallowed, never rethrown: these run inside synchronous UI handlers
-        // that behaved a certain way before the call existed, and the client
-        // applies its own change independently of the report.
+        // Reports one panel field per call; errors are logged, not rethrown,
+        // since the client already applied the change locally.
         const sendUiPanelTriggerAsync = async (
             triggerName: string,
             payload: Record<string, unknown>
@@ -240,13 +233,6 @@ export class VisorFrontend {
                 );
             }
         };
-        // Each of the four forwards the argument it was given and reads
-        // nothing back.  This is deliberately the opposite of `WasmRenderer`'s
-        // widget sends, which read their widget back because the toolbar calls
-        // them with no argument: here the caller is the panel handler that has
-        // just written the closure, so the argument is the settled value by
-        // construction, and the util it would be read back from may not exist
-        // yet.
         this.sendPanelTopLeftPanelCollapsedAsync = (collapsed) =>
             sendUiPanelTriggerAsync('set_panel_top_left_panel_collapsed', { collapsed });
         this.sendPanelTopRightPanelCollapsedAsync = (collapsed) =>
