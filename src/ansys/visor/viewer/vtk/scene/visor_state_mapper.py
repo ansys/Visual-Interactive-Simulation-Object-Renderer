@@ -79,9 +79,9 @@ class VisorStateMapper:
         :meth:`VisorSceneBase._restore_part_states`.
 
         """
-        # UI settings.  The record crosses whole: the four panel fields are as
-        # much the server's as the theme is, and splitting one field out here
-        # is what dropped them on the load path before.
+        # UI settings. Crossed whole: the server owns every field on the
+        # record (theme and the four panel-layout fields alike), so it is
+        # never split here.
         ui_state = state.ui
 
         # scene state

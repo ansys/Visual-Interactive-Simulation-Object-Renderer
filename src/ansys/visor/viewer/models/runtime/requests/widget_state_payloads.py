@@ -20,16 +20,13 @@ rather than beside the per-part models for the same reason the four above
 do: it is scene-wide and carries no ``nodeId``.
 
 The four ``SetPanelTopLeft*`` / ``SetPanelTopRight*`` models carry UI panel
-layout rather than widget state.  They are here on the same terms: each is
-scene-wide, carries no ``nodeId``, and carries the absolute value of
-exactly one panel field.  A panel echo is idempotent, as a toggle echo is:
-the value the client reports after a delivered apply is the value the
-server already holds.
+layout, not widget state, but are here on the same terms: scene-wide, no
+``nodeId``, one absolute field each.  Their echoes are idempotent like a
+toggle's.
 
-``tab_index`` is deliberately unbounded.  The client sends ``0`` or ``1``
-and nothing else, and ``Panel_TopRight_Util.selectTab`` already ignores any
-other value, so the bound lives there.  A bound here would make a future
-third tab a validation failure at the boundary rather than a UI change.
+``tab_index`` is deliberately unbounded: the client only ever sends ``0``
+or ``1``, and ``Panel_TopRight_Util.selectTab`` already ignores anything
+else, so the bound lives there, not here.
 """
 
 from typing import List

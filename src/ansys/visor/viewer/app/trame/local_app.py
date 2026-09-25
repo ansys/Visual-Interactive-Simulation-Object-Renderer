@@ -521,12 +521,9 @@ class LocalApp:
     # it writes the camera record's projection field rather than a toggle
     # of its own.
     #
-    # The last four carry UI panel layout rather than widget state.  They
-    # have no renderer half at all -- nothing the server renders depends on
-    # which panel is collapsed or which tab is active -- so each coordinator
-    # writes one store field and stops.  Their echoes are idempotent on the
-    # same terms as the toggles': after a delivered apply the client reports
-    # back the value the server just sent it.
+    # The last four carry UI panel layout, not widget state: no renderer
+    # depends on them, so each coordinator just writes one store field.
+    # Echoes are idempotent for the same reason as the toggles'.
     # ------------------------------------------------------------------
 
     @trigger("set_cross_section_visibility")

@@ -43,10 +43,9 @@ class RuntimeAppState(BaseModel):
     ) -> "RuntimeAppState":
         """Construct a RuntimeAppState from the given components.
 
-        The UI record arrives whole rather than as a bare ``dark_mode``: the
-        server owns every field of it -- the theme and the four panel-layout
-        fields -- and assembles them together, so there is one place that
-        decides what the client is told about the UI rather than two.
+        ``ui`` is taken whole and stored as-is: the server owns every one of
+        its fields (theme plus the four panel-layout fields) and assembles
+        them in one place, so this constructor never reaches into it.
         """
         runtime_scene_state = RuntimeSceneState(
             unit=unit,
