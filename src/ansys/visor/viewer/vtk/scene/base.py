@@ -222,17 +222,7 @@ class VisorSceneBase(ABC):
         reply is consulted for none of the three.
 
         The UI record is the fourth.  ``runtime_state.ui`` is replaced
-        wholesale with a copy of this object's own record, so the browser's
-        ``ui`` block is discarded entirely.  A copy and never the instance:
-        the mapper holds onto the object it's given, so passing the instance
-        would let a panel trigger landing after this read mutate the state
-        being saved.
-
-        The assignment is unconditional, which is what makes the saved theme
-        the server's rather than the embedding host's: under Dash the host
-        prop overrides the delivered theme in the browser, so a reply that
-        was trusted here would write the host's value into the file and,
-        on the next load, into ``dark_mode``.
+        wholesale with a copy of this object's own record.
 
         The camera comes from the renderer's record, which is authoritative, rather than
         from the reply or from the pipeline ``vtkCamera``: the pipeline is the
