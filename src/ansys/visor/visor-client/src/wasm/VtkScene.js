@@ -160,17 +160,6 @@ export default class VtkScene {
         return this.#cameraGestureTracker.addSettledListener(handler);
     };
     /**
-     * Mark the settle window now open as a user gesture, on behalf of a wasm
-     * widget (the orientation widget) whose interaction is not a DOM input
-     * this scene can see. `WasmRenderer` calls this from its
-     * `EndInteractionEvent` observer, since `#cameraGestureTracker` is private.
-     *
-     * @return {void}
-     */
-    noteWidgetGesture = () => {
-        this.#cameraGestureTracker?.noteWidgetGesture();
-    };
-    /**
      * @param {(actorId:number,ctrlKey:boolean,shiftKey:boolean,normX:number,normY:number)=>void} handler
      * @return {()=>void}
      */

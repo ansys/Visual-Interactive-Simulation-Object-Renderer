@@ -27,9 +27,9 @@
  *   pending marks that report `gesture` as well.
  *
  * - The orientation widget is not a DOM input at all: its face click reaches
- *   the camera inside wasm. It is marked explicitly, through
- *   `noteWidgetGesture`, from the observer `WasmRenderer` registers on the
- *   widget's `EndInteractionEvent`.
+ *   the camera inside wasm, and only after the release. A real, bubbling
+ *   release on the canvas itself therefore arms the window too, which covers
+ *   that face click without the tracker knowing the widget exists.
  */
 
 /**
@@ -78,6 +78,15 @@ export default class CameraGestureTracker {
         };
         const onMouseUp = /**@param {MouseEvent} e*/ (e) => {
             this.#heldButtons.delete(e.button);
+            // A release on the canvas arms the window, so a move that only
+            // reaches the camera afterwards -- an orientation-widget face
+            // click -- still reports as a gesture. Both checks are needed:
+            // UI over the canvas is not the canvas, and `applyMouseEvent`
+            // fires non-bubbling `mouseup`s at the canvas on every press,
+            // release and mouseout, which must not arm anything.
+            if (e.target === canvas && e.bubbles) {
+                this.#markImpulse();
+            }
         };
         // A `mouseout` is the existing sticky-mousedown release, and a window
         // `blur` means the page no longer owns the input. Both clear *every*
@@ -195,21 +204,6 @@ export default class CameraGestureTracker {
         this.#settleTimer = setTimeout(this.#reportSettled, CAMERA_SETTLE_MS);
     };
 
-    /**
-     * The orientation widget's end-of-interaction mark, called via
-     * `VtkScene.noteWidgetGesture` from the `EndInteractionEvent` observer in
-     * `WasmRenderer`. A face click involves no button, wheel or z/r key, so
-     * without this mark the move settles as `programmatic`.
-     *
-     * Delegates to `#markImpulse` to reuse the same window and retroactive
-     * stickiness as a wheel notch or z/r press, so a mark landing before or
-     * after the camera events it belongs to is still caught.
-     *
-     * @return {void}
-     */
-    noteWidgetGesture = () => {
-        this.#markImpulse();
-    };
 
     /**
      * @return {void}

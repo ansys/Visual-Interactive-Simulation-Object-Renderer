@@ -211,21 +211,52 @@ describe('CameraGestureTracker', () => {
         expect(onSettled).toHaveBeenCalledWith('programmatic');
     });
 
-    // ---- the orientation widget's mark --------------------------------------
+    // ---- a release on the wasm canvas ---------------------------------------
 
-    test('a camera event followed by the widget mark within 300 ms reports gesture', () => {
-        // The widget's mark can arrive after the camera events it belongs
-        // to, so this exercises the retroactive branch of noteWidgetGesture.
-        // The mark-first order is covered by the wheel test above, via the
-        // same #markImpulse code path.
-        tracker.noteCameraEvent();
+    // A face click reaches the camera only after the release, with no button
+    // held, so the release is what arms the window. All three raise the camera
+    // event at 299 ms, inside the 300 ms a release arms, so what separates
+    // them is solely whether the release armed it.
+
+    test('a release on the canvas, then a camera event within 300 ms, reports gesture', () => {
+        canvas.dispatchEvent(new MouseEvent('mouseup', { button: 0, bubbles: true }));
         jest.advanceTimersByTime(299);
+        tracker.noteCameraEvent();
 
-        tracker.noteWidgetGesture();
         jest.advanceTimersByTime(300);
 
         expect(onSettled).toHaveBeenCalledTimes(1);
         expect(onSettled).toHaveBeenCalledWith('gesture');
+    });
+
+    test('a release whose target is not the canvas, then the same, reports programmatic', () => {
+        // A child of canvasDiv, so it is on the capture path and reaches the
+        // same listener: only the target check can tell it from the canvas.
+        const overlayButton = document.createElement('button');
+        canvasDiv.appendChild(overlayButton);
+
+        overlayButton.dispatchEvent(new MouseEvent('mouseup', { button: 0, bubbles: true }));
+        jest.advanceTimersByTime(299);
+        tracker.noteCameraEvent();
+
+        jest.advanceTimersByTime(300);
+
+        expect(onSettled).toHaveBeenCalledTimes(1);
+        expect(onSettled).toHaveBeenCalledWith('programmatic');
+    });
+
+    test('a non-bubbling release on the canvas, then the same, reports programmatic', () => {
+        // Exactly what applyMouseEvent fires at the canvas on every press,
+        // release and mouseout. Its target is the canvas, so without the
+        // bubbles check a press alone would mark this settle a gesture.
+        canvas.dispatchEvent(new MouseEvent('mouseup', { button: 0, bubbles: false }));
+        jest.advanceTimersByTime(299);
+        tracker.noteCameraEvent();
+
+        jest.advanceTimersByTime(300);
+
+        expect(onSettled).toHaveBeenCalledTimes(1);
+        expect(onSettled).toHaveBeenCalledWith('programmatic');
     });
 
     // ---- listener management and teardown ----------------------------------
