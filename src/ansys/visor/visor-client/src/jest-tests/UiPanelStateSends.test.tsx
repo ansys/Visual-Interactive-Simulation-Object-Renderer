@@ -341,7 +341,7 @@ describe('the panel mount gate', () => {
 });
 
 describe('the properties panel at mount', () => {
-    test('Panel_TopRight shows the tree view\'s current selection at mount', async () => {
+    test("Panel_TopRight shows the tree view's current selection at mount", async () => {
         // The selection is already on the tree view util before the panel
         // mounts, which is what a refresh or a rebuild leaves behind: the rows
         // and the mesh carry it, and `synchronize()` puts it in this array
@@ -375,4 +375,3 @@ describe('the properties panel at mount', () => {
         expect(nameInput.value).toBe('some-polydata-file.vtp');
     });
 });
-

@@ -234,7 +234,10 @@ export class VisorFrontend {
             try {
                 await triggerSender(triggerName, payload);
             } catch (err) {
-                console.error(`[VISOR] ui panel trigger send failed: trigger='${triggerName}'`, err);
+                console.error(
+                    `[VISOR] ui panel trigger send failed: trigger='${triggerName}'`,
+                    err
+                );
             }
         };
         // Each of the four forwards the argument it was given and reads
