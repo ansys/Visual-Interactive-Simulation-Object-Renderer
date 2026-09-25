@@ -36,6 +36,13 @@ import type { Panel_TopRight_Util } from '../components/ui-panels/Panel_TopRight
  * nothing at mount and nothing afterwards passes both. Test 7 is that pin,
  * on the top-right panel, whose gate is the one behind the awaits.
  *
+ * Test 8 is a third subject and not a send at all: the top-right panel
+ * initializes its properties panel from the tree view's current selection,
+ * rather than from an empty list. A selection delivered before the panel
+ * mounts reaches the rows and the mesh through `TreeViewUtil.synchronize()`,
+ * which runs no selection-change listener, so an empty-list initialization
+ * leaves the properties panel blank until the user clicks a part.
+ *
  * jsdom has no `ResizeObserver` and jest here runs with no `setupFiles`
  * (`jest.config.cjs`), so the stub below is this module's own.
  */
@@ -116,31 +123,54 @@ function makeSendDoubles() {
     };
 }
 
-/** A real scene graph, which `Panel_TopLeft` hands to its `TreeView`. */
-function makeSceneGraph(): VisorSceneNodeExtended {
-    return CreateVisorSceneGraph({
-        id: 0,
-        dataArrays: [],
-        name: '',
-        isGroupNode: true,
-        isActorNode: false,
-        nodeType: 'root',
-        diffuseColor: [1, 1, 1],
-        bounds: [],
-        children: [
-            {
-                id: 1,
-                dataArrays: [],
-                name: 'some-polydata-file.vtp',
-                isGroupNode: false,
-                isActorNode: true,
-                nodeType: 'vtkUnstructuredGrid',
-                diffuseColor: [1, 1, 1],
-                bounds: [],
-                children: [],
-            },
-        ],
-    });
+/**
+ * A real scene graph, which `Panel_TopLeft` hands to its `TreeView`.
+ *
+ * The renderer is optional and defaults to absent, which is what the two
+ * mount-gate tests want: they never reach a node method. A test whose selection
+ * is non-empty does reach one -- the properties panel clears the colour
+ * variable on a part with no data arrays -- and supplies the double below.
+ */
+function makeSceneGraph(renderer?: IRenderer): VisorSceneNodeExtended {
+    return CreateVisorSceneGraph(
+        {
+            id: 0,
+            dataArrays: [],
+            name: '',
+            isGroupNode: true,
+            isActorNode: false,
+            nodeType: 'root',
+            diffuseColor: [1, 1, 1],
+            bounds: [],
+            children: [
+                {
+                    id: 1,
+                    dataArrays: [],
+                    name: 'some-polydata-file.vtp',
+                    isGroupNode: false,
+                    isActorNode: true,
+                    nodeType: 'vtkUnstructuredGrid',
+                    diffuseColor: [1, 1, 1],
+                    bounds: [],
+                    children: [],
+                },
+            ],
+        },
+        undefined,
+        renderer
+    );
+}
+
+/**
+ * The renderer members a selected part's own methods reach while the
+ * properties panel initializes. Nothing here is asserted on: the subject is
+ * what the panel shows, and these exist so the node's calls complete.
+ */
+function makeNodeRendererDouble(): IRenderer {
+    return {
+        clearColorVariableAsync: jest.fn(async () => undefined),
+        sendClearPartColorVariableAsync: jest.fn(async () => undefined),
+    } as unknown as IRenderer;
 }
 
 /**
@@ -167,8 +197,12 @@ function makeTopLeftFrontendDouble() {
 /**
  * The same for `Panel_TopRight`, whose effect additionally awaits the tree-view
  * util and runs a selection pass before it registers.
+ *
+ * `selectedNodes` is what the tree view util holds when the panel's effect
+ * reaches it. It defaults to empty -- the state a tree with nothing selected is
+ * in -- so the two mount-gate tests below are unaffected by its presence.
  */
-function makeTopRightFrontendDouble() {
+function makeTopRightFrontendDouble(selectedNodes: VisorSceneNodeExtended[] = []) {
     const sends = makeSendDoubles();
     let registered: (util: Panel_TopRight_Util) => void = () => {};
     const utilRegistered = new Promise<Panel_TopRight_Util>((resolve) => {
@@ -178,7 +212,7 @@ function makeTopRightFrontendDouble() {
         addSelectionChangeListener: jest.fn(() => jest.fn()),
         rows: [],
         rowUtilsMap: new Map(),
-        selectedNodes: [],
+        selectedNodes,
         updateSelectedNodesArray: jest.fn(),
     };
     const visorState = {
@@ -303,6 +337,42 @@ describe('the panel mount gate', () => {
 
         expect(sends.sendPanelTopRightPanelCollapsedAsync).toHaveBeenCalledTimes(1);
         expect(sends.sendPanelTopRightPanelCollapsedAsync).toHaveBeenCalledWith(true);
+    });
+});
+
+describe('the properties panel at mount', () => {
+    test('Panel_TopRight shows the tree view\'s current selection at mount', async () => {
+        // The selection is already on the tree view util before the panel
+        // mounts, which is what a refresh or a rebuild leaves behind: the rows
+        // and the mesh carry it, and `synchronize()` puts it in this array
+        // without running any selection-change listener. Nothing in this test
+        // clicks anything, and nothing fires a selection event -- the handler
+        // the panel registers with `addSelectionChangeListener` is captured by
+        // the double and never invoked here.
+        const sceneGraph = makeSceneGraph(makeNodeRendererDouble());
+        const part = sceneGraph.children[0];
+        const { visorState, utilRegistered } = makeTopRightFrontendDouble([part]);
+
+        let container: HTMLElement = null!;
+        await act(async () => {
+            container = render(
+                <Panel_TopRight
+                    visorState={visorState as unknown as VisorFrontend}
+                    onLoad={() => {}}
+                />
+            ).container;
+        });
+        await utilRegistered;
+
+        // The name field, located by structure: the ids in this component are
+        // `randomId()`-generated, and this is the component's only read-only
+        // text input. It lives inside the property panel's body, which the
+        // no-selection branch hides.
+        const nameInput = container.querySelector(
+            'input[type="text"][readonly]'
+        ) as HTMLInputElement;
+        expect(nameInput).not.toBeNull();
+        expect(nameInput.value).toBe('some-polydata-file.vtp');
     });
 });
 

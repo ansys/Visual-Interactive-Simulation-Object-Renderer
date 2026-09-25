@@ -473,7 +473,14 @@ export const Panel_TopRight: FC<{
                 await visorState.render();
             });
 
-            await onSelectionChangeAsync([]);
+            // Initialize from the tree's current selection, not from an empty
+            // list: a selection delivered before this panel mounted -- a
+            // refresh, a rebuild -- is already on the rows and on the mesh, and
+            // `synchronize()` reaches it without running the selection-change
+            // listeners, so nothing else would ever hand it to this panel.
+            // Read here, after the util promise settled, so the array is the
+            // live one the listener above is subscribed to.
+            await onSelectionChangeAsync(treeViewUtil.selectedNodes);
             const util = new Panel_TopRight_Util(
                 expandPanel,
                 collapsePanel,
