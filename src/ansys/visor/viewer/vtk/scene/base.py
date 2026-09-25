@@ -68,10 +68,7 @@ class VisorSceneBase(ABC):
     _cross_section_enabled: bool
     _edges_enabled: bool
     _bounding_box_enabled: bool
-    _panel_top_left_panel_collapsed: bool
-    _panel_top_right_panel_collapsed: bool
-    _panel_top_right_legend_collapsed: bool
-    _panel_top_right_tab_index: int
+    _ui_state: VisorUIState
 
     def __init__(
             self,
@@ -81,7 +78,36 @@ class VisorSceneBase(ABC):
     ):
         """Initialize the scene coordinator and its local renderer backend."""
         logger.debug("Initializing %s", type(self).__name__)
-        self.dark_mode: bool = dark_mode
+
+        # The server's UI record, held as its model rather than as loose
+        # scalars -- the same shape the camera record is held in.  Built first,
+        # because ``dark_mode`` is a property over its ``dark_theme`` field and
+        # every later read or write of the theme goes through it.
+        #
+        # The theme is the constructor's; the four panel fields are initialised
+        # to the client panels' own mount defaults -- Panel_TopLeft's
+        # ``isPanelCollapsed`` and both of Panel_TopRight's ``isCollapsed``
+        # closures start false and are mount-clicked to false, and its
+        # ``tabIndex`` starts at 0.  Initialised rather than left unset for two
+        # reasons: a get_state before the client has ever spoken then reports
+        # what the client would report, and the record is delivered through a
+        # dump that excludes ``None``, so a field left unset here is simply
+        # omitted from the payload and the client shows its own defaults
+        # instead of the server's record.
+        #
+        # Written only by the four panel triggers and by the load path.
+        # Absolute values, never toggles.  There is still exactly one copy of
+        # the theme: ``dark_theme`` is it, and ``dark_mode`` is the property
+        # over it, not a second field -- a second copy is the divergence
+        # set_projection refuses.  Projection is deliberately absent for the
+        # same reason: it is derived from the camera record.
+        self._ui_state = VisorUIState(
+            dark_theme=dark_mode,
+            panel_top_left_panel_collapsed=False,
+            panel_top_right_panel_collapsed=False,
+            panel_top_right_legend_collapsed=False,
+            panel_top_right_tab_index=0,
+        )
 
         # Server-tracked widget toggles.  Absolute values, never toggles.
         # Initialised to the client widgets' own constructor defaults so a
@@ -93,21 +119,6 @@ class VisorSceneBase(ABC):
         self._edges_enabled: bool = False
         self._bounding_box_enabled: bool = False
 
-        # Server-tracked UI panel layout.  Absolute values, never toggles, and
-        # written only by the four panel triggers.  Initialised to the client
-        # panels' own mount defaults -- Panel_TopLeft's ``isPanelCollapsed``
-        # and both of Panel_TopRight's ``isCollapsed`` closures start false and
-        # are mount-clicked to false, and its ``tabIndex`` starts at 0 -- for
-        # the reason the toggle store gives above, and for a second one: these
-        # are delivered through a dump that excludes ``None``, so a field left
-        # unset here is simply omitted from the payload and the client shows
-        # its own defaults instead of the server's record.  There is
-        # deliberately no ``_dark_theme`` field: the theme is ``dark_mode``,
-        # and a second copy of it is the divergence set_projection refuses.
-        self._panel_top_left_panel_collapsed: bool = False
-        self._panel_top_right_panel_collapsed: bool = False
-        self._panel_top_right_legend_collapsed: bool = False
-        self._panel_top_right_tab_index: int = 0
 
         self._server = server
         self._scene_graph = None
@@ -173,6 +184,31 @@ class VisorSceneBase(ABC):
         return self._dataset_registry.count
 
     @property
+    def dark_mode(self) -> bool | None:
+        """Whether the viewer is in dark theme.
+
+        A property over the UI record's ``dark_theme`` field rather than an
+        attribute of its own: the theme has exactly one holder, and a second
+        copy of it is the divergence :meth:`set_projection` refuses.  Every
+        existing reader and writer of ``scene.dark_mode`` -- the construction
+        sites, the scene-details read, and :meth:`apply_state`'s own line --
+        goes through this pair unchanged.
+
+        Typed as the record's field is, ``bool | None`` rather than ``bool``:
+        the constructor always supplies a ``bool``, but :meth:`apply_state`
+        writes ``state.ui.dark_theme`` through unguarded, and that field is
+        optional.  The previous plain attribute was annotated ``bool`` and
+        took the same value; the annotation is what changes here, not what
+        can arrive.
+        """
+        return self._ui_state.dark_theme
+
+    @dark_mode.setter
+    def dark_mode(self, dark_mode: bool | None) -> None:
+        """Set the theme on the UI record."""
+        self._ui_state.dark_theme = dark_mode
+
+    @property
     def datasets(self) -> dict[int, VisorDataset]:
         """List of datasets registered in the scene."""
         return self._dataset_registry.datasets
@@ -200,10 +236,15 @@ class VisorSceneBase(ABC):
         reply is consulted for none of the three.
 
         The UI record is the fourth.  ``runtime_state.ui`` is replaced
-        wholesale with this object's own record -- the theme from
-        ``dark_mode`` and the four panel-layout fields from the store the
-        panel triggers write -- so the browser's ``ui`` block is discarded
-        entire.  The assignment is unconditional, as the camera and toggle
+        wholesale with a copy of this object's own record -- the theme in its
+        ``dark_theme`` field and the four panel-layout fields the panel
+        triggers write -- so the browser's ``ui`` block is discarded
+        entire.  A copy and never the instance: the record is handed to the
+        mapper and survives by identity onto the object the writer receives,
+        so passing the instance would let a panel trigger landing after this
+        read mutate the state being saved.  That is the registry snapshot's
+        reason, applied to the one other live object that leaves here.  The
+        assignment is unconditional, as the camera and toggle
         assignments are, and it is what makes the saved theme the server's
         rather than the embedding host's: under Dash the host prop overrides
         the delivered theme in the browser, so a reply that was trusted here
@@ -246,7 +287,7 @@ class VisorSceneBase(ABC):
             runtime_state.scene.cross_section_enabled = self._cross_section_enabled
             runtime_state.scene.edges_enabled = self._edges_enabled
             runtime_state.scene.bounding_box_enabled = self._bounding_box_enabled
-            runtime_state.ui = self._build_ui_state()
+            runtime_state.ui = self._ui_state.model_copy()
         runtime_state.scene.dataset_states = registry_dataset_states
 
         persisted = self._state_mapper.runtime_to_persisted(runtime_state)
@@ -317,10 +358,14 @@ class VisorSceneBase(ABC):
         "nothing was ever written."
 
         No ``_vtk_lock``: the reads here (three booleans, one camera field,
-        and the five the UI record is assembled from) aren't consumed as a
-        mutually consistent snapshot, and locking a request-path read against
-        the trigger thread belongs with the round-trip/thread-affinity work,
-        not here. Accepted exposure: one stale field in a delivered payload.
+        and the UI record's five) aren't consumed as a mutually consistent
+        snapshot, and locking a request-path read against the trigger thread
+        belongs with the round-trip/thread-affinity work, not here. Accepted
+        exposure: one stale field in a delivered payload.
+
+        The UI record is passed as a copy and never as the instance, for the
+        reason :meth:`get_state` gives: a panel trigger landing after this
+        call would otherwise mutate a payload already served.
         """
         if self._scene_graph is None:
             self._initialize_scene_graph()
@@ -328,7 +373,7 @@ class VisorSceneBase(ABC):
         scene_graph_state = self._build_scene_graph_state()
         camera_record = self._renderer.get_camera_state()
         return VisorSceneDetails.from_components(
-            ui=self._build_ui_state(),
+            ui=self._ui_state.model_copy(),
             unit=self._dataset_registry.unit,
             dataset_states=self._dataset_registry.runtime_state_dict,
             scene_graph_state=scene_graph_state,
@@ -797,17 +842,17 @@ class VisorSceneBase(ABC):
     def set_panel_top_left_panel_collapsed(self, collapsed: bool) -> None:
         """Record whether the top-left panel is collapsed."""
         with self._vtk_lock:
-            self._panel_top_left_panel_collapsed = collapsed
+            self._ui_state.panel_top_left_panel_collapsed = collapsed
 
     def set_panel_top_right_panel_collapsed(self, collapsed: bool) -> None:
         """Record whether the top-right panel is collapsed."""
         with self._vtk_lock:
-            self._panel_top_right_panel_collapsed = collapsed
+            self._ui_state.panel_top_right_panel_collapsed = collapsed
 
     def set_panel_top_right_legend_collapsed(self, collapsed: bool) -> None:
         """Record whether the top-right legend overlay is collapsed."""
         with self._vtk_lock:
-            self._panel_top_right_legend_collapsed = collapsed
+            self._ui_state.panel_top_right_legend_collapsed = collapsed
 
     def set_panel_top_right_tab_index(self, tab_index: int) -> None:
         """Record which top-right tab is active.
@@ -817,7 +862,7 @@ class VisorSceneBase(ABC):
         the range guard lives.
         """
         with self._vtk_lock:
-            self._panel_top_right_tab_index = tab_index
+            self._ui_state.panel_top_right_tab_index = tab_index
 
     def _restore_part_states(self, runtime_app_state: "RuntimeAppState") -> None:
         """
@@ -930,13 +975,13 @@ class VisorSceneBase(ABC):
         """
         ui = runtime_app_state.ui
         if ui.panel_top_left_panel_collapsed is not None:
-            self._panel_top_left_panel_collapsed = ui.panel_top_left_panel_collapsed
+            self._ui_state.panel_top_left_panel_collapsed = ui.panel_top_left_panel_collapsed
         if ui.panel_top_right_panel_collapsed is not None:
-            self._panel_top_right_panel_collapsed = ui.panel_top_right_panel_collapsed
+            self._ui_state.panel_top_right_panel_collapsed = ui.panel_top_right_panel_collapsed
         if ui.panel_top_right_legend_collapsed is not None:
-            self._panel_top_right_legend_collapsed = ui.panel_top_right_legend_collapsed
+            self._ui_state.panel_top_right_legend_collapsed = ui.panel_top_right_legend_collapsed
         if ui.panel_top_right_tab_index is not None:
-            self._panel_top_right_tab_index = ui.panel_top_right_tab_index
+            self._ui_state.panel_top_right_tab_index = ui.panel_top_right_tab_index
 
     def _restore_one_part_state(
             self,
@@ -1122,27 +1167,6 @@ class VisorSceneBase(ABC):
         """Update the bounding box widget with the current part-node count."""
         self._renderer.update_actor_count(self._scene_graph.descendant_part_count())
 
-    def _build_ui_state(self) -> VisorUIState:
-        """Assemble the server's UI record: the theme and the four panel fields.
-
-        Every field is concrete by construction -- ``dark_mode`` is a ``bool``
-        and the four panel attributes are initialised to the client's mount
-        defaults -- so the record never carries a ``None``.  That matters on
-        the way out: the scene-details dump excludes ``None``, so an unset
-        field would be omitted from the payload and the client would fall back
-        to its own defaults rather than the server's record.
-
-        No lock of its own.  A caller that needs a mutually consistent
-        snapshot holds ``_vtk_lock`` around the call; :meth:`get_state` does,
-        :meth:`get_scene_details` deliberately does not.
-        """
-        return VisorUIState(
-            dark_theme=self.dark_mode,
-            panel_top_left_panel_collapsed=self._panel_top_left_panel_collapsed,
-            panel_top_right_panel_collapsed=self._panel_top_right_panel_collapsed,
-            panel_top_right_legend_collapsed=self._panel_top_right_legend_collapsed,
-            panel_top_right_tab_index=self._panel_top_right_tab_index,
-        )
 
     def _build_scene_graph_state(self):
         """Assemble the pure scene-graph ``SceneGraphNodeInfo`` tree.

@@ -2936,7 +2936,7 @@ class _PanelStoreLockSpy(_LockSpy):
         self.depth_at_release = None
 
     def __exit__(self, exc_type, exc, tb):
-        self.value_at_release = self._scene._panel_top_right_tab_index
+        self.value_at_release = self._scene._ui_state.panel_top_right_tab_index
         self.depth_at_release = self.depth
         return super().__exit__(exc_type, exc, tb)
 
@@ -3004,10 +3004,10 @@ def test_panel_coordinators_write_the_store(scene):
     scene.set_panel_top_right_legend_collapsed(PANEL_COLLAPSED)
     scene.set_panel_top_right_tab_index(PANEL_TAB_INDEX)
 
-    assert scene._panel_top_left_panel_collapsed is True
-    assert scene._panel_top_right_panel_collapsed is True
-    assert scene._panel_top_right_legend_collapsed is True
-    assert scene._panel_top_right_tab_index == 1
+    assert scene._ui_state.panel_top_left_panel_collapsed is True
+    assert scene._ui_state.panel_top_right_panel_collapsed is True
+    assert scene._ui_state.panel_top_right_legend_collapsed is True
+    assert scene._ui_state.panel_top_right_tab_index == 1
 
 
 def test_set_panel_top_right_tab_index_holds_the_lock_at_the_store_write(scene):
@@ -3149,10 +3149,10 @@ def test_apply_state_restores_the_ui_panel_state_to_the_store(scene):
         ),
     )
 
-    assert scene._panel_top_left_panel_collapsed is True
-    assert scene._panel_top_right_panel_collapsed is True
-    assert scene._panel_top_right_legend_collapsed is True
-    assert scene._panel_top_right_tab_index == 1
+    assert scene._ui_state.panel_top_left_panel_collapsed is True
+    assert scene._ui_state.panel_top_right_panel_collapsed is True
+    assert scene._ui_state.panel_top_right_legend_collapsed is True
+    assert scene._ui_state.panel_top_right_tab_index == 1
 
 
 def test_apply_state_leaves_an_absent_ui_panel_field_alone(scene):
@@ -3170,9 +3170,61 @@ def test_apply_state_leaves_an_absent_ui_panel_field_alone(scene):
 
     _apply(scene, _panel_runtime_state(VisorUIState(dark_theme=False)))
 
-    assert scene._panel_top_left_panel_collapsed is True
-    assert scene._panel_top_right_panel_collapsed is True
-    assert scene._panel_top_right_legend_collapsed is True
-    assert scene._panel_top_right_tab_index == 1
+    assert scene._ui_state.panel_top_left_panel_collapsed is True
+    assert scene._ui_state.panel_top_right_panel_collapsed is True
+    assert scene._ui_state.panel_top_right_legend_collapsed is True
+    assert scene._ui_state.panel_top_right_tab_index == 1
+
+
+# ---------------------------------------------------------------------------
+# get_state -- the record is handed out as a copy
+# ---------------------------------------------------------------------------
+
+# A later write, distinct from both the store's seeded values and the reply's,
+# so a returned state that moved reports a value belonging to neither.
+LATER_PANEL_TAB_INDEX = 9
+LATER_PANEL_COLLAPSED = False
+
+
+def test_get_state_hands_out_a_copy_of_the_ui_record(scene):
+    """A panel write landing after the read does not change what was returned.
+
+    This is the assertion that pins the copy.  The scene now holds the UI
+    record as one model, and that model survives by identity through the
+    state mapper onto the object ``get_state`` returns, so handing out
+    ``self._ui_state`` itself would let a trigger arriving on trame's daemon
+    thread mutate a state the writer already has -- the file would then carry
+    a layout the user reached after they asked to save.  Pass the instance
+    instead of the copy and the two value assertions below report ``9`` and
+    ``False``.
+
+    The registry's snapshot is pinned the same way, in
+    ``test_get_state_snapshots_the_registry_rather_than_referencing_it``; this
+    is that pin for the one other live object that leaves here.
+
+    Asserted on what get_state RETURNS -- the object that reaches the writer
+    -- not on the runtime state it was built from.
+    """
+    scene.set_panel_top_left_panel_collapsed(PANEL_COLLAPSED)
+    scene.set_panel_top_right_panel_collapsed(PANEL_COLLAPSED)
+    scene.set_panel_top_right_legend_collapsed(PANEL_COLLAPSED)
+    scene.set_panel_top_right_tab_index(PANEL_TAB_INDEX)
+    _ui_save_scene(
+        scene,
+        _reply_ui(
+            REPLY_PANEL_COLLAPSED,
+            REPLY_PANEL_COLLAPSED,
+            REPLY_PANEL_COLLAPSED,
+            REPLY_PANEL_TAB_INDEX,
+        ),
+    )
+
+    persisted = asyncio.run(scene.get_state(timeout=1.0))
+    scene.set_panel_top_right_tab_index(LATER_PANEL_TAB_INDEX)
+    scene.set_panel_top_left_panel_collapsed(LATER_PANEL_COLLAPSED)
+
+    assert persisted.ui.panel_top_right_tab_index == 1
+    assert persisted.ui.panel_top_left_panel_collapsed is True
+    assert persisted.ui is not scene._ui_state
 
 
