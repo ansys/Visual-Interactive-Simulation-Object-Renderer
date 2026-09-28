@@ -31,7 +31,7 @@ describe('AggregateSelectionInfo', () => {
                 variableId: '10',
                 variableComponent: 1,
                 customDiffuseColorHex: '#123456',
-                spectra: [variable],
+                variables: [variable],
             }),
             createActorNode({
                 name: 'mesh',
@@ -39,7 +39,7 @@ describe('AggregateSelectionInfo', () => {
                 variableId: '10',
                 variableComponent: 1,
                 customDiffuseColorHex: '#123456',
-                spectra: [variable],
+                variables: [variable],
             }),
         ];
 
@@ -61,17 +61,17 @@ describe('AggregateSelectionInfo', () => {
 
         const actorNodes = [
             createActorNode({
-                spectra: [variable],
+                variables: [variable],
                 variableId: '10',
                 variableComponent: 1,
             }),
             createActorNode({
-                spectra: [variable],
+                variables: [variable],
                 variableId: '10',
                 variableComponent: 1,
             }),
             createActorNode({
-                spectra: [variable],
+                variables: [variable],
                 variableId: '10',
                 variableComponent: 1,
             }),
@@ -89,12 +89,12 @@ describe('AggregateSelectionInfo', () => {
 
         const actorNodes = [
             createActorNode({
-                spectra: [variable10],
+                variables: [variable10],
                 variableId: '10',
                 variableComponent: 1,
             }),
             createActorNode({
-                spectra: [variable20],
+                variables: [variable20],
                 variableId: '10',
                 variableComponent: 1,
             }),
@@ -116,7 +116,7 @@ describe('AggregateSelectionInfo', () => {
                 variableId: '10',
                 variableComponent: 1,
                 customDiffuseColorHex: '#111111',
-                spectra: [variable10, variable20],
+                variables: [variable10, variable20],
             }),
             createActorNode({
                 name: 'mesh B',
@@ -124,7 +124,7 @@ describe('AggregateSelectionInfo', () => {
                 variableId: '20',
                 variableComponent: 1,
                 customDiffuseColorHex: '#222222',
-                spectra: [variable10, variable20],
+                variables: [variable10, variable20],
             }),
         ];
 
@@ -147,7 +147,7 @@ describe('AggregateSelectionInfo', () => {
                 variableId: '10',
                 variableComponent: 1,
                 customDiffuseColorHex: '#123456',
-                spectra: [variable],
+                variables: [variable],
             }),
             createActorNode({
                 name: 'same name',
@@ -155,7 +155,7 @@ describe('AggregateSelectionInfo', () => {
                 variableId: '10',
                 variableComponent: 1,
                 customDiffuseColorHex: '#123456',
-                spectra: [variable],
+                variables: [variable],
             }),
         ];
 
@@ -173,7 +173,7 @@ describe('AggregateSelectionInfo', () => {
         const actorNode = createActorNode({
             variableId: '999',
             variableComponent: 1,
-            spectra: [createVariable(10, [1])],
+            variables: [createVariable(10, [1])],
         });
 
         const result = await AggregateSelectionInfo.getInstanceAsync([actorNode]);
@@ -234,7 +234,7 @@ describe('AggregateSelectionInfo', () => {
             createActorNode({
                 variableId: '10',
                 variableComponent: 1,
-                spectra: [variable10, variable20],
+                variables: [variable10, variable20],
             }),
         ]);
 
@@ -252,7 +252,7 @@ describe('AggregateSelectionInfo', () => {
             createActorNode({
                 variableId: null,
                 variableComponent: 1,
-                spectra: [variable],
+                variables: [variable],
             }),
         ]);
 
@@ -269,7 +269,7 @@ describe('AggregateSelectionInfo', () => {
             createActorNode({
                 variableId: '10',
                 variableComponent: 1,
-                spectra: [variable],
+                variables: [variable],
             }),
         ]);
 
@@ -287,7 +287,7 @@ describe('AggregateSelectionInfo', () => {
             createActorNode({
                 variableId: '10',
                 variableComponent: 1,
-                spectra: [variable],
+                variables: [variable],
             }),
         ]);
 
@@ -308,7 +308,7 @@ describe('AggregateSelectionInfo', () => {
             createActorNode({
                 variableId: '10',
                 variableComponent: 1,
-                spectra: [variable10, variable20],
+                variables: [variable10, variable20],
             }),
         ]);
 
@@ -328,7 +328,7 @@ describe('AggregateSelectionInfo', () => {
             createActorNode({
                 variableId: '10',
                 variableComponent: 1,
-                spectra: [variable],
+                variables: [variable],
             }),
         ]);
 
@@ -362,7 +362,7 @@ interface ActorNodeOptions {
     variableId?: string | null;
     variableComponent?: number;
     customDiffuseColorHex?: string | null;
-    spectra?: VariableFixture[];
+    variables?: VariableFixture[];
 }
 
 function createVariable(id: number, componentIds: number[]): VariableFixture {
@@ -419,7 +419,7 @@ function createActorNode({
     variableId = null,
     variableComponent = 0,
     customDiffuseColorHex = '#ffffff',
-    spectra = [],
+    variables = [],
 }: ActorNodeOptions = {}): VisorSceneNodeExtended {
     return {
         name,
@@ -429,10 +429,10 @@ function createActorNode({
         customDiffuseColorHex,
 
         variableCollection: {
-            array: spectra.map((variable) => variable.metadata),
+            array: variables.map((variable) => variable.metadata),
 
             getVariable: jest.fn((id: number | string) => {
-                const match = spectra.find(
+                const match = variables.find(
                     (variable) => variable.metadata.id.toString() === id.toString()
                 );
 

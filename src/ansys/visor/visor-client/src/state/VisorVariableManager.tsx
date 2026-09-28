@@ -80,10 +80,10 @@ export type VisorVariableInfo = Readonly<{
 }>;
 
 /**
- * A collection of spectra associated with a group of data arrays.
+ * A collection of variables associated with a group of data arrays.
  */
 export type VisorVariableCollection = Readonly<{
-    /** Spectra in collection order. */
+    /** Variables in collection order. */
     array: VisorVariableInfo[];
 
     /**
@@ -125,7 +125,7 @@ export type VisorVariableManager = Readonly<{
     finishAddingDataArrayMetadata: () => void;
 
     /**
-     * Finalized collection of all globally registered spectra.
+     * Finalized collection of all globally registered variables.
      *
      * @throws Error if
      * {@link VisorVariableManager.finishAddingDataArrayMetadata} has not yet
@@ -137,7 +137,7 @@ export type VisorVariableManager = Readonly<{
 /**
  * Creates a variable manager for aggregating metadata from VTK data arrays.
  *
- * @returns A new variable manager with no registered spectra.
+ * @returns A new variable manager with no registered variables.
  */
 export function getVariableManager(): VisorVariableManager {
     /** Tracks variable IDs and their assigned lookup positions. */
@@ -374,7 +374,7 @@ export function getVariableManager(): VisorVariableManager {
      * Registers a group of data arrays and creates its local variable collection.
      *
      * @param dataArrays - Data arrays to register.
-     * @returns An immutable collection containing spectra for the supplied arrays.
+     * @returns An immutable collection containing variables for the supplied arrays.
      */
     function addDataArrayMetadata(dataArrays: VisorVtkDataArray[]): VisorVariableCollection {
         const array: VisorVariableInfo[] = [];

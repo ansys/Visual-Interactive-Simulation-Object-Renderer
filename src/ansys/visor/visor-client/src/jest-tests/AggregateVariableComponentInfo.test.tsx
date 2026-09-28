@@ -23,7 +23,7 @@ describe('AggregateVariableComponentInfo', () => {
                 createActorNode({
                     variableId: parentVariable.id,
                     variableComponent: 0,
-                    spectra: [
+                    variables: [
                         createVariable({
                             id: parentVariable.id,
                             componentIds: [-1, 0, 1, 2],
@@ -78,12 +78,12 @@ describe('AggregateVariableComponentInfo', () => {
                 createActorNode({
                     variableId: parentVariable.id,
                     variableComponent: 0,
-                    spectra: [firstVariable],
+                    variables: [firstVariable],
                 }),
                 createActorNode({
                     variableId: parentVariable.id,
                     variableComponent: 0,
-                    spectra: [secondVariable],
+                    variables: [secondVariable],
                 }),
             ],
             parentVariable,
@@ -117,12 +117,12 @@ describe('AggregateVariableComponentInfo', () => {
                 createActorNode({
                     variableId: parentVariable.id,
                     variableComponent: 0,
-                    spectra: [firstVariable],
+                    variables: [firstVariable],
                 }),
                 createActorNode({
                     variableId: parentVariable.id,
                     variableComponent: 0,
-                    spectra: [secondVariable],
+                    variables: [secondVariable],
                 }),
             ],
             parentVariable,
@@ -157,12 +157,12 @@ describe('AggregateVariableComponentInfo', () => {
                 createActorNode({
                     variableId: parentVariable.id,
                     variableComponent: 0,
-                    spectra: [matchingVariable],
+                    variables: [matchingVariable],
                 }),
                 createActorNode({
                     variableId: unrelatedVariable.id,
                     variableComponent: -1,
-                    spectra: [unrelatedVariable],
+                    variables: [unrelatedVariable],
                 }),
             ],
             parentVariable,
@@ -196,12 +196,12 @@ describe('AggregateVariableComponentInfo', () => {
                 createActorNode({
                     variableId: parentVariable.id,
                     variableComponent: 0,
-                    spectra: [variableWithRange],
+                    variables: [variableWithRange],
                 }),
                 createActorNode({
                     variableId: parentVariable.id,
                     variableComponent: 0,
-                    spectra: [variableWithoutRange],
+                    variables: [variableWithoutRange],
                 }),
             ],
             parentVariable,
@@ -237,12 +237,12 @@ describe('AggregateVariableComponentInfo', () => {
                 createActorNode({
                     variableId: parentVariable.id,
                     variableComponent: 0,
-                    spectra: [missingRangeVariable],
+                    variables: [missingRangeVariable],
                 }),
                 createActorNode({
                     variableId: parentVariable.id,
                     variableComponent: 0,
-                    spectra: [laterVariable],
+                    variables: [laterVariable],
                 }),
             ],
             parentVariable,
@@ -460,7 +460,7 @@ interface CreateVariableOptions {
 interface CreateActorNodeOptions {
     variableId: string | null;
     variableComponent: number;
-    spectra: VisorVariableInfo[];
+    variables: VisorVariableInfo[];
 }
 
 async function createParentVariable(): Promise<AggregateVariableInfo> {
@@ -474,7 +474,7 @@ async function createParentVariable(): Promise<AggregateVariableInfo> {
     const actorNode = createActorNode({
         variableId: variable.id,
         variableComponent: 0,
-        spectra: [variable],
+        variables: [variable],
     });
 
     const selection = await AggregateSelectionInfo.getInstanceAsync([actorNode]);
@@ -503,7 +503,7 @@ async function createComponentInfo(): Promise<AggregateVariableComponentInfo> {
             createActorNode({
                 variableId: parentVariable.id,
                 variableComponent: 0,
-                spectra: [actorVariable],
+                variables: [actorVariable],
             }),
         ],
         parentVariable,
@@ -593,8 +593,8 @@ function createVariable({
     };
 }
 
-function createVariableCollection(spectra: VisorVariableInfo[]): VisorVariableCollection {
-    const array = [...spectra];
+function createVariableCollection(variables: VisorVariableInfo[]): VisorVariableCollection {
+    const array = [...variables];
 
     const map = new Map<string, VisorVariableInfo>(
         array.map((variable) => [variable.id, variable])
@@ -616,7 +616,7 @@ function createVariableCollection(spectra: VisorVariableInfo[]): VisorVariableCo
 function createActorNode({
     variableId,
     variableComponent,
-    spectra,
+    variables,
 }: CreateActorNodeOptions): VisorSceneNodeExtended {
     return {
         name: 'mesh',
@@ -624,7 +624,7 @@ function createActorNode({
         variableId,
         variableComponent,
         customDiffuseColorHex: '#ffffff',
-        variableCollection: createVariableCollection(spectra),
+        variableCollection: createVariableCollection(variables),
     } as unknown as VisorSceneNodeExtended;
 }
 

@@ -24,7 +24,7 @@ describe('AggregateVariableInfo', () => {
             createActorNode({
                 variableId: variable.id,
                 variableComponent: 0,
-                spectra: [variable],
+                variables: [variable],
             }),
         ]);
 
@@ -46,7 +46,7 @@ describe('AggregateVariableInfo', () => {
             createActorNode({
                 variableId: variable.id,
                 variableComponent: 0,
-                spectra: [variable],
+                variables: [variable],
             }),
         ]);
 
@@ -71,7 +71,7 @@ describe('AggregateVariableInfo', () => {
             createActorNode({
                 variableId: variable.id,
                 variableComponent: 1,
-                spectra: [variable],
+                variables: [variable],
             }),
         ]);
 
@@ -99,12 +99,12 @@ describe('AggregateVariableInfo', () => {
             createActorNode({
                 variableId: firstVariable.id,
                 variableComponent: 1,
-                spectra: [firstVariable],
+                variables: [firstVariable],
             }),
             createActorNode({
                 variableId: secondVariable.id,
                 variableComponent: 1,
-                spectra: [secondVariable],
+                variables: [secondVariable],
             }),
         ]);
 
@@ -131,12 +131,12 @@ describe('AggregateVariableInfo', () => {
             createActorNode({
                 variableId: firstVariable.id,
                 variableComponent: 0,
-                spectra: [firstVariable],
+                variables: [firstVariable],
             }),
             createActorNode({
                 variableId: secondVariable.id,
                 variableComponent: 1,
-                spectra: [secondVariable],
+                variables: [secondVariable],
             }),
         ]);
 
@@ -157,7 +157,7 @@ describe('AggregateVariableInfo', () => {
             createActorNode({
                 variableId: variable.id,
                 variableComponent: 999,
-                spectra: [variable],
+                variables: [variable],
             }),
         ]);
 
@@ -196,12 +196,12 @@ describe('AggregateVariableInfo', () => {
             createActorNode({
                 variableId: firstVariable.id,
                 variableComponent: 1,
-                spectra: [firstVariable],
+                variables: [firstVariable],
             }),
             createActorNode({
                 variableId: secondVariable.id,
                 variableComponent: 1,
-                spectra: [secondVariable],
+                variables: [secondVariable],
             }),
         ]);
 
@@ -238,12 +238,12 @@ describe('AggregateVariableInfo', () => {
             createActorNode({
                 variableId: firstVariable.id,
                 variableComponent: 0,
-                spectra: [firstVariable],
+                variables: [firstVariable],
             }),
             createActorNode({
                 variableId: secondVariable.id,
                 variableComponent: 0,
-                spectra: [secondVariable],
+                variables: [secondVariable],
             }),
         ]);
 
@@ -274,7 +274,7 @@ describe('AggregateVariableInfo', () => {
             createActorNode({
                 variableId: variable.id,
                 variableComponent: 999,
-                spectra: [variable],
+                variables: [variable],
             }),
         ]);
 
@@ -296,7 +296,7 @@ describe('AggregateVariableInfo', () => {
             createActorNode({
                 variableId: variable.id,
                 variableComponent: 0,
-                spectra: [variable],
+                variables: [variable],
             }),
         ]);
 
@@ -319,7 +319,7 @@ describe('AggregateVariableInfo', () => {
             createActorNode({
                 variableId: variable.id,
                 variableComponent: 0,
-                spectra: [variable],
+                variables: [variable],
             }),
         ]);
 
@@ -341,7 +341,7 @@ describe('AggregateVariableInfo', () => {
             createActorNode({
                 variableId: variable.id,
                 variableComponent: 0,
-                spectra: [variable],
+                variables: [variable],
             }),
         ]);
 
@@ -364,7 +364,7 @@ describe('AggregateVariableInfo', () => {
             createActorNode({
                 variableId: variable.id,
                 variableComponent: 0,
-                spectra: [variable],
+                variables: [variable],
             }),
         ]);
 
@@ -386,7 +386,7 @@ describe('AggregateVariableInfo', () => {
             createActorNode({
                 variableId: variable.id,
                 variableComponent: 0,
-                spectra: [variable],
+                variables: [variable],
             }),
         ]);
 
@@ -408,7 +408,7 @@ describe('AggregateVariableInfo', () => {
             createActorNode({
                 variableId: variable.id,
                 variableComponent: 0,
-                spectra: [variable],
+                variables: [variable],
             }),
         ]);
 
@@ -434,7 +434,7 @@ describe('AggregateVariableInfo', () => {
             createActorNode({
                 variableId: variable.id,
                 variableComponent: 0,
-                spectra: [variable],
+                variables: [variable],
             }),
         ]);
 
@@ -464,7 +464,7 @@ describe('AggregateVariableInfo', () => {
             createActorNode({
                 variableId: velocity.id,
                 variableComponent: 0,
-                spectra: [velocity, acceleration],
+                variables: [velocity, acceleration],
             }),
         ]);
 
@@ -492,7 +492,7 @@ describe('AggregateVariableInfo', () => {
             createActorNode({
                 variableId: velocity.id,
                 variableComponent: 0,
-                spectra: [velocity, acceleration],
+                variables: [velocity, acceleration],
             }),
         ]);
 
@@ -526,7 +526,7 @@ interface CreateVariableOptions {
 interface CreateActorNodeOptions {
     variableId: string | null;
     variableComponent: number;
-    spectra: VisorVariableInfo[];
+    variables: VisorVariableInfo[];
 }
 
 async function createSelection(
@@ -602,8 +602,8 @@ function createVariable({
     };
 }
 
-function createVariableCollection(spectra: VisorVariableInfo[]): VisorVariableCollection {
-    const array = [...spectra];
+function createVariableCollection(variables: VisorVariableInfo[]): VisorVariableCollection {
+    const array = [...variables];
     const map = new Map(array.map((variable) => [variable.id, variable]));
 
     return {
@@ -622,7 +622,7 @@ function createVariableCollection(spectra: VisorVariableInfo[]): VisorVariableCo
 function createActorNode({
     variableId,
     variableComponent,
-    spectra,
+    variables,
 }: CreateActorNodeOptions): VisorSceneNodeExtended {
     return {
         name: 'mesh',
@@ -630,7 +630,7 @@ function createActorNode({
         variableId,
         variableComponent,
         customDiffuseColorHex: '#ffffff',
-        variableCollection: createVariableCollection(spectra),
+        variableCollection: createVariableCollection(variables),
     } as unknown as VisorSceneNodeExtended;
 }
 

@@ -196,7 +196,7 @@ describe('getVariableManager', () => {
             }).toThrow('Do we support label info for data arrays with 5 component(s)?');
         });
 
-        test('returns spectra in input order', () => {
+        test('returns variables in input order', () => {
             const manager = getVariableManager();
 
             const collection = manager.addDataArrayMetadata([
@@ -211,7 +211,7 @@ describe('getVariableManager', () => {
             expect(collection.array.map((item) => item.name)).toEqual(['first', 'second']);
         });
 
-        test('creates separate spectra for different names', () => {
+        test('creates separate variables for different names', () => {
             const manager = getVariableManager();
 
             const collection = manager.addDataArrayMetadata([
@@ -227,7 +227,7 @@ describe('getVariableManager', () => {
             expect(collection.array[0]).not.toBe(collection.array[1]);
         });
 
-        test('creates separate spectra for different types', () => {
+        test('creates separate variables for different types', () => {
             const manager = getVariableManager();
 
             const collection = manager.addDataArrayMetadata([
@@ -244,7 +244,7 @@ describe('getVariableManager', () => {
             expect(collection.array[1].id).toBe('CELL::displacement::3');
         });
 
-        test('creates separate spectra for different component counts', () => {
+        test('creates separate variables for different component counts', () => {
             const manager = getVariableManager();
 
             const collection = manager.addDataArrayMetadata([
@@ -521,7 +521,7 @@ describe('getVariableManager', () => {
     });
 
     describe('global variable collection', () => {
-        test('contains spectra added before finishing', () => {
+        test('contains variables added before finishing', () => {
             const manager = getVariableManager();
 
             manager.addDataArrayMetadata([

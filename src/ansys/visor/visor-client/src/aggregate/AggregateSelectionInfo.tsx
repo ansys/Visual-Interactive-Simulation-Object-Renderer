@@ -63,7 +63,7 @@ export class AggregateSelectionInfo {
     #displayDiffuseColor: string | null | undefined = null;
 
     /**
-     * Available spectra collected from all selected nodes, keyed by variable ID.
+     * Available variables collected from all selected nodes, keyed by variable ID.
      */
     #variableOptions: Map<string, AggregateVariableInfo> = new Map();
 
