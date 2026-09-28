@@ -1,0 +1,17 @@
+name: "Load Visor env"
+description: "Export shared Visor CI constants as env vars for downstream steps."
+
+runs:
+  using: "composite"
+  steps:
+    - name: Export shared env vars
+      shell: bash
+      run: |
+        {
+          echo "MAIN_PYTHON_VERSION=3.11"
+          echo "PACKAGE_NAME=ansys-visor-viewer"
+          echo "POETRY_VERSION=2.3.2"
+          echo "NODE_VERSION=22.12.0"
+        } >> "$GITHUB_ENV"
+
+
