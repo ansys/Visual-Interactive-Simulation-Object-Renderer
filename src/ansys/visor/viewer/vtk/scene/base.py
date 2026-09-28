@@ -712,7 +712,7 @@ class VisorSceneBase(ABC):
         Callers must hold ``_vtk_lock``.
         """
         dataset_states = runtime_app_state.scene.dataset_states or {}
-        variable_states = runtime_app_state.scene.spectrum_states or {}
+        variable_states = runtime_app_state.scene.variable_states or {}
 
         self._dataset_registry.replace_part_states(dataset_states)
 
@@ -849,8 +849,8 @@ class VisorSceneBase(ABC):
         can carry same-named arrays of different widths, which the application
         treats as different quantities.
         """
-        variable_id = part_state.spectrum_id
-        component = part_state.spectrum_component
+        variable_id = part_state.variable_id
+        component = part_state.variable_component
 
         if variable_id is None:
             if component is not None:

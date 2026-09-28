@@ -245,15 +245,15 @@ class VisorDatasetRegistry:
         part_state = self._get_or_create_part_state(part_id)
         if part_state is None:
             return False
-        part_state.spectrum_id = variable_id
-        part_state.spectrum_component = component
+        part_state.variable_id = variable_id
+        part_state.variable_component = component
         return True
 
     def clear_part_color_variable(self, part_id: int) -> bool:
         """
         Clear the variable a part is coloured by.
 
-        Sets spectrum_id and spectrum_component to None together, in one
+        Sets variable_id and variable_component to None together, in one
         call — the compound class is only ever set or cleared atomically,
         never field by field.
 
@@ -264,8 +264,8 @@ class VisorDatasetRegistry:
         part_state = self._get_or_create_part_state(part_id)
         if part_state is None:
             return False
-        part_state.spectrum_id = None
-        part_state.spectrum_component = None
+        part_state.variable_id = None
+        part_state.variable_component = None
         return True
 
     def replace_part_states(self, dataset_states: Dict[int, RuntimeDatasetState]) -> None:

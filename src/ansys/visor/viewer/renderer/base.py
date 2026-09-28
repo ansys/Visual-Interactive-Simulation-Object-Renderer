@@ -121,7 +121,7 @@ class IRenderer(ABC):
     def apply_color_variable(
         self,
         node_id: int,
-        spectrum_id: str,
+        variable_id: str,
         array_type: str,
         array_name: str,
         component: int,
@@ -136,7 +136,7 @@ class IRenderer(ABC):
         ----------
         node_id:
             Scene-graph node to update.
-        spectrum_id:
+        variable_id:
             Server-authoritative opaque ID (stored as-is; not parsed here).
         array_type:
             ``"POINT"`` or ``"CELL"``.
@@ -156,7 +156,7 @@ class IRenderer(ABC):
     def refresh_color_variable_range(
         self,
         node_id: int,
-        spectrum_id: str,
+        variable_id: str,
         array_type: str,
         array_name: str,
         component: int,

@@ -615,7 +615,7 @@ class TestDelegatedApplyBodies:
     # ------------------------------------------------------------------
 
     def test_apply_color_variable_delegates_with_given_arguments(self, renderer):
-        """The association is forwarded unchanged; spectrum_id is not forwarded."""
+        """The association is forwarded unchanged; variable_id is not forwarded."""
         pipe = MagicMock(name="pipeline")
         renderer._pipelines[4] = pipe
 

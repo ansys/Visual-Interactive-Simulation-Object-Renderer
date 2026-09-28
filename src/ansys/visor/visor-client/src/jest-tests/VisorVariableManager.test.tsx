@@ -1,36 +1,36 @@
 import VisorVtkDataArray from '../state/appstate/vtkInfo/VisorVtkDataArray.tsx';
-import { getSpectrumManager, VisorSpectrumInfo } from '../state/VisorSpectrumManager.tsx';
+import { getVariableManager, VisorVariableInfo } from '../state/VisorVariableManager.tsx';
 
-describe('getSpectrumManager', () => {
+describe('getVariableManager', () => {
     describe('manager lifecycle', () => {
         test('returns a frozen manager object', () => {
-            const manager = getSpectrumManager();
+            const manager = getVariableManager();
 
             expect(Object.isFrozen(manager)).toBe(true);
             expect(typeof manager.addDataArrayMetadata).toBe('function');
             expect(typeof manager.finishAddingDataArrayMetadata).toBe('function');
         });
 
-        test('throws when globalSpectrumCollection is read before finishing', () => {
-            const manager = getSpectrumManager();
+        test('throws when globalVariableCollection is read before finishing', () => {
+            const manager = getVariableManager();
 
-            expect(() => manager.globalSpectrumCollection).toThrow(
+            expect(() => manager.globalVariableCollection).toThrow(
                 'finishAddingDataArrayMetadata() has not been called yet'
             );
         });
 
         test('creates an empty global collection when no metadata was added', () => {
-            const manager = getSpectrumManager();
+            const manager = getVariableManager();
 
             manager.finishAddingDataArrayMetadata();
 
-            expect(manager.globalSpectrumCollection.array).toEqual([]);
-            expect(manager.globalSpectrumCollection.getSpectrum(null)).toBeNull();
-            expect(manager.globalSpectrumCollection.getSpectrum('missing')).toBeNull();
+            expect(manager.globalVariableCollection.array).toEqual([]);
+            expect(manager.globalVariableCollection.getVariable(null)).toBeNull();
+            expect(manager.globalVariableCollection.getVariable('missing')).toBeNull();
         });
 
         test('throws when finishAddingDataArrayMetadata is called twice', () => {
-            const manager = getSpectrumManager();
+            const manager = getVariableManager();
 
             manager.finishAddingDataArrayMetadata();
 
@@ -40,21 +40,21 @@ describe('getSpectrumManager', () => {
         });
 
         test('different managers have independent state', () => {
-            const firstManager = getSpectrumManager();
-            const secondManager = getSpectrumManager();
+            const firstManager = getVariableManager();
+            const secondManager = getVariableManager();
 
             firstManager.addDataArrayMetadata([createDataArray()]);
             firstManager.finishAddingDataArrayMetadata();
             secondManager.finishAddingDataArrayMetadata();
 
-            expect(firstManager.globalSpectrumCollection.array).toHaveLength(1);
-            expect(secondManager.globalSpectrumCollection.array).toHaveLength(0);
+            expect(firstManager.globalVariableCollection.array).toHaveLength(1);
+            expect(secondManager.globalVariableCollection.array).toHaveLength(0);
         });
     });
 
     describe('addDataArrayMetadata', () => {
         test('returns an empty frozen collection for an empty array', () => {
-            const manager = getSpectrumManager();
+            const manager = getVariableManager();
 
             const collection = manager.addDataArrayMetadata([]);
 
@@ -63,8 +63,8 @@ describe('getSpectrumManager', () => {
             expect(Object.isFrozen(collection.array)).toBe(true);
         });
 
-        test('creates scalar spectrum metadata', () => {
-            const manager = getSpectrumManager();
+        test('creates scalar variable metadata', () => {
+            const manager = getVariableManager();
 
             const collection = manager.addDataArrayMetadata([
                 createDataArray({
@@ -76,15 +76,15 @@ describe('getSpectrumManager', () => {
                 }),
             ]);
 
-            const spectrum = collection.array[0];
+            const variable = collection.array[0];
 
-            expect(spectrum.id).toBe('POINT::temperature::1');
-            expect(spectrum.type).toBe('POINT');
-            expect(spectrum.name).toBe('temperature');
-            expect(spectrum.shape).toBe('Scalar');
-            expect(spectrum.fullName).toBe('POINT - temperature (Scalar)');
-            expect(spectrum.numComponents).toBe(1);
-            expect(spectrum.componentOptions).toEqual([
+            expect(variable.id).toBe('POINT::temperature::1');
+            expect(variable.type).toBe('POINT');
+            expect(variable.name).toBe('temperature');
+            expect(variable.shape).toBe('Scalar');
+            expect(variable.fullName).toBe('POINT - temperature (Scalar)');
+            expect(variable.numComponents).toBe(1);
+            expect(variable.componentOptions).toEqual([
                 {
                     id: -1,
                     name: 'Magnitude',
@@ -93,7 +93,7 @@ describe('getSpectrumManager', () => {
         });
 
         test('creates Vector2 component options', () => {
-            const spectrum = addSingleSpectrum(
+            const variable = addSingleVariable(
                 createDataArray({
                     numComponents: 2,
                     ranges: [
@@ -103,8 +103,8 @@ describe('getSpectrumManager', () => {
                 })
             );
 
-            expect(spectrum.shape).toBe('Vector2');
-            expect(spectrum.componentOptions).toEqual([
+            expect(variable.shape).toBe('Vector2');
+            expect(variable.componentOptions).toEqual([
                 { id: -1, name: 'Magnitude' },
                 { id: 0, name: 'X' },
                 { id: 1, name: 'Y' },
@@ -112,7 +112,7 @@ describe('getSpectrumManager', () => {
         });
 
         test('creates Vector3 component options', () => {
-            const spectrum = addSingleSpectrum(
+            const variable = addSingleVariable(
                 createDataArray({
                     numComponents: 3,
                     ranges: [
@@ -123,8 +123,8 @@ describe('getSpectrumManager', () => {
                 })
             );
 
-            expect(spectrum.shape).toBe('Vector3');
-            expect(spectrum.componentOptions).toEqual([
+            expect(variable.shape).toBe('Vector3');
+            expect(variable.componentOptions).toEqual([
                 { id: -1, name: 'Magnitude' },
                 { id: 0, name: 'X' },
                 { id: 1, name: 'Y' },
@@ -133,7 +133,7 @@ describe('getSpectrumManager', () => {
         });
 
         test('creates Vector4 component options', () => {
-            const spectrum = addSingleSpectrum(
+            const variable = addSingleVariable(
                 createDataArray({
                     numComponents: 4,
                     ranges: [
@@ -145,8 +145,8 @@ describe('getSpectrumManager', () => {
                 })
             );
 
-            expect(spectrum.shape).toBe('Vector4');
-            expect(spectrum.componentOptions).toEqual([
+            expect(variable.shape).toBe('Vector4');
+            expect(variable.componentOptions).toEqual([
                 { id: -1, name: 'Magnitude' },
                 { id: 0, name: 'X' },
                 { id: 1, name: 'Y' },
@@ -156,14 +156,14 @@ describe('getSpectrumManager', () => {
         });
 
         test('creates nine-component tensor labels', () => {
-            const spectrum = addSingleSpectrum(
+            const variable = addSingleVariable(
                 createDataArray({
                     numComponents: 9,
                     ranges: Array.from({ length: 9 }, (_, i) => [-i, i]),
                 })
             );
 
-            expect(spectrum.componentOptions).toEqual([
+            expect(variable.componentOptions).toEqual([
                 { id: -1, name: 'Magnitude' },
                 { id: 0, name: 'XX' },
                 { id: 1, name: 'XY' },
@@ -178,7 +178,7 @@ describe('getSpectrumManager', () => {
         });
 
         test('throws for an unsupported component count', () => {
-            const manager = getSpectrumManager();
+            const manager = getVariableManager();
 
             expect(() => {
                 manager.addDataArrayMetadata([
@@ -197,7 +197,7 @@ describe('getSpectrumManager', () => {
         });
 
         test('returns spectra in input order', () => {
-            const manager = getSpectrumManager();
+            const manager = getVariableManager();
 
             const collection = manager.addDataArrayMetadata([
                 createDataArray({
@@ -212,7 +212,7 @@ describe('getSpectrumManager', () => {
         });
 
         test('creates separate spectra for different names', () => {
-            const manager = getSpectrumManager();
+            const manager = getVariableManager();
 
             const collection = manager.addDataArrayMetadata([
                 createDataArray({
@@ -228,7 +228,7 @@ describe('getSpectrumManager', () => {
         });
 
         test('creates separate spectra for different types', () => {
-            const manager = getSpectrumManager();
+            const manager = getVariableManager();
 
             const collection = manager.addDataArrayMetadata([
                 createDataArray({
@@ -245,7 +245,7 @@ describe('getSpectrumManager', () => {
         });
 
         test('creates separate spectra for different component counts', () => {
-            const manager = getSpectrumManager();
+            const manager = getVariableManager();
 
             const collection = manager.addDataArrayMetadata([
                 createDataArray({
@@ -271,55 +271,55 @@ describe('getSpectrumManager', () => {
         });
     });
 
-    describe('local spectrum collections', () => {
-        test('looks up a spectrum by ID', () => {
-            const manager = getSpectrumManager();
+    describe('local variable collections', () => {
+        test('looks up a variable by ID', () => {
+            const manager = getVariableManager();
             const collection = manager.addDataArrayMetadata([createDataArray()]);
 
-            const spectrum = collection.array[0];
+            const variable = collection.array[0];
 
-            expect(collection.getSpectrum(spectrum.id)).toBe(spectrum);
+            expect(collection.getVariable(variable.id)).toBe(variable);
         });
 
         test('returns null for null and unknown IDs', () => {
-            const manager = getSpectrumManager();
+            const manager = getVariableManager();
             const collection = manager.addDataArrayMetadata([createDataArray()]);
 
-            expect(collection.getSpectrum(null)).toBeNull();
-            expect(collection.getSpectrum('unknown')).toBeNull();
+            expect(collection.getVariable(null)).toBeNull();
+            expect(collection.getVariable('unknown')).toBeNull();
         });
 
         test('returns a frozen collection and array', () => {
-            const manager = getSpectrumManager();
+            const manager = getVariableManager();
             const collection = manager.addDataArrayMetadata([createDataArray()]);
 
             expect(Object.isFrozen(collection)).toBe(true);
             expect(Object.isFrozen(collection.array)).toBe(true);
         });
 
-        test('spectrum metadata objects are frozen', () => {
-            const spectrum = addSingleSpectrum(createDataArray());
+        test('variable metadata objects are frozen', () => {
+            const variable = addSingleVariable(createDataArray());
 
-            expect(Object.isFrozen(spectrum)).toBe(true);
+            expect(Object.isFrozen(variable)).toBe(true);
         });
     });
 
     describe('range information', () => {
         test('returns the magnitude range for component -1', () => {
-            const spectrum = addSingleSpectrum(
+            const variable = addSingleVariable(
                 createDataArray({
                     magnitudeRange: [0, 10],
                 })
             );
 
-            expect(spectrum.getRangeInfo(-1)).toEqual({
+            expect(variable.getRangeInfo(-1)).toEqual({
                 defaultRange: [0, 10],
                 customRange: [0, 10],
             });
         });
 
         test('returns the range for an individual component', () => {
-            const spectrum = addSingleSpectrum(
+            const variable = addSingleVariable(
                 createDataArray({
                     ranges: [
                         [-1, 1],
@@ -329,39 +329,39 @@ describe('getSpectrumManager', () => {
                 })
             );
 
-            expect(spectrum.getRangeInfo(0)).toEqual({
+            expect(variable.getRangeInfo(0)).toEqual({
                 defaultRange: [-1, 1],
                 customRange: [-1, 1],
             });
 
-            expect(spectrum.getRangeInfo(2)).toEqual({
+            expect(variable.getRangeInfo(2)).toEqual({
                 defaultRange: [-3, 3],
                 customRange: [-3, 3],
             });
         });
 
         test('returns null for null, undefined, and out-of-range components', () => {
-            const spectrum = addSingleSpectrum(createDataArray());
+            const variable = addSingleVariable(createDataArray());
 
-            expect(spectrum.getRangeInfo(null)).toBeNull();
-            expect(spectrum.getRangeInfo(undefined)).toBeNull();
-            expect(spectrum.getRangeInfo(-2)).toBeNull();
-            expect(spectrum.getRangeInfo(3)).toBeNull();
-            expect(spectrum.getRangeInfo(100)).toBeNull();
+            expect(variable.getRangeInfo(null)).toBeNull();
+            expect(variable.getRangeInfo(undefined)).toBeNull();
+            expect(variable.getRangeInfo(-2)).toBeNull();
+            expect(variable.getRangeInfo(3)).toBeNull();
+            expect(variable.getRangeInfo(100)).toBeNull();
         });
 
         test('returns cloned range arrays', () => {
-            const spectrum = addSingleSpectrum(
+            const variable = addSingleVariable(
                 createDataArray({
                     magnitudeRange: [0, 10],
                 })
             );
 
-            const first = spectrum.getRangeInfo(-1)!;
+            const first = variable.getRangeInfo(-1)!;
             first.defaultRange[0] = -999;
             first.customRange[1] = 999;
 
-            const second = spectrum.getRangeInfo(-1)!;
+            const second = variable.getRangeInfo(-1)!;
 
             expect(second.defaultRange).toEqual([0, 10]);
             expect(second.customRange).toEqual([0, 10]);
@@ -370,7 +370,7 @@ describe('getSpectrumManager', () => {
         });
 
         test('setCustomRange changes only the custom range', () => {
-            const spectrum = addSingleSpectrum(
+            const variable = addSingleVariable(
                 createDataArray({
                     ranges: [
                         [-1, 1],
@@ -380,45 +380,45 @@ describe('getSpectrumManager', () => {
                 })
             );
 
-            spectrum.setCustomRange(1, -20, 20);
+            variable.setCustomRange(1, -20, 20);
 
-            expect(spectrum.getRangeInfo(1)).toEqual({
+            expect(variable.getRangeInfo(1)).toEqual({
                 defaultRange: [-2, 2],
                 customRange: [-20, 20],
             });
         });
 
         test('setCustomRange can change the magnitude range', () => {
-            const spectrum = addSingleSpectrum(
+            const variable = addSingleVariable(
                 createDataArray({
                     magnitudeRange: [0, 10],
                 })
             );
 
-            spectrum.setCustomRange(-1, 2, 8);
+            variable.setCustomRange(-1, 2, 8);
 
-            expect(spectrum.getRangeInfo(-1)).toEqual({
+            expect(variable.getRangeInfo(-1)).toEqual({
                 defaultRange: [0, 10],
                 customRange: [2, 8],
             });
         });
 
         test('setCustomRange ignores invalid component IDs', () => {
-            const spectrum = addSingleSpectrum(createDataArray());
+            const variable = addSingleVariable(createDataArray());
 
-            spectrum.setCustomRange(-2, -100, 100);
-            spectrum.setCustomRange(100, -100, 100);
+            variable.setCustomRange(-2, -100, 100);
+            variable.setCustomRange(100, -100, 100);
 
-            expect(spectrum.getRangeInfo(-1)).toEqual({
+            expect(variable.getRangeInfo(-1)).toEqual({
                 defaultRange: [0, 10],
                 customRange: [0, 10],
             });
         });
     });
 
-    describe('duplicate spectrum aggregation', () => {
-        test('reuses the same spectrum object for the same ID', () => {
-            const manager = getSpectrumManager();
+    describe('duplicate variable aggregation', () => {
+        test('reuses the same variable object for the same ID', () => {
+            const manager = getVariableManager();
 
             const firstCollection = manager.addDataArrayMetadata([createDataArray()]);
 
@@ -428,9 +428,9 @@ describe('getSpectrumManager', () => {
         });
 
         test('expands default ranges using duplicate metadata', () => {
-            const manager = getSpectrumManager();
+            const manager = getVariableManager();
 
-            const firstSpectrum = manager.addDataArrayMetadata([
+            const firstVariable = manager.addDataArrayMetadata([
                 createDataArray({
                     magnitudeRange: [0, 10],
                     ranges: [
@@ -452,39 +452,39 @@ describe('getSpectrumManager', () => {
                 }),
             ]);
 
-            expect(firstSpectrum.getRangeInfo(-1)).toEqual({
+            expect(firstVariable.getRangeInfo(-1)).toEqual({
                 defaultRange: [-5, 20],
                 customRange: [-5, 20],
             });
 
-            expect(firstSpectrum.getRangeInfo(0)).toEqual({
+            expect(firstVariable.getRangeInfo(0)).toEqual({
                 defaultRange: [-10, 1],
                 customRange: [-10, 1],
             });
 
-            expect(firstSpectrum.getRangeInfo(1)).toEqual({
+            expect(firstVariable.getRangeInfo(1)).toEqual({
                 defaultRange: [-2, 15],
                 customRange: [-2, 15],
             });
 
-            expect(firstSpectrum.getRangeInfo(2)).toEqual({
+            expect(firstVariable.getRangeInfo(2)).toEqual({
                 defaultRange: [-30, 30],
                 customRange: [-30, 30],
             });
         });
 
         test('resets custom ranges to the expanded defaults when duplicate metadata is added', () => {
-            const manager = getSpectrumManager();
+            const manager = getVariableManager();
 
-            const spectrum = manager.addDataArrayMetadata([
+            const variable = manager.addDataArrayMetadata([
                 createDataArray({
                     magnitudeRange: [0, 10],
                 }),
             ]).array[0];
 
-            spectrum.setCustomRange(-1, 2, 8);
+            variable.setCustomRange(-1, 2, 8);
 
-            expect(spectrum.getRangeInfo(-1)?.customRange).toEqual([2, 8]);
+            expect(variable.getRangeInfo(-1)?.customRange).toEqual([2, 8]);
 
             manager.addDataArrayMetadata([
                 createDataArray({
@@ -492,16 +492,16 @@ describe('getSpectrumManager', () => {
                 }),
             ]);
 
-            expect(spectrum.getRangeInfo(-1)).toEqual({
+            expect(variable.getRangeInfo(-1)).toEqual({
                 defaultRange: [-5, 20],
                 customRange: [-5, 20],
             });
         });
 
         test('keeps existing bounds when duplicate ranges are narrower', () => {
-            const manager = getSpectrumManager();
+            const manager = getVariableManager();
 
-            const spectrum = manager.addDataArrayMetadata([
+            const variable = manager.addDataArrayMetadata([
                 createDataArray({
                     magnitudeRange: [-10, 20],
                 }),
@@ -513,16 +513,16 @@ describe('getSpectrumManager', () => {
                 }),
             ]);
 
-            expect(spectrum.getRangeInfo(-1)).toEqual({
+            expect(variable.getRangeInfo(-1)).toEqual({
                 defaultRange: [-10, 20],
                 customRange: [-10, 20],
             });
         });
     });
 
-    describe('global spectrum collection', () => {
+    describe('global variable collection', () => {
         test('contains spectra added before finishing', () => {
-            const manager = getSpectrumManager();
+            const manager = getVariableManager();
 
             manager.addDataArrayMetadata([
                 createDataArray({
@@ -535,14 +535,14 @@ describe('getSpectrumManager', () => {
 
             manager.finishAddingDataArrayMetadata();
 
-            const global = manager.globalSpectrumCollection;
+            const global = manager.globalVariableCollection;
 
             expect(global.array).toHaveLength(2);
             expect(global.array.map((item) => item.name)).toEqual(['temperature', 'pressure']);
         });
 
-        test('contains only one entry for duplicate spectrum IDs', () => {
-            const manager = getSpectrumManager();
+        test('contains only one entry for duplicate variable IDs', () => {
+            const manager = getVariableManager();
 
             manager.addDataArrayMetadata([
                 createDataArray({
@@ -558,39 +558,39 @@ describe('getSpectrumManager', () => {
 
             manager.finishAddingDataArrayMetadata();
 
-            expect(manager.globalSpectrumCollection.array).toHaveLength(1);
+            expect(manager.globalVariableCollection.array).toHaveLength(1);
         });
 
-        test('returns the same spectrum object as a local collection', () => {
-            const manager = getSpectrumManager();
+        test('returns the same variable object as a local collection', () => {
+            const manager = getVariableManager();
 
             const local = manager.addDataArrayMetadata([createDataArray()]);
 
             manager.finishAddingDataArrayMetadata();
 
             const id = local.array[0].id;
-            const global = manager.globalSpectrumCollection;
+            const global = manager.globalVariableCollection;
 
-            expect(global.getSpectrum(id)).toBe(local.array[0]);
+            expect(global.getVariable(id)).toBe(local.array[0]);
         });
 
         test('returns null for null and unknown global IDs', () => {
-            const manager = getSpectrumManager();
+            const manager = getVariableManager();
 
             manager.addDataArrayMetadata([createDataArray()]);
             manager.finishAddingDataArrayMetadata();
 
-            expect(manager.globalSpectrumCollection.getSpectrum(null)).toBeNull();
+            expect(manager.globalVariableCollection.getVariable(null)).toBeNull();
 
-            expect(manager.globalSpectrumCollection.getSpectrum('unknown')).toBeNull();
+            expect(manager.globalVariableCollection.getVariable('unknown')).toBeNull();
         });
 
         test('returns a frozen global collection', () => {
-            const manager = getSpectrumManager();
+            const manager = getVariableManager();
 
             manager.finishAddingDataArrayMetadata();
 
-            expect(Object.isFrozen(manager.globalSpectrumCollection)).toBe(true);
+            expect(Object.isFrozen(manager.globalVariableCollection)).toBe(true);
         });
     });
 });
@@ -626,8 +626,8 @@ function createDataArray({
     });
 }
 
-function addSingleSpectrum(dataArray: VisorVtkDataArray): VisorSpectrumInfo {
-    const manager = getSpectrumManager();
+function addSingleVariable(dataArray: VisorVtkDataArray): VisorVariableInfo {
+    const manager = getVariableManager();
 
     return manager.addDataArrayMetadata([dataArray]).array[0];
 }

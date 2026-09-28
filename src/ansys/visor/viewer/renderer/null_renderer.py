@@ -85,7 +85,7 @@ class NullRenderer(IRenderer):
     def apply_color_variable(
         self,
         node_id: int,
-        spectrum_id: str,
+        variable_id: str,
         array_type: str,
         array_name: str,
         component: int,
@@ -100,7 +100,7 @@ class NullRenderer(IRenderer):
     def refresh_color_variable_range(
         self,
         node_id: int,
-        spectrum_id: str,
+        variable_id: str,
         array_type: str,
         array_name: str,
         component: int,

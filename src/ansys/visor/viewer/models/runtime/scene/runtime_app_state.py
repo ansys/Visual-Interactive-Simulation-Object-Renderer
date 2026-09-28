@@ -52,7 +52,7 @@ class RuntimeAppState(BaseModel):
             edges_enabled=edges_enabled,
             bounding_box_enabled=bounding_box_enabled,
             dataset_states=dataset_states,
-            spectrum_states=variable_states or {},
+            variable_states=variable_states or {},
         )
         return cls(
             ui=ui_state,

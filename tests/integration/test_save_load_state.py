@@ -526,8 +526,8 @@ class TestRegistrySourcedPartState:
         assert record.visible is False
         assert record.selected is True
         assert record.diffuse_rgb == [1.0, 0.0, 0.0]
-        assert record.spectrum_id == "POINT::pressure::1"
-        assert record.spectrum_component == 0
+        assert record.variable_id == "POINT::pressure::1"
+        assert record.variable_component == 0
 
     def test_saved_visor_json_carries_the_camera_record_not_the_browsers(self, iface, tmp_path):
         """save_state writes the server's camera record, not the browser's reply.

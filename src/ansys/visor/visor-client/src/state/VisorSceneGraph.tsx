@@ -1,9 +1,9 @@
 import VisorColor from '../utils/VisorColor.tsx';
 import {
-    getSpectrumManager,
-    VisorSpectrumCollection,
-    VisorSpectrumManager,
-} from './VisorSpectrumManager.tsx';
+    getVariableManager,
+    VisorVariableCollection,
+    VisorVariableManager,
+} from './VisorVariableManager.tsx';
 import VisorVtkDataArray from './appstate/vtkInfo/VisorVtkDataArray.tsx';
 import { IRenderer } from '../renderer/IRenderer';
 
@@ -47,11 +47,11 @@ export type VisorSceneNodeExtended = Readonly<{
     clearColorVariableAsync: () => Promise<void>;
     setColorVariableAsync: (id: string, component?: number | null) => Promise<void>;
     setScalarRangeAsync: (min: number, max: number) => Promise<void>;
-    spectrumCollection: VisorSpectrumCollection;
-    spectrumId: string | null;
-    spectrumComponent: number;
-    spectrumMin: number;
-    spectrumMax: number;
+    variableCollection: VisorVariableCollection;
+    variableId: string | null;
+    variableComponent: number;
+    variableMin: number;
+    variableMax: number;
     defaultDiffuseColorRgb: Readonly<number[]>;
     defaultDiffuseColorHex: string;
     customDiffuseColorRgb: Readonly<number[]>;
@@ -66,7 +66,7 @@ export type VisorSceneNodeExtended = Readonly<{
 export const CreateVisorSceneGraph = (() => {
     return (
         string_or_object: string | VisorSceneNodeSimple,
-        spectrumManager?: VisorSpectrumManager,
+        variableManager?: VisorVariableManager,
         renderer?: IRenderer
     ) => {
         let simpleState: VisorSceneNodeSimple;
@@ -75,33 +75,33 @@ export const CreateVisorSceneGraph = (() => {
         } else {
             simpleState = string_or_object;
         }
-        const localSpectrumManager = spectrumManager == null;
-        spectrumManager ??= getSpectrumManager();
-        const rootNode = extendSimpleNode(simpleState, spectrumManager, null, null, renderer);
-        localSpectrumManager && spectrumManager.finishAddingDataArrayMetadata();
+        const localVariableManager = variableManager == null;
+        variableManager ??= getVariableManager();
+        const rootNode = extendSimpleNode(simpleState, variableManager, null, null, renderer);
+        localVariableManager && variableManager.finishAddingDataArrayMetadata();
         return rootNode;
     };
 
     function extendSimpleNode(
         simpleNode: VisorSceneNodeSimple,
-        spectrumManager: VisorSpectrumManager,
+        variableManager: VisorVariableManager,
         rootNodeSimple?: VisorSceneNodeSimple | null,
         rootNodeExtended?: VisorSceneNodeExtended | null,
         renderer?: IRenderer
     ): VisorSceneNodeExtended {
         rootNodeSimple ??= simpleNode;
-        if (spectrumManager == null) {
-            throw new Error(`spectrumManager cannot be null`);
+        if (variableManager == null) {
+            throw new Error(`variableManager cannot be null`);
         } else if (rootNodeSimple.nodeType !== 'root') {
             throw new Error(`rootNodeSimple.nodeType must be 'root'`);
         }
         let _visible: boolean = true;
         let _selected: boolean = false;
         let _opacity: number = 1;
-        let _spectrumId: string | null = null;
-        let _spectrumComponent: number = -1;
-        let _spectrumMin: number = -1;
-        let _spectrumMax: number = -1;
+        let _variableId: string | null = null;
+        let _variableComponent: number = -1;
+        let _variableMin: number = -1;
+        let _variableMax: number = -1;
         const defaultDiffuseColor = new VisorColor();
         const customDiffuseColor = new VisorColor();
         if (simpleNode.isActorNode) {
@@ -115,7 +115,7 @@ export const CreateVisorSceneGraph = (() => {
         }
         const nodeId = simpleNode.id;
 
-        const spectrumCollection = spectrumManager.addDataArrayMetadata(simpleNode.dataArrays);
+        const variableCollection = variableManager.addDataArrayMetadata(simpleNode.dataArrays);
 
         const node: VisorSceneNodeExtended = {
             id: simpleNode.id,
@@ -146,7 +146,7 @@ export const CreateVisorSceneGraph = (() => {
             get opacity() {
                 return _opacity;
             },
-            spectrumCollection,
+            variableCollection,
             async resetDiffuseColorAsync() {
                 customDiffuseColor.setHex(defaultDiffuseColor.hex);
                 await renderer!.resetDiffuseColorAsync(
@@ -184,37 +184,37 @@ export const CreateVisorSceneGraph = (() => {
                 await renderer!.sendPartDiffuseColorAsync(nodeId, rgbNormalized);
             },
             async clearColorVariableAsync() {
-                _spectrumId = null;
-                _spectrumComponent = -1;
-                _spectrumMin = -1;
-                _spectrumMax = -1;
+                _variableId = null;
+                _variableComponent = -1;
+                _variableMin = -1;
+                _variableMax = -1;
                 await renderer!.clearColorVariableAsync(nodeId);
                 await renderer!.sendClearPartColorVariableAsync(nodeId);
             },
             async setColorVariableAsync(id, component) {
-                if (_spectrumId === id && _spectrumComponent === component) {
+                if (_variableId === id && _variableComponent === component) {
                     return;
                 } else if (component == null) {
                     return;
                 }
-                const spectrum = spectrumCollection.getSpectrum(id);
-                if (spectrum == null) {
+                const variable = variableCollection.getVariable(id);
+                if (variable == null) {
                     return;
                 }
-                const rangeInfo = spectrum.getRangeInfo(component);
+                const rangeInfo = variable.getRangeInfo(component);
                 if (rangeInfo == null) {
                     return;
                 }
                 const min = rangeInfo.customRange[0];
                 const max = rangeInfo.customRange[1];
-                _spectrumId = id;
-                _spectrumComponent = component;
-                _spectrumMin = min;
-                _spectrumMax = max;
+                _variableId = id;
+                _variableComponent = component;
+                _variableMin = min;
+                _variableMax = max;
                 const descriptor = {
-                    spectrumId: id,
-                    spectrumType: spectrum.type,
-                    spectrumName: spectrum.name,
+                    variableId: id,
+                    variableType: variable.type,
+                    variableName: variable.name,
                     component,
                     min,
                     max,
@@ -281,17 +281,17 @@ export const CreateVisorSceneGraph = (() => {
                 await renderer!.setOpacityAsync(nodeId, opacity);
                 await renderer!.sendPartOpacityAsync(nodeId, opacity);
             },
-            get spectrumId() {
-                return _spectrumId;
+            get variableId() {
+                return _variableId;
             },
-            get spectrumComponent(): number {
-                return _spectrumComponent;
+            get variableComponent(): number {
+                return _variableComponent;
             },
-            get spectrumMin(): number {
-                return _spectrumMin;
+            get variableMin(): number {
+                return _variableMin;
             },
-            get spectrumMax(): number {
-                return _spectrumMax;
+            get variableMax(): number {
+                return _variableMax;
             },
             get customDiffuseColorRgb() {
                 return customDiffuseColor.rgb;
@@ -321,7 +321,7 @@ export const CreateVisorSceneGraph = (() => {
         simpleNode.children.forEach((simpleChild) => {
             const extendedChild = extendSimpleNode(
                 simpleChild,
-                spectrumManager,
+                variableManager,
                 rootNodeSimple,
                 rootNodeExtended,
                 renderer

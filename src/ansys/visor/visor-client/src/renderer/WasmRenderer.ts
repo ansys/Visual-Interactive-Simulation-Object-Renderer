@@ -342,14 +342,14 @@ export class WasmRenderer implements IRenderer {
             return;
         }
         const wasmMapper = this.#vtkScene.getVtkObject(handles.mapperId);
-        if (descriptor.spectrumType === 'POINT') {
+        if (descriptor.variableType === 'POINT') {
             await wasmMapper.SetScalarModeToUsePointFieldData();
         } else {
             await wasmMapper.SetScalarModeToUseCellFieldData();
         }
         await wasmMapper.SetScalarRange(descriptor.min, descriptor.max);
         await wasmMapper.SetColorModeToMapScalars();
-        await wasmMapper.ColorByArrayComponent(descriptor.spectrumName, descriptor.component);
+        await wasmMapper.ColorByArrayComponent(descriptor.variableName, descriptor.component);
         await wasmMapper.SetScalarVisibility(1);
         // Force creation of LUT if not already done. (Alternatively, after 9.5.20250802.dev0, you can call mapper.SetLookupTable(null))
         await wasmMapper.CreateDefaultLookupTable();
@@ -480,9 +480,9 @@ export class WasmRenderer implements IRenderer {
         // precisely so that no one has to.
         await this.#sendTriggerAsync('set_part_color_variable', nodeId, {
             nodeId,
-            variableId: descriptor.spectrumId,
-            association: descriptor.spectrumType,
-            arrayName: descriptor.spectrumName,
+            variableId: descriptor.variableId,
+            association: descriptor.variableType,
+            arrayName: descriptor.variableName,
             component: descriptor.component,
             min: descriptor.min,
             max: descriptor.max,
