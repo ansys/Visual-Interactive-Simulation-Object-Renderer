@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from ansys.visor.viewer.models.common.visor_camera_state import VisorCameraState
 from ansys.visor.viewer.models.common.visor_cross_section_state import VisorCrossSectionState
 from ansys.visor.viewer.models.common.visor_ui_state import VisorUIState
-from ansys.visor.viewer.models.common.visor_variable_state import VisorVariableState
+from ansys.visor.viewer.models.common.visor_variable_record import VisorVariableRecord
 from ansys.visor.viewer.models.runtime.dataset.runtime_dataset_state import RuntimeDatasetState
 from ansys.visor.viewer.models.runtime.scene.runtime_scene_state import RuntimeSceneState
 
@@ -39,7 +39,8 @@ class RuntimeAppState(BaseModel):
             bounding_box_enabled: bool | None = None,
             cross_section: VisorCrossSectionState | None = None,
             camera: VisorCameraState | None = None,
-            variable_states: Dict[str, VisorVariableState] | None = None,
+            *,
+            variable_states: Dict[str, VisorVariableRecord],
     ) -> "RuntimeAppState":
         """Construct a RuntimeAppState from the given components.
 
@@ -56,7 +57,7 @@ class RuntimeAppState(BaseModel):
             edges_enabled=edges_enabled,
             bounding_box_enabled=bounding_box_enabled,
             dataset_states=dataset_states,
-            variable_states=variable_states or {},
+            variable_states=variable_states,
         )
         return cls(
             ui=ui,

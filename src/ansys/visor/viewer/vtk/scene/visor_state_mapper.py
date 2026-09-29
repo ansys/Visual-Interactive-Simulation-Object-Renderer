@@ -45,8 +45,11 @@ class VisorStateMapper:
         unit = scene_state.unit
         # Scene - camera
         camera = scene_state.camera
-        # Scene - variables: Pass through as-is since they are already keyed by stable variable identifier
-        variable_states = scene_state.variable_states
+        # Scene - variables: the server's records, projected onto the persisted entry
+        variable_states = {
+            variable_id: record.to_variable_state()
+            for variable_id, record in scene_state.variable_states.items()
+        }
         # Scene - datasets
         runtime_dataset_states = scene_state.dataset_states
         persisted_dataset_states = {}
@@ -93,8 +96,9 @@ class VisorStateMapper:
         # scene - camera
         camera = scene_state.camera
 
-        # scene - variables: Pass through as-is since they are already keyed by stable variable identifier
-        variable_states = scene_state.variable_states or {}
+        # scene - variables: the records are built from the datasets, not from the file.
+        # VisorSceneBase.apply_state overlays the file's ranges onto the rebuilt records.
+        variable_states = {}
 
         # scene - datasets: Convert persisted dataset states to runtime
         runtime_dataset_states = {}

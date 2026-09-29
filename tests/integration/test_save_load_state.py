@@ -43,9 +43,11 @@ from vtkmodules.vtkCommonDataModel import (
 
 from ansys.visor.viewer.app.visor_vtk import VisorVTK
 from ansys.visor.viewer.core.metadata import ExtendedMetadata
+from ansys.visor.viewer.core.visor_enums import VisorVtkVariableType
 from ansys.visor.viewer.models.common.part_properties import PartProperties
 from ansys.visor.viewer.models.common.visor_camera_state import VisorCameraState
 from ansys.visor.viewer.models.common.visor_ui_state import VisorUIState
+from ansys.visor.viewer.models.common.visor_variable_state import VisorVariableState
 from ansys.visor.viewer.models.persist.dataset.persisted_dataset_state import PersistedDatasetState
 from ansys.visor.viewer.models.persist.persisted_viewer_state import PersistedViewerStateV1
 from ansys.visor.viewer.models.runtime.dataset.runtime_dataset_state import (
@@ -276,6 +278,7 @@ class TestLoadDatasetsFromState:
             edges_enabled=None,
             bounding_box_enabled=None,
             datasets=dataset_states,
+            variable_states={},
         )
 
     def test_single_dataset_is_restored_into_empty_scene(self, file_io, iface, tmp_path):
@@ -458,6 +461,7 @@ class TestRegistrySourcedPartState:
                     },
                 )
             },
+            variable_states={},
         )
 
         async def _frontend_round_trip(timeout: float = 5.0):
@@ -507,6 +511,7 @@ class TestRegistrySourcedPartState:
                     },
                 )
             },
+            variable_states={},
         )
         file_io.write_state(str(tmp_path), state)
 
@@ -528,6 +533,62 @@ class TestRegistrySourcedPartState:
         assert record.diffuse_rgb == [1.0, 0.0, 0.0]
         assert record.variable_id == "POINT::pressure::1"
         assert record.variable_component == 0
+
+    def test_reloading_a_colored_part_restores_its_file_range(self, file_io, iface, tmp_path):
+        """I-1: a colored part loads at the range the file stores, through the server's record.
+
+        plate.vtp carries a 2-component point array "UV" whose component-0 data
+        range is (-110.0, 110.0).  The file stores a custom range that differs
+        from it in both ends, so a pass proves the file's range reached the
+        mapper through the rebuilt, overlaid record (CC-1) and not the default.
+        """
+        original = file_to_dataset(_vtp_path())
+        snap = file_io.get_persisted_dataset_path(str(tmp_path), "plate")
+        file_io.write_dataset(snap, original)
+
+        state = PersistedViewerStateV1.from_components(
+            ui_state=VisorUIState(),
+            unit="m",
+            orthographic_enabled=None,
+            cross_section_enabled=None,
+            edges_enabled=None,
+            bounding_box_enabled=None,
+            datasets={
+                "plate": PersistedDatasetState(
+                    serialized_dataset_path=str(snap),
+                    parts={
+                        "plate": PartProperties(color_by="POINT::UV::2", color_by_component=0)
+                    },
+                )
+            },
+            variable_states={
+                "POINT::UV::2": VisorVariableState(
+                    id="POINT::UV::2",
+                    array_name="UV",
+                    type=VisorVtkVariableType.POINT,
+                    num_components=2,
+                    magnitude_range=(1.0, 2.0),
+                    ranges=[(-50.0, 60.0), (-7.0, 8.0)],
+                )
+            },
+        )
+        file_io.write_state(str(tmp_path), state)
+
+        iface._scene._push_runtime_state = MagicMock()
+        iface._scene._renderer.flush_wasm_state = MagicMock()
+
+        iface.load_state(str(tmp_path))
+
+        dataset = next(iter(iface._scene.datasets.values()))
+        part_id = dataset.part_index.part_ids[0]
+        mapper = iface._scene._renderer._pipelines[part_id].mapper
+        assert mapper.GetArrayName() == "UV"
+        assert mapper.GetScalarRange() == pytest.approx((-50.0, 60.0))
+
+        held = iface._scene._variable_records.variables["POINT::UV::2"]
+        assert held.ranges == [(-50.0, 60.0), (-7.0, 8.0)]
+        assert held.magnitude_range == (1.0, 2.0)
+        assert held.default_ranges[0] == (-110.0, 110.0)
 
     def test_saved_visor_json_carries_the_camera_record_not_the_browsers(self, iface, tmp_path):
         """save_state writes the server's camera record, not the browser's reply.
@@ -551,6 +612,7 @@ class TestRegistrySourcedPartState:
             unit="m",
             dataset_states={},
             camera=_reply_camera(),
+            variable_states={},
         )
 
         async def _frontend_round_trip(timeout: float = 5.0):

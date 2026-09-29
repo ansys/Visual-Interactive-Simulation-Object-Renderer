@@ -407,7 +407,7 @@ def _make_state_with_datasets(snapshot_path: str | None, name="model", unit="m")
     return PersistedViewerStateV1.from_components(
         ui_state=VisorUIState(), unit=unit, orthographic_enabled=None,
         cross_section_enabled=None, edges_enabled=None, bounding_box_enabled=None,
-        datasets={name: ds_state}
+        datasets={name: ds_state}, variable_states={}
     )
 
 
@@ -519,7 +519,7 @@ def test_load_state_passes_correct_metadata_to_add_dataset(tmp_path, iface):
     state = PersistedViewerStateV1.from_components(
         ui_state=VisorUIState(), unit="mm", orthographic_enabled=None,
         cross_section_enabled=None, edges_enabled=None, bounding_box_enabled=None,
-        datasets={"mesh": ds_state}
+        datasets={"mesh": ds_state}, variable_states={}
     )
 
     built_meta = MagicMock(spec=ExtendedMetadata)
