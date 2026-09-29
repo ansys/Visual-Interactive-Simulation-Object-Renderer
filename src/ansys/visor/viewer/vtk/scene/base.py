@@ -568,11 +568,7 @@ class VisorSceneBase(ABC):
         mutates the live dict or its entries.
         """
         with self._vtk_lock:
-            records = (
-                VisorVariableRecords.from_registry(self._dataset_registry, VisorVariableRecords())
-                .overlay(file_states)
-                .variables
-            )
+            records = VisorVariableRecords.from_file(self._dataset_registry, file_states).variables
             self._variable_records.variables = records
             logger.debug("variable records loaded from file: %d records", len(records))
 

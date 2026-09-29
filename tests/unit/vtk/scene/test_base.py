@@ -3438,7 +3438,7 @@ def test_load_overlays_the_file_range_before_the_part_restore(scene, registry):
     order = []
     seen_by_restore = {}
     real_build = VisorVariableRecords.from_registry
-    real_overlay = VisorVariableRecords.overlay
+    real_overlay = VisorVariableRecords._overlay
 
     def _build(*args):
         order.append("rebuild")
@@ -3454,7 +3454,7 @@ def test_load_overlays_the_file_range_before_the_part_restore(scene, registry):
 
     with (
         patch.object(VisorVariableRecords, "from_registry", side_effect=_build),
-        patch.object(VisorVariableRecords, "overlay", autospec=True, side_effect=_overlay),
+        patch.object(VisorVariableRecords, "_overlay", autospec=True, side_effect=_overlay),
         patch.object(scene, "_restore_part_states", side_effect=_restore),
     ):
         _apply(
