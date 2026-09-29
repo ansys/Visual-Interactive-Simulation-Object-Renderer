@@ -65,6 +65,12 @@ def parse_args():
         default=None,
         help="Dark mode (True or False, default: from settings or server default)"
     )
+    init_parser.add_argument(
+        "--start",
+        default=False,
+        action="store_true",
+        help="Start the instance after initialization (default: False)"
+    )
 
     # list API
     server_sub.add_parser("list", help="List Visor instances")

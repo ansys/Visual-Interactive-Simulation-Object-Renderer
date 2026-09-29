@@ -33,7 +33,7 @@ def check_init_args(
         port,
         rendering_mode,
         standalone,
-        dark_mode
+        dark_mode,
 ):
     """
     If the user explicitly passed --rendering-mode, --standalone, or --dark-mode, check whether
@@ -106,9 +106,9 @@ def main():
                 args.port,
                 args.rendering_mode,
                 args.standalone,
-                args.dark_mode
+                args.dark_mode,
             )
-            api.initialize(args.host, args.port, args.rendering_mode, args.standalone, args.dark_mode)
+            api.initialize(args.host, args.port, args.rendering_mode, args.standalone, args.dark_mode, args.start)
         elif args.action == "list":
             api.list()
     elif args.group == "instance":

@@ -61,7 +61,7 @@ class ServerAPI:
         resp = requests.get(f"{self.base}/info")
         print(resp.json())
 
-    def initialize(self, host, port, rendering_mode, standalone, dark_mode):
+    def initialize(self, host, port, rendering_mode, standalone, dark_mode, start):
         """Initialize the server with viewer configuration.
 
         Parameters
@@ -71,17 +71,25 @@ class ServerAPI:
         port : int
             Port the viewer client should connect to.  Pass ``0`` to let
             the Visor server pick an unused port on its own host.
-        standalone : RenderingMode
+        rendering_mode : RenderingMode
             Rendering mode to use for the viewer instance.  Must be one of the
             values defined in ``RenderingMode``.
         standalone : bool
             Whether to run in standalone mode (no external orchestrator).
         dark_mode : bool
             Whether to enable dark mode in the viewer UI.
+        start : bool
+            Whether to start the viewer instance immediately after initialization.
         """
-        data = {"host": host, "port": port, "rendering_mode": rendering_mode, "standalone": standalone, "dark_mode": dark_mode}
+        data = {"host": host, "port": port, "rendering_mode": rendering_mode, "standalone": standalone,
+                "dark_mode": dark_mode}
         resp = requests.post(f"{self.base}/initialize", json=data)
         print(resp.json())
+        if start:
+            resp = requests.post(f"{self.base}/start", json={})
+            print(resp)
+            print(resp.json())
+
 
     def list(self):
         """Print the URLs of all currently available viewer instances."""
