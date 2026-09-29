@@ -156,6 +156,17 @@ class IRenderer(ABC):
         """Disable scalar colouring on *node_id*, reverting to solid diffuse."""
 
     @abstractmethod
+    def serialize_part_state(self, node_id: int) -> None:
+        """Make the state served to the client current for one part's mapper.
+
+        A mapper write without this leaves the served cache holding the old
+        content under a new version number, so the next client fetch gets the
+        pre-write range.  **Serialize only; do not notify.**  An unknown
+        *node_id* is a logged no-op.  No-op on a renderer that serves the
+        client no VTK object state.
+        """
+
+    @abstractmethod
     def refresh_color_variable_range(
         self,
         node_id: int,
