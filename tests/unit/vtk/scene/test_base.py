@@ -3283,7 +3283,7 @@ def test_get_state_hands_out_a_copy_of_the_ui_record(scene):
 # magnitude (0.0, 49.0) and component (10.0, 20.0) on NODE_ID.
 # ===========================================================================
 
-AGGREGATE_LOGGER = "ansys.visor.viewer.vtk.variables.visor_variable_aggregate.logger"
+RECORD_LOGGER = "ansys.visor.viewer.models.common.visor_variable_record.logger"
 
 
 def _pressure_record(**overrides):
@@ -3351,7 +3351,7 @@ def test_rebuild_at_remove_drops_ids_with_no_remaining_part(records_scene):
         2: _make_part_dataset(2, [SECOND_NODE_ID], part_variables=[
             VisorPartVariables(SECOND_NODE_ID, "part", [_temperature_variable()])]),
     }
-    records_scene._rebuild_variable_records("add")
+    records_scene._rebuild_variable_records_from_registry()
     assert sorted(records_scene._variable_records.variables) == ["CELL::temperature::1", VARIABLE_ID]
 
     records_scene.remove_dataset(2)
@@ -3365,7 +3365,7 @@ def test_rebuild_at_clear_empties_the_records(records_scene):
         1: _make_part_dataset(1, [NODE_ID], part_variables=[
             VisorPartVariables(NODE_ID, "part", [_pressure_variable()])]),
     }
-    records_scene._rebuild_variable_records("add")
+    records_scene._rebuild_variable_records_from_registry()
     holder = records_scene._variable_records
 
     records_scene.clear()
@@ -3380,13 +3380,13 @@ def test_rebuild_at_update_follows_the_reload_and_the_metadata_refresh(records_s
     Call-order pin: registry.update_variables (which reloads the part variables),
     then refresh_descendant_variable_metadata, then the rebuild.
     """
-    from ansys.visor.viewer.vtk.scene import base as base_module
+    from ansys.visor.viewer.models.common.visor_variable_record import VisorVariableRecords
 
     registry = records_scene._dataset_registry
     dataset = _make_part_dataset(1, [NODE_ID], part_variables=[
         VisorPartVariables(NODE_ID, "part", [_pressure_variable()])])
     registry.datasets = {1: dataset}
-    records_scene._rebuild_variable_records("add")
+    records_scene._rebuild_variable_records_from_registry()
 
     wide_pressure = VisorVariable(
         index=0, type=VisorVtkVariableType.POINT, name="pressure", num_components=3,
@@ -3400,7 +3400,7 @@ def test_rebuild_at_update_follows_the_reload_and_the_metadata_refresh(records_s
 
     node = records_scene._scene_graph.get_descendant_node.return_value
     node.refresh_descendant_variable_metadata.side_effect = lambda **_: order.append("refresh")
-    real_build = base_module.build_variable_records
+    real_build = VisorVariableRecords.from_registry
 
     def _build(*args):
         order.append("rebuild")
@@ -3408,7 +3408,7 @@ def test_rebuild_at_update_follows_the_reload_and_the_metadata_refresh(records_s
 
     with (
         patch.object(registry, "update_variables", side_effect=_update_variables),
-        patch.object(base_module, "build_variable_records", side_effect=_build),
+        patch.object(VisorVariableRecords, "from_registry", side_effect=_build),
     ):
         records_scene.update_variables_for_dataset(1, [])
 
@@ -3432,13 +3432,13 @@ def test_load_overlays_the_file_range_before_the_part_restore(scene, registry):
     _restore_part_states -- asserted by recorded order and by the entry the
     restore sees at the moment it is called.
     """
-    from ansys.visor.viewer.vtk.scene import base as base_module
+    from ansys.visor.viewer.models.common.visor_variable_record import VisorVariableRecords
 
     _seed_part_variables(registry, [_pressure_variable()])
     order = []
     seen_by_restore = {}
-    real_build = base_module.build_variable_records
-    real_overlay = base_module.overlay_persisted_ranges
+    real_build = VisorVariableRecords.from_registry
+    real_overlay = VisorVariableRecords.overlay
 
     def _build(*args):
         order.append("rebuild")
@@ -3453,8 +3453,8 @@ def test_load_overlays_the_file_range_before_the_part_restore(scene, registry):
         seen_by_restore["entry"] = runtime_app_state.scene.variable_states.get(VARIABLE_ID)
 
     with (
-        patch.object(base_module, "build_variable_records", side_effect=_build),
-        patch.object(base_module, "overlay_persisted_ranges", side_effect=_overlay),
+        patch.object(VisorVariableRecords, "from_registry", side_effect=_build),
+        patch.object(VisorVariableRecords, "overlay", autospec=True, side_effect=_overlay),
         patch.object(scene, "_restore_part_states", side_effect=_restore),
     ):
         _apply(
@@ -3473,7 +3473,7 @@ def test_load_fills_a_null_magnitude_range_with_the_default(scene, registry):
     """#15: a null magnitudeRange in the file loads at the default, logged at DEBUG."""
     _seed_part_variables(registry, [_pressure_variable()])
 
-    with patch(AGGREGATE_LOGGER) as mock_logger:
+    with patch(RECORD_LOGGER) as mock_logger:
         _apply(scene, _runtime_state({}), _file_entries(magnitude_range=None, ranges=((3.0, 4.0),)))
 
     assert scene._variable_records.variables == {
@@ -3491,7 +3491,7 @@ def test_load_drops_a_file_id_with_no_record(scene, registry):
         num_components=1, magnitude_range=(5.0, 6.0), ranges=[(5.0, 6.0)],
     )
 
-    with patch(AGGREGATE_LOGGER) as mock_logger:
+    with patch(RECORD_LOGGER) as mock_logger:
         _apply(scene, _runtime_state({}), {"POINT::ghost::1": ghost})
 
     assert scene._variable_records.variables == {VARIABLE_ID: _pressure_record()}
@@ -3538,7 +3538,7 @@ def _contradictory_reply():
 def test_get_state_takes_the_variable_states_from_the_server(scene, registry):
     """#19: the save receives the server's record, whatever the browser replied."""
     _seed_part_variables(registry, [_pressure_variable()])
-    scene._rebuild_variable_records("add")
+    scene._rebuild_variable_records_from_registry()
     captured = _capture_persist_input(scene, _contradictory_reply())
 
     asyncio.run(scene.get_state(timeout=1.0))
