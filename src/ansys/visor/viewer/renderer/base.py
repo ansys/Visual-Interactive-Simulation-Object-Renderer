@@ -106,10 +106,6 @@ class IRenderer(ABC):
         """Set the actor-property diffuse colour for *node_id*."""
 
     @abstractmethod
-    def apply_edge_visibility(self, node_id: int, edge_visible: bool) -> None:
-        """Toggle edge / wireframe visibility for *node_id*."""
-
-    @abstractmethod
     def apply_selected(
         self, node_id: int, selected: bool, diffuse_rgb: list
     ) -> None:

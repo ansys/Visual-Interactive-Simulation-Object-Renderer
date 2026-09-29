@@ -131,7 +131,7 @@ export class WasmRenderer implements IRenderer {
             boxAlgorithmWasmId: this.#boundingBoxBoxAlgorithmWasmId,
             outlineQueryId: this.#wasmBoundingBoxActorId,
         });
-        this.#edgesWidget = new EdgesWidget(sceneGraph);
+        this.#edgesWidget = new EdgesWidget(sceneGraph, this);
     }
 
     async renderAsync(): Promise<void> {

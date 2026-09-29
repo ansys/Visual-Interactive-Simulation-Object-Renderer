@@ -436,15 +436,11 @@ class TestNodeLifecycle:
 # ===========================================================================
 
 class TestPerPartMutations:
-    """The two permanently un-implemented methods accept their arguments.
+    """The permanently un-implemented method accepts its arguments.
 
-    Both stay no-ops beyond this story: edge visibility is a global display
-    toggle, and the colour-variable range is not held per part.
+    It stays a no-op beyond this story: the colour-variable range is not
+    held per part.
     """
-
-    def test_apply_edge_visibility(self, renderer):
-        assert renderer.apply_edge_visibility(1, False) is None
-
 
     def test_refresh_color_variable_range(self, renderer):
         assert (
