@@ -396,7 +396,7 @@ def _scene_with_two_datasets_sharing_pressure():
         }),
         2: _VariablesOnlyDataset(2, {21: [_variable("pressure", [(-5.0, 4.0)], (-5.0, 4.0))]}),
     }
-    scene._rebuild_variable_records("add")
+    scene._rebuild_variable_records_from_registry()
     return scene
 
 

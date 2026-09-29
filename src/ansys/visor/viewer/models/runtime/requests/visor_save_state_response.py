@@ -24,6 +24,8 @@ class VisorSaveStateResponse(BaseModel):
     request_id: int = Field(alias="requestId")
     app_state: RuntimeAppState = Field(alias="appState")
 
+    # Guards a client that still sends variableStates in the pre-record shape.
+    # A later increment decides whether this validator stays.
     @model_validator(mode="before")
     @classmethod
     def _discard_browser_variable_states(cls, data: Any) -> Any:

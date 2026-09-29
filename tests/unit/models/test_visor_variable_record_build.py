@@ -5,7 +5,7 @@ literal, never recomputed the way the code computes it.
 """
 from ansys.visor.viewer.core.visor_enums import VisorVtkVariableType
 from ansys.visor.viewer.vtk.variables.visor_part_variables import VisorPartVariables
-from ansys.visor.viewer.vtk.variables.visor_variable_aggregate import build_variable_records
+from ansys.visor.viewer.models.common.visor_variable_record import VisorVariableRecords
 from ansys.visor.viewer.vtk.variables.visor_variables import VisorVariable
 
 POINT = VisorVtkVariableType.POINT
@@ -43,7 +43,7 @@ def _two_datasets_sharing_pressure():
 
 def test_participation_is_the_union_of_parts_across_datasets():
     """#5: one record for the shared variable, naming both parts."""
-    records = build_variable_records(_two_datasets_sharing_pressure(), {})
+    records = VisorVariableRecords.from_registry(_two_datasets_sharing_pressure(), VisorVariableRecords()).variables
 
     assert list(records) == ["POINT::pressure::1"]
     assert records["POINT::pressure::1"].part_ids == [1, 3]
@@ -51,7 +51,8 @@ def test_participation_is_the_union_of_parts_across_datasets():
 
 def test_default_ranges_widen_to_the_min_of_mins_and_max_of_maxes():
     """#6: (0.0, 10.0) and (-5.0, 4.0) widen to (-5.0, 10.0); a new id's custom equals its default."""
-    record = build_variable_records(_two_datasets_sharing_pressure(), {})["POINT::pressure::1"]
+    record = VisorVariableRecords.from_registry(
+        _two_datasets_sharing_pressure(), VisorVariableRecords()).variables["POINT::pressure::1"]
 
     assert record.default_magnitude_range == (-5.0, 10.0)
     assert record.default_ranges == [(-5.0, 10.0)]
@@ -68,7 +69,7 @@ def test_a_width_split_produces_distinct_ids():
         })
     )
 
-    records = build_variable_records(registry, {})
+    records = VisorVariableRecords.from_registry(registry, VisorVariableRecords()).variables
 
     assert sorted(records) == ["POINT::velocity::1", "POINT::velocity::3"]
     assert records["POINT::velocity::3"].part_ids == [1]
@@ -82,12 +83,13 @@ def _one_dataset_pressure():
 
 def test_an_edited_custom_range_is_kept_across_widening():
     """#8: a custom slot that differs from its previous default survives the rebuild."""
-    previous = build_variable_records(_one_dataset_pressure(), {})
+    previous = VisorVariableRecords.from_registry(_one_dataset_pressure(), VisorVariableRecords()).variables
     previous["POINT::pressure::1"] = previous["POINT::pressure::1"].model_copy(
         update={"magnitude_range": (2.0, 3.0), "ranges": [(2.0, 3.0)]}
     )
 
-    record = build_variable_records(_two_datasets_sharing_pressure(), previous)["POINT::pressure::1"]
+    record = VisorVariableRecords.from_registry(
+        _two_datasets_sharing_pressure(), VisorVariableRecords(variables=previous)).variables["POINT::pressure::1"]
 
     assert record.default_magnitude_range == (-5.0, 10.0)
     assert record.magnitude_range == (2.0, 3.0)
@@ -96,10 +98,11 @@ def test_an_edited_custom_range_is_kept_across_widening():
 
 def test_an_unedited_custom_range_follows_the_new_default():
     """#9: a custom slot equal to its previous default (0.0, 10.0) follows the widening to (-5.0, 10.0)."""
-    previous = build_variable_records(_one_dataset_pressure(), {})
+    previous = VisorVariableRecords.from_registry(_one_dataset_pressure(), VisorVariableRecords()).variables
     assert previous["POINT::pressure::1"].magnitude_range == (0.0, 10.0)
 
-    record = build_variable_records(_two_datasets_sharing_pressure(), previous)["POINT::pressure::1"]
+    record = VisorVariableRecords.from_registry(
+        _two_datasets_sharing_pressure(), VisorVariableRecords(variables=previous)).variables["POINT::pressure::1"]
 
     assert record.magnitude_range == (-5.0, 10.0)
     assert record.ranges == [(-5.0, 10.0)]
