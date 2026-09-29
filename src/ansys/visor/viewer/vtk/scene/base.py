@@ -64,6 +64,9 @@ class VisorSceneBase(ABC):
     _dataset_registry: VisorDatasetRegistry
     _renderer: IRenderer
     _state_mapper: VisorStateMapper
+    _cross_section_enabled: bool
+    _edges_enabled: bool
+    _bounding_box_enabled: bool
 
     def __init__(
             self,
@@ -74,6 +77,17 @@ class VisorSceneBase(ABC):
         """Initialize the scene coordinator and its local renderer backend."""
         logger.debug("Initializing %s", type(self).__name__)
         self.dark_mode: bool = dark_mode
+
+        # Server-tracked widget toggles.  Absolute values, never toggles.
+        # Initialised to the client widgets' own constructor defaults so a
+        # get_state before the client has ever spoken reports what the client
+        # would report.  Projection is deliberately absent: it is derived from
+        # the camera record, so a fourth field here would be the second source
+        # that derivation exists to remove.
+        self._cross_section_enabled: bool = False
+        self._edges_enabled: bool = False
+        self._bounding_box_enabled: bool = False
+
         self._server = server
         self._scene_graph = None
         self._pipelines = {}
@@ -159,8 +173,12 @@ class VisorSceneBase(ABC):
         setters mutate from the trame daemon thread, so each one is deep-copied under
         ``_vtk_lock``.  The lock is taken after the ``await`` and never held across one.
 
-        The camera is the second thing the browser's reply does not get to supply.
-        It comes from the renderer's record, which is authoritative, rather than
+        The camera and the widget toggles are what the browser's reply does not
+        get to supply.  Per-part state comes from the registry, the toggles from
+        this object's own store, and the camera from the renderer's record; the
+        reply is consulted for none of the three.
+
+        The camera comes from the renderer's record, which is authoritative, rather than
         from the reply or from the pipeline ``vtkCamera``: the pipeline is the
         record's projection, and reading it back would re-import whatever drift
         VTK introduced -- ``ResetCamera`` rewrites ``clipping_range``.  The
@@ -168,6 +186,10 @@ class VisorSceneBase(ABC):
         written, and writing that ``None`` through is what says so; the guard for
         "absent says nothing" belongs to the load path, in :meth:`apply_state`,
         not here.
+
+        ``orthographic_enabled`` is derived from that same record, not stored
+        separately, so it can't disagree with the camera. ``None`` means
+        "nothing was ever written."
         """
         runtime_state = await self._get_runtime_state_async(timeout)
 
@@ -176,7 +198,14 @@ class VisorSceneBase(ABC):
                 dataset_id: dataset_state.model_copy(deep=True)
                 for dataset_id, dataset_state in self._dataset_registry.runtime_state_dict.items()
             }
-            runtime_state.scene.camera = self._renderer.get_camera_state()
+            camera_record = self._renderer.get_camera_state()
+            runtime_state.scene.camera = camera_record
+            runtime_state.scene.orthographic_enabled = (
+                camera_record.parallel_projection if camera_record is not None else None
+            )
+            runtime_state.scene.cross_section_enabled = self._cross_section_enabled
+            runtime_state.scene.edges_enabled = self._edges_enabled
+            runtime_state.scene.bounding_box_enabled = self._bounding_box_enabled
         runtime_state.scene.dataset_states = registry_dataset_states
 
         persisted = self._state_mapper.runtime_to_persisted(runtime_state)
@@ -204,8 +233,9 @@ class VisorSceneBase(ABC):
 
             # One call per state class: updates the server's stored state and its VTK objects.
             self._restore_part_states(runtime_app_state)
+            self._restore_widget_state(runtime_app_state)
             self._restore_camera_state(runtime_app_state)
-            # TODO: restore widget state, UI state, and variable states when they are synced back to the server.
+            # TODO: restore UI state and variable states when they are synced back to the server.
 
             # The server's copy is now current; deliver it to the rendering backend.
             # wasm: set_state() to the browser; RCA: a rendered frame; headless: no-op.
@@ -215,17 +245,39 @@ class VisorSceneBase(ABC):
             # at this point races the client's rebuild against a half-written object graph.
 
     def get_scene_details(self) -> VisorSceneDetails:
-        """Return the VisorState."""
+        """Return the VisorState.
+
+        How a rebuilt or reconnecting client learns the server's widget
+        toggles; the client branches that apply these fields already existed
+        and were dead only because nothing populated them.
+
+        ``orthographic_enabled`` is derived from the camera record, not
+        stored, so it can't disagree with the camera. ``None`` means
+        "nothing was ever written."
+
+        No ``_vtk_lock``: the reads here (three booleans, one camera field)
+        aren't consumed as a mutually consistent snapshot, and locking a
+        request-path read against the trigger thread belongs with the
+        round-trip/thread-affinity work, not here. Accepted exposure: one
+        stale field in a delivered payload.
+        """
         if self._scene_graph is None:
             self._initialize_scene_graph()
         annotation = self._renderer.build_renderer_annotation()
         scene_graph_state = self._build_scene_graph_state()
+        camera_record = self._renderer.get_camera_state()
         return VisorSceneDetails.from_components(
             dark_mode=self.dark_mode,
             unit=self._dataset_registry.unit,
             dataset_states=self._dataset_registry.runtime_state_dict,
             scene_graph_state=scene_graph_state,
             renderer_annotation=annotation,
+            orthographic_enabled=(
+                camera_record.parallel_projection if camera_record is not None else None
+            ),
+            cross_section_enabled=self._cross_section_enabled,
+            edges_enabled=self._edges_enabled,
+            bounding_box_enabled=self._bounding_box_enabled,
         )
 
     def get_scene_details_json(self) -> str:
@@ -466,12 +518,28 @@ class VisorSceneBase(ABC):
     # =========================================================================
 
     def set_part_visibility(self, node_id: int, visible: bool) -> None:
-        """Set whether the part identified by *node_id* is visible."""
+        """Set whether the part identified by *node_id* is visible.
+
+        Fans out to the widget layer after the apply, so that hiding a part
+        reaches the bounds-consuming widgets at all.  The two private helpers
+        rather than :meth:`update_widgets`: that method raises ``RuntimeError``
+        when the scene graph is ``None``, and a trigger thread is where a raise
+        has no caller to handle it, so a path that today logs at debug and
+        returns would start raising.  The cost is that a later addition to
+        ``update_widgets``' body will not reach here.
+
+        The box will not change size when a part is hidden.  The server's root
+        bounds are computed across all loaded datasets with no visibility
+        filter, so the same numbers arrive at the widget.  That is the current
+        bounds semantics, not a defect in this fan-out.
+        """
         with self._vtk_lock:
             if not self._dataset_registry.set_part_visibility(node_id, visible):
                 logger.debug("set_part_visibility: no dataset owns node %s; skipping.", node_id)
                 return
             self._renderer.apply_visibility(node_id, visible)
+            self._update_widget_bounds()
+            self._update_actor_count()
 
     def set_part_opacity(self, node_id: int, opacity: float) -> None:
         """Set the opacity of the part identified by *node_id*."""
@@ -565,6 +633,73 @@ class VisorSceneBase(ABC):
                 return
             self._renderer.clear_color_variable(node_id)
 
+    # =========================================================================
+    # Widget state — coordinator surface
+    #
+    # Each method does both halves of its trigger, in this order and all under
+    # ``_vtk_lock``: write the server's record, apply to the server's VTK
+    # objects.  Nothing is pushed to the client from here, for the same reason
+    # the per-part surface pushes nothing: the client applied its own change
+    # before it sent, and a push rebuilds the client, which re-delivers state
+    # and fires further triggers.
+    #
+    # Every value that arrives here is absolute, never relative.
+    #
+    # None of these is abstract.  The subclasses differ on state authority,
+    # not on widget state, and the abstract set is asserted by equality.
+    # =========================================================================
+
+    def set_cross_section_visibility(self, visible: bool) -> None:
+        """Set whether the cross-section plane is shown.
+
+        The renderer call is a no-op today and is made anyway: the server's
+        cross-section widget is driven by the client through the wasm mirror,
+        so the store is what is authoritative and delivered, and the call is
+        the seam a server-rendering mode would fill.
+        """
+        with self._vtk_lock:
+            self._cross_section_enabled = visible
+            self._renderer.set_cross_section_visibility(visible)
+
+    def set_edges_visible(self, visible: bool) -> None:
+        """Set whether edges are shown on every part."""
+        with self._vtk_lock:
+            self._edges_enabled = visible
+            self._renderer.set_edges_visible(visible)
+
+    def set_bounding_box_visibility(self, visible: bool) -> None:
+        """Set whether the bounding-box outline is shown.
+
+        As with the cross-section, the renderer call is a no-op today and the
+        store is the authority.
+        """
+        with self._vtk_lock:
+            self._bounding_box_enabled = visible
+            self._renderer.set_bounding_box_visibility(visible)
+
+    def set_projection(self, parallel: bool) -> None:
+        """Set parallel or perspective projection on the camera record.
+
+        No store field, and that is the point: projection lives on the camera
+        record and nowhere else, so ``get_state`` derives it rather than
+        reading a second copy that could disagree.
+
+        Both halves run in one critical section and the re-serialisation is
+        part of the write, exactly as in :meth:`sync_camera`: the backend
+        advertises a version number read from the live VTK object while
+        serving content from a cache, so a write with no re-serialise
+        publishes a new version against old content and the client fetches
+        and re-applies the pre-write camera.  Because a projection flip is
+        visually obvious, omitting the re-serialise shows up as the view
+        snapping back.
+
+        No notify.  No ``render()``, no ``flush_wasm_state()``, no
+        ``set_state``.
+        """
+        with self._vtk_lock:
+            self._renderer.set_projection(parallel)
+            self._renderer.serialize_camera_state()
+
     def _restore_part_states(self, runtime_app_state: "RuntimeAppState") -> None:
         """
         Restore per-part state from a runtime app state, on the load path.
@@ -616,6 +751,35 @@ class VisorSceneBase(ABC):
         if runtime_app_state.scene.camera is not None:
             self._renderer.sync_camera(runtime_app_state.scene.camera)
             self._renderer.serialize_camera_state()
+
+    def _restore_widget_state(self, runtime_app_state: "RuntimeAppState") -> None:
+        """
+        Restore the camera state from a runtime app state, on the load path.
+
+        The widget toggles.  Absent says nothing: a state that does not
+        carry a toggle leaves the server's value alone, which is this
+        path's guard and not get_state's.  Store first, renderer second,
+        matching the coordinator surface below.
+
+
+        ``orthographic_enabled`` is deliberately not read.  Projection
+        arrives on the camera, whose sync_camera writes it to the
+        record and the pipeline; the persisted toggle is emitted for
+        compatibility and ignored here, because two readers of one
+        property is the divergence this story removed.
+
+        Callers must hold ``_vtk_lock``.
+        """
+        scene = runtime_app_state.scene
+        if scene.cross_section_enabled is not None:
+            self._cross_section_enabled = scene.cross_section_enabled
+            self._renderer.set_cross_section_visibility(scene.cross_section_enabled)
+        if scene.edges_enabled is not None:
+            self._edges_enabled = scene.edges_enabled
+            self._renderer.set_edges_visible(scene.edges_enabled)
+        if scene.bounding_box_enabled is not None:
+            self._bounding_box_enabled = scene.bounding_box_enabled
+            self._renderer.set_bounding_box_visibility(scene.bounding_box_enabled)
 
     def _restore_one_part_state(
             self,

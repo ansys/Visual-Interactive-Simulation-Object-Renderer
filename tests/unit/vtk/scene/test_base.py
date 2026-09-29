@@ -1912,4 +1912,659 @@ def test_apply_state_component_without_variable_id_does_not_clear(
     assert pipeline.mapper.GetScalarVisibility() == 1
 
 
+# ===========================================================================
+# Widget state -- the server store, the coordinator surface, and delivery
+#
+# Three toggles the server now holds: cross-section, edges, bounding box.
+# Each has a coordinator method that writes the store and applies to the
+# renderer under ``_vtk_lock``; ``get_state`` reads the store rather than the
+# browser's reply; ``apply_state`` restores it; ``get_scene_details`` delivers
+# it to a rebuilt or reconnecting client.
+#
+# Every expected value below is a hand-written literal.  ``True`` is used
+# throughout as the value the client reports, because the server's own default
+# is the literal ``False``, so a body that wrote a default rather than its
+# argument fails.
+# ===========================================================================
 
+TOGGLE_ON = True
+TOGGLE_OFF = False
+
+# What a browser that was asked would answer.  Deliberately the opposite of
+# what the store holds in the derivation test, so that "read the store" and
+# "read the reply" cannot both pass.
+REPLY_TOGGLE = False
+
+DELIVERED_PARALLEL_PROJECTION = True
+
+
+class _ToggleSpyRenderer:
+    """Records the three widget-state calls, with the lock depth at each.
+
+    Hand-written rather than a MagicMock so that a call under some other name
+    is an AttributeError here rather than a silently absorbed no-op, and so
+    that the lock depth can be read at the moment of the call rather than
+    after the fact.
+    """
+
+    def __init__(self, scene):
+        self._scene = scene
+        self.calls = []
+        self.depths = {}
+
+    def _record(self, name, visible):
+        self.calls.append((name, visible))
+        self.depths[name] = getattr(self._scene._vtk_lock, "depth", None)
+
+    def set_cross_section_visibility(self, visible):
+        self._record("set_cross_section_visibility", visible)
+
+    def set_edges_visible(self, visible):
+        self._record("set_edges_visible", visible)
+
+    def set_bounding_box_visibility(self, visible):
+        self._record("set_bounding_box_visibility", visible)
+
+
+class _SceneDetailsRenderer:
+    """Renderer double for the scene-details delivery path.
+
+    Answers only what ``get_scene_details`` asks of a renderer: the annotation
+    (``None`` -- wire absence is the contract for a renderer with no handles)
+    and the camera record.  A ``MagicMock`` cannot stand in here: the values it
+    returns are validated by pydantic, not merely called.
+    """
+
+    def __init__(self, camera_record):
+        self._camera_record = camera_record
+        self.camera_reads = 0
+
+    def build_renderer_annotation(self):
+        return None
+
+    def get_camera_state(self):
+        self.camera_reads += 1
+        return self._camera_record
+
+
+def _delivered_camera() -> VisorCameraState:
+    """A camera record whose projection is a hand-written literal."""
+    return VisorCameraState(
+        position=[41.0, 42.0, 43.0],
+        focal_point=[44.0, 45.0, 46.0],
+        view_up=[0.0, 1.0, 0.0],
+        clipping_range=[47.0, 48.0],
+        parallel_projection=DELIVERED_PARALLEL_PROJECTION,
+        view_angle=36.0,
+        parallel_scale=49.0,
+    )
+
+
+def _toggle_save_scene(scene, reply_toggle):
+    """Wire *scene* for a save whose browser reply carries *reply_toggle*.
+
+    The registry is emptied so the mapper's per-dataset loop contributes
+    nothing; what is under test is the scene block of the persisted state.
+    """
+    scene._dataset_registry = VisorDatasetRegistry()
+
+    async def _get_runtime_state_async(timeout):
+        return RuntimeAppState.from_components(
+            dark_mode=False,
+            unit="m",
+            dataset_states={},
+            cross_section_enabled=reply_toggle,
+            edges_enabled=reply_toggle,
+            bounding_box_enabled=reply_toggle,
+        )
+
+    scene._get_runtime_state_async = _get_runtime_state_async
+
+
+# ---------------------------------------------------------------------------
+# The store's initial value
+# ---------------------------------------------------------------------------
+
+def test_widget_toggles_default_to_false_before_any_client_speaks(scene):
+    """All three start at the client widgets' own constructor default.
+
+    ``False`` and not ``None``: ``None`` would mean "nobody has said", which is
+    only ever true before the first save, and it would push a three-way branch
+    into get_state for a state that resolves itself on the first toolbar click.
+    The literal here is hand-written and is never read from a widget.
+    """
+    assert scene._cross_section_enabled is False
+    assert scene._edges_enabled is False
+    assert scene._bounding_box_enabled is False
+
+
+# ---------------------------------------------------------------------------
+# The coordinator surface -- store half and renderer half, separately
+# ---------------------------------------------------------------------------
+
+def test_set_cross_section_visibility_writes_the_store(scene):
+    """Store half: the coordinator records what it was told."""
+    scene.set_cross_section_visibility(TOGGLE_ON)
+
+    assert scene._cross_section_enabled is True
+
+
+def test_set_cross_section_visibility_applies_to_the_renderer(scene):
+    """Renderer half: the value is passed through, once.
+
+    Its own test rather than an extra assertion above: either half can
+    silently do nothing while the other succeeds, which is the posture the
+    per-part surface above is tested with.
+    """
+    spy = _ToggleSpyRenderer(scene)
+    scene._renderer = spy
+
+    scene.set_cross_section_visibility(TOGGLE_ON)
+
+    assert spy.calls == [("set_cross_section_visibility", True)]
+
+
+def test_set_edges_visible_writes_the_store(scene):
+    """Store half: the coordinator records what it was told."""
+    scene.set_edges_visible(TOGGLE_ON)
+
+    assert scene._edges_enabled is True
+
+
+def test_set_edges_visible_applies_to_the_renderer(scene):
+    """Renderer half: the value reaches the renderer's scene-wide verb."""
+    spy = _ToggleSpyRenderer(scene)
+    scene._renderer = spy
+
+    scene.set_edges_visible(TOGGLE_ON)
+
+    assert spy.calls == [("set_edges_visible", True)]
+
+
+def test_set_bounding_box_visibility_writes_the_store(scene):
+    """Store half: the coordinator records what it was told."""
+    scene.set_bounding_box_visibility(TOGGLE_ON)
+
+    assert scene._bounding_box_enabled is True
+
+
+def test_set_bounding_box_visibility_applies_to_the_renderer(scene):
+    """Renderer half: the value is passed through, once."""
+    spy = _ToggleSpyRenderer(scene)
+    scene._renderer = spy
+
+    scene.set_bounding_box_visibility(TOGGLE_ON)
+
+    assert spy.calls == [("set_bounding_box_visibility", True)]
+
+
+def test_set_edges_visible_holds_the_lock_at_the_renderer_call(scene):
+    """The lock is *held* at the moment the renderer is called.
+
+    This is the assertion that pins AC-2's lock half, and it is the only
+    assertion in this increment that sees the lock at all: the trigger module
+    sees delegation, and get_state and apply_state take the lock on paths that
+    already had it.  Remove ``with self._vtk_lock:`` from the coordinator
+    method and the probe records 0.
+
+    The trigger handler runs on trame's daemon thread while the VTK objects it
+    mutates belong to the caller's thread; an apply outside the lock would
+    interleave with another thread's mutation.  That failure is intermittent
+    and never reproduces under a gate.
+    """
+    scene._vtk_lock = _LockSpy()
+    spy = _ToggleSpyRenderer(scene)
+    scene._renderer = spy
+
+    scene.set_edges_visible(TOGGLE_ON)
+
+    assert spy.depths["set_edges_visible"] >= 1
+    assert scene._vtk_lock.depth == 0
+    assert scene._vtk_lock.enter_count == scene._vtk_lock.exit_count
+
+
+# ---------------------------------------------------------------------------
+# get_state -- the toggles come from the store, not from the reply
+# ---------------------------------------------------------------------------
+
+def test_get_state_takes_the_toggles_from_the_store(scene):
+    """The saved toggles are the server's, with the browser saying otherwise.
+
+    This is the assertion that pins the change.  The reply carries the
+    hand-written literal ``False`` for all three while the store holds ``True``
+    for all three; revert the three get_state assignments and every assertion
+    below reports ``False``.  That single difference is what separates
+    "server-authoritative" from "round-trips the client's answer".
+
+    Asserted on what get_state RETURNS -- the object that reaches the writer --
+    not on the runtime state it was built from.
+    """
+    scene.set_cross_section_visibility(TOGGLE_ON)
+    scene.set_edges_visible(TOGGLE_ON)
+    scene.set_bounding_box_visibility(TOGGLE_ON)
+    _toggle_save_scene(scene, REPLY_TOGGLE)
+
+    persisted = asyncio.run(scene.get_state(timeout=1.0))
+
+    assert persisted.scene.cross_section_enabled is True
+    assert persisted.scene.edges_enabled is True
+    assert persisted.scene.bounding_box_enabled is True
+
+
+def test_get_state_discards_the_toggles_the_browser_returned(scene):
+    """The browser's toggles do not survive into the persisted state.
+
+    The mirror of the test above and its own test for the same reason the
+    camera pair is split: "wrote the store" and "did not write the reply" are
+    the same only while the round trip still carries toggles at all, and the
+    round trip is not being removed.  Here the store is left at its default
+    ``False`` and the reply carries ``True``.
+    """
+    _toggle_save_scene(scene, True)
+
+    persisted = asyncio.run(scene.get_state(timeout=1.0))
+
+    assert persisted.scene.cross_section_enabled is False
+    assert persisted.scene.edges_enabled is False
+    assert persisted.scene.bounding_box_enabled is False
+
+
+# ---------------------------------------------------------------------------
+# apply_state -- the load path writes the store and the renderer
+# ---------------------------------------------------------------------------
+
+def _toggle_runtime_state(**toggles):
+    """A real RuntimeAppState carrying only the toggles named."""
+    return RuntimeAppState.from_components(
+        dark_mode=False,
+        unit="m",
+        dataset_states={},
+        **toggles,
+    )
+
+
+def test_apply_state_writes_the_toggles_to_the_store(scene):
+    """A state carrying toggles becomes the server's store."""
+    _apply(
+        scene,
+        _toggle_runtime_state(
+            cross_section_enabled=True,
+            edges_enabled=True,
+            bounding_box_enabled=True,
+        ),
+    )
+
+    assert scene._cross_section_enabled is True
+    assert scene._edges_enabled is True
+    assert scene._bounding_box_enabled is True
+
+
+def test_apply_state_applies_the_toggles_to_the_renderer(scene):
+    """The load path applies as well as records, in that order."""
+    spy = _ToggleSpyRenderer(scene)
+    scene._renderer = spy
+
+    _apply(
+        scene,
+        _toggle_runtime_state(
+            cross_section_enabled=True,
+            edges_enabled=True,
+            bounding_box_enabled=True,
+        ),
+    )
+
+    assert spy.calls == [
+        ("set_cross_section_visibility", True),
+        ("set_edges_visible", True),
+        ("set_bounding_box_visibility", True),
+    ]
+
+
+def test_apply_state_absent_toggles_leave_the_store_untouched(scene):
+    """Absent says nothing: a state with no toggles is not a state of False.
+
+    The guard belongs to this path and not to get_state, and this is the test
+    that says so.  The store is seeded to ``True`` first, so a body that wrote
+    the model's own ``None`` default through would be caught.
+    """
+    scene.set_cross_section_visibility(TOGGLE_ON)
+    scene.set_edges_visible(TOGGLE_ON)
+    scene.set_bounding_box_visibility(TOGGLE_ON)
+    spy = _ToggleSpyRenderer(scene)
+    scene._renderer = spy
+
+    _apply(scene, _toggle_runtime_state())
+
+    assert scene._cross_section_enabled is True
+    assert scene._edges_enabled is True
+    assert scene._bounding_box_enabled is True
+    assert spy.calls == []
+
+
+def test_apply_state_ignores_orthographic_enabled(scene):
+    """The persisted projection toggle is emitted, never read back.
+
+    Two independent fields writing one camera property is the divergence this
+    story removes; projection arrives on the camera and nowhere else.  Pinned
+    so that a later session does not restore the read as a bug fix: nothing on
+    the scene stores it, and a state carrying only that field changes nothing.
+    """
+    spy = _ToggleSpyRenderer(scene)
+    scene._renderer = spy
+
+    _apply(scene, _toggle_runtime_state(orthographic_enabled=True))
+
+    assert spy.calls == []
+    assert not hasattr(scene, "_orthographic_enabled")
+
+
+# ---------------------------------------------------------------------------
+# get_scene_details -- delivery to a rebuilt or reconnecting client
+# ---------------------------------------------------------------------------
+
+def test_get_scene_details_delivers_the_four_widget_keywords(scene):
+    """All four keywords reach the payload the client is served.
+
+    This is the assertion that pins delivery, and it covers all four rather
+    than one: revert any single keyword out of the ``from_components`` call and
+    that field is delivered as ``None``, which reverts its toggle in the
+    browser on the next rebuild.  Without this, only a manual check would see
+    it.
+
+    ``orthographic_enabled`` is derived from the camera record, so the double
+    answers with a record whose ``parallel_projection`` is a hand-written
+    literal; nothing here is read from a vtkCamera.
+    """
+    scene.set_cross_section_visibility(TOGGLE_ON)
+    scene.set_edges_visible(TOGGLE_ON)
+    scene.set_bounding_box_visibility(TOGGLE_ON)
+    scene._dataset_registry = VisorDatasetRegistry()
+    double = _SceneDetailsRenderer(_delivered_camera())
+    scene._renderer = double
+
+    delivered = scene.get_scene_details().app_state.scene
+
+    assert delivered.cross_section_enabled is True
+    assert delivered.edges_enabled is True
+    assert delivered.bounding_box_enabled is True
+    assert delivered.orthographic_enabled is DELIVERED_PARALLEL_PROJECTION
+    assert double.camera_reads == 1
+
+
+def test_get_scene_details_delivers_no_orthographic_flag_when_the_camera_record_is_empty(
+    scene,
+):
+    """A ``None`` record delivers ``None``, not a fabricated ``False``.
+
+    ``None`` on the wire says "nothing was ever written" and leaves the
+    client's own flag alone; ``False`` would assert perspective over a client
+    that may be parallel.  The three store toggles still deliver, because they
+    do not depend on the camera.
+    """
+    scene.set_edges_visible(TOGGLE_ON)
+    scene._dataset_registry = VisorDatasetRegistry()
+    scene._renderer = _SceneDetailsRenderer(None)
+
+    delivered = scene.get_scene_details().app_state.scene
+
+    assert delivered.orthographic_enabled is None
+    assert delivered.edges_enabled is True
+
+
+# ---------------------------------------------------------------------------
+# set_part_visibility -- the bounds fan-out (R4)
+# ---------------------------------------------------------------------------
+
+def test_set_part_visibility_fans_out_to_update_bounds_and_actor_count(scene, pipeline):
+    """Hiding a part reaches the widget layer, after the apply.
+
+    This is the assertion that pins AC-4.  Revert the two calls and the
+    recorder is empty.  Asserted on the renderer's ``update_bounds`` and
+    ``update_actor_count`` -- the surface MC-3 reads in the log -- reached
+    through the scene's real private helpers, which are deliberately not
+    patched: patching them would move the assertion off that surface.
+
+    Order matters and is asserted: a fan-out before the apply would push the
+    pre-mutation actor count.
+    """
+    order = []
+    scene._renderer.update_bounds = lambda bounds: order.append("update_bounds")
+    scene._renderer.update_actor_count = lambda count: order.append("update_actor_count")
+    real_apply = scene._renderer.apply_visibility
+    scene._renderer.apply_visibility = lambda node_id, visible: (
+        order.append("apply_visibility"), real_apply(node_id, visible)
+    )[1]
+
+    scene.set_part_visibility(NODE_ID, False)
+
+    assert order == ["apply_visibility", "update_bounds", "update_actor_count"]
+
+
+def test_set_part_visibility_unknown_node_id_does_not_fan_out(scene):
+    """The early return still skips the fan-out.
+
+    The two calls sit inside the lock block after the renderer write, so a node
+    no dataset owns costs nothing.  A fan-out hoisted above the guard would
+    refresh the widgets on every stray trigger.
+    """
+    calls = []
+    scene._renderer.update_bounds = lambda bounds: calls.append("update_bounds")
+    scene._renderer.update_actor_count = lambda count: calls.append("update_actor_count")
+
+    with patch("ansys.visor.viewer.vtk.scene.base.logger"):
+        scene.set_part_visibility(UNKNOWN_NODE_ID, False)
+
+    assert calls == []
+
+
+# ===========================================================================
+# Projection -- the camera record's field, written by its own trigger
+#
+# Projection is not a fourth toggle and there is no store field for it.  The
+# camera record is the only holder, ``get_state`` derives the persisted
+# ``orthographic_enabled`` from it, and the coordinator re-serialises the
+# camera as part of the write.
+#
+# That re-serialisation is the story's one quiet failure: dropped, the record
+# is right, the pipeline camera is right, every other test in this module
+# passes, and the browser snaps back to the pre-toggle framing on the next
+# fetch.  The probe below is the only assertion in the suite that sees it.
+# ===========================================================================
+
+PROJECTION_ON = True
+PROJECTION_OFF = False
+
+# What a browser that was asked would answer for the persisted toggle.
+# Deliberately the opposite of the record's parallel_projection, so "derived
+# from the record" and "passed through from the reply" cannot both pass.
+REPLY_ORTHOGRAPHIC = False
+
+
+def _projection_save_scene(scene, record, reply_orthographic):
+    """Wire *scene* for a save: renderer record *record*, reply *orthographic*.
+
+    The same shape as ``_save_scene`` above, but the reply carries the
+    persisted projection toggle rather than a camera, because that is the
+    field whose source is under test.
+    """
+    double = _CameraRecordRenderer(record, _pipeline_camera(), scene=scene)
+    scene._renderer = double
+    scene._dataset_registry = VisorDatasetRegistry()
+
+    async def _get_runtime_state_async(timeout):
+        return RuntimeAppState.from_components(
+            dark_mode=False,
+            unit="m",
+            dataset_states={},
+            orthographic_enabled=reply_orthographic,
+        )
+
+    scene._get_runtime_state_async = _get_runtime_state_async
+    return double
+
+
+# ---------------------------------------------------------------------------
+# The coordinator
+# ---------------------------------------------------------------------------
+
+def test_set_projection_applies_to_the_renderer_and_then_serializes(scene):
+    """The re-serialisation follows the write, and carries production's id.
+
+    Reverted -- the write kept and the re-serialisation dropped -- the record
+    is right, the pipeline camera is right, and the client is served the
+    pre-toggle camera on its next fetch.
+
+    Also pins *where* the re-serialisation lives.  Written inside the
+    renderer's own ``set_projection`` instead of here, the lock probe below
+    would still pass; this spy sits on the coordinator's two calls, so a
+    renderer that serialised for itself would record the pair in the wrong
+    order or twice.
+
+    The spy appends ``("set_projection", <value>)`` for the write and the
+    two-tuple ``("serialize", <id>)`` for the re-serialisation; the tuple is
+    the recording format, not the argument.
+    """
+    order = []
+    real_set = scene._renderer.set_projection
+
+    def _set(parallel):
+        order.append(("set_projection", parallel))
+        return real_set(parallel)
+
+    scene._renderer.set_projection = _set
+    scene._renderer._object_manager.UpdateStateFromObject = (
+        lambda object_id: order.append(("serialize", object_id))
+    )
+
+    scene.set_projection(PROJECTION_ON)
+
+    assert order == [("set_projection", True), ("serialize", ACTIVE_CAMERA_WASM_ID)]
+
+
+def test_set_projection_holds_the_lock_across_both_halves(scene):
+    """Both halves run inside ONE critical section, at the same depth.
+
+    This is the assertion that pins the increment, and it is the only one in
+    the story that catches the quiet failure.  Three reverts, three distinct
+    signatures:
+
+    * drop ``serialize_camera_state()``  -> ``serialize_depth`` is never
+      recorded and this fails on the missing key;
+    * move it below the ``with`` block   -> ``serialize_depth`` is 0 while
+      ``write_depth`` is 1, so both the non-zero and the equality assertions
+      fail, which is what separates "outside the lock" from "absent";
+    * drop the ``with`` entirely         -> both depths are 0.
+
+    The trigger handler runs on trame's daemon thread while the VTK objects it
+    mutates belong to the caller's thread, so a re-serialisation outside the
+    lock reads the object graph while another thread is free to mutate it.
+    That failure is intermittent and never reproduces under a gate.
+    """
+    scene._vtk_lock = _LockSpy()
+    observed = {}
+    real_set = scene._renderer.set_projection
+
+    def _set(parallel):
+        observed["write_depth"] = scene._vtk_lock.depth
+        return real_set(parallel)
+
+    scene._renderer.set_projection = _set
+    scene._renderer._object_manager.UpdateStateFromObject = (
+        lambda object_id: observed.update(serialize_depth=scene._vtk_lock.depth)
+    )
+
+    scene.set_projection(PROJECTION_ON)
+
+    assert observed["write_depth"] >= 1
+    assert observed["serialize_depth"] >= 1
+    assert observed["write_depth"] == observed["serialize_depth"]
+    assert scene._vtk_lock.depth == 0
+    assert scene._vtk_lock.enter_count == scene._vtk_lock.exit_count
+
+
+def test_set_projection_writes_no_store_field(scene):
+    """The camera record is the only holder, and the scene stores nothing.
+
+    The three widget toggles have store fields because no server VTK object
+    backs them.  Projection has one, so a fourth store field would be the
+    second source the derivation exists to remove -- and a second source is
+    invisible until the two disagree, which is a save away.
+
+    Asserted both ways: the record carries the value, and the scene grew no
+    attribute to carry it as well.
+    """
+    seeded = _record_camera()
+    scene._renderer.sync_camera(seeded)
+
+    scene.set_projection(PROJECTION_OFF)
+
+    assert scene._renderer.get_camera_state().parallel_projection is False
+    assert not hasattr(scene, "_orthographic_enabled")
+    assert not hasattr(scene, "_parallel_projection")
+    assert scene._cross_section_enabled is False
+    assert scene._edges_enabled is False
+    assert scene._bounding_box_enabled is False
+
+
+def test_set_projection_does_not_notify_the_client(scene):
+    """Serialise only.  No render, no flush, no delegated push.
+
+    A notify here would look correct and would be a loop: the push rebuilds
+    the client, the rebuild re-delivers state, the reapply fires further
+    triggers, and each one pushes again.  Every gate passes with a notify in
+    place and the symptom in the browser looks like a network problem.
+    """
+    notifications = []
+    scene._renderer.render = lambda: notifications.append("render")
+    scene._renderer.render_window_only = lambda: notifications.append("render_window")
+    scene._renderer.flush_wasm_state = lambda: notifications.append("flush")
+    scene._apply_runtime_state_to_render = lambda state: notifications.append("bridge")
+
+    scene.set_projection(PROJECTION_ON)
+
+    assert notifications == []
+
+
+# ---------------------------------------------------------------------------
+# get_state -- orthographic_enabled is derived from the record
+# ---------------------------------------------------------------------------
+
+def test_get_state_derives_orthographic_enabled_from_the_camera_record(scene):
+    """The saved projection is the record's, with the browser saying otherwise.
+
+    This is the assertion that closes AC-5.  The record carries the
+    hand-written literal ``True`` while the reply carries the hand-written
+    literal ``False``; revert the derivation and the assertion reports
+    ``False``, which is the reply's answer passed through -- the behaviour
+    before this increment.
+
+    ``record_reads == 1`` is asserted here too: the record is bound once and
+    read once, so the camera and the projection are answers to a single
+    question and cannot disagree with each other.
+
+    Asserted on what get_state RETURNS -- the object that reaches the writer
+    -- not on the runtime state it was built from.
+    """
+    double = _projection_save_scene(scene, _record_camera(), REPLY_ORTHOGRAPHIC)
+
+    persisted = asyncio.run(scene.get_state(timeout=1.0))
+
+    assert persisted.scene.orthographic_enabled is True
+    assert persisted.scene.camera.parallel_projection is True
+    assert double.record_reads == 1
+
+
+def test_get_state_orthographic_enabled_is_none_when_the_record_is_empty(scene):
+    """An empty record emits ``None``, not a fabricated ``False``.
+
+    ``None`` says "nothing was ever written"; ``False`` would assert
+    perspective over a client that may be parallel.  The reply carries
+    ``True`` here, so a derivation that dropped its guard and fell back to the
+    reply would be visible rather than coincide.
+    """
+    _projection_save_scene(scene, None, True)
+
+    persisted = asyncio.run(scene.get_state(timeout=1.0))
+
+    assert persisted.scene.orthographic_enabled is None
+    assert persisted.scene.camera is None

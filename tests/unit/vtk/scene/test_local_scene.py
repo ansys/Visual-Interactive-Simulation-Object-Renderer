@@ -114,6 +114,11 @@ def pipeline_instance():
             bounding_box_axes_actor_id=32,
         ),
     )
+    # get_camera_state() must return a real record or None, since
+    # get_scene_details derives orthographic_enabled from it and the result is
+    # validated as ``bool | None``.  A bare MagicMock absorbs method calls
+    # silently, but not values pydantic validates.
+    mock_renderer.get_camera_state.return_value = None
     # frontend_ref_name must be a real str, since it is passed to
     # VisorFrontendBridge's constructor.
     mock_renderer.frontend_ref_name = "test-ref-name"

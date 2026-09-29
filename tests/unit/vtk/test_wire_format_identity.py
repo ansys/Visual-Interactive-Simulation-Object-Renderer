@@ -120,6 +120,17 @@ class _StubRenderer:
         )
         return WasmRendererAnnotation(nodes=nodes, widgets=widgets)
 
+    def get_camera_state(self):
+        """``None``: this stub has no camera record.
+
+        ``get_scene_details`` derives the delivered ``orthographicEnabled``
+        from the camera record, so it reads this even though nothing in this
+        module is about the camera.  ``None`` is the honest answer for a
+        renderer that never wrote a camera, and it is what the real renderer
+        answers before the first reset.
+        """
+        return None
+
 
 class _WireFormatScene(VisorSceneBase):
     """Minimal concrete ``VisorSceneBase`` for exercising the real

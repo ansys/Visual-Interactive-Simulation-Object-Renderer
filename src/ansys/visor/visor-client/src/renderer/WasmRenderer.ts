@@ -77,7 +77,26 @@ export class WasmRenderer implements IRenderer {
         annotation: WasmRendererAnnotation,
         triggerSender: TrameTriggerSender | null = null
     ): Promise<WasmRenderer> {
-        return new WasmRenderer(vtkScene, annotation, triggerSender);
+        const renderer = new WasmRenderer(vtkScene, annotation, triggerSender);
+        await renderer.#seedOrthographicFlagAsync();
+        return renderer;
+    }
+
+    /**
+     * Read the orthographic flag out of the wasm camera, once, at construction.
+     *
+     * The only async seam in building a renderer: without it, the
+     * orthographic widget's cached flag starts `false` regardless of what the
+     * camera says. `createAsync` runs after the wasm state fetch completes,
+     * so this reads the *delivered* camera -- making `isOrthographicEnabled()`
+     * a projection of server state, not an independent source.
+     *
+     * Deliberately not defensive: swallowing a failure here would leave the
+     * flag at `false` against a parallel camera -- the exact save-corrupting
+     * fault this seed exists to remove -- invisibly to every gate.
+     */
+    async #seedOrthographicFlagAsync(): Promise<void> {
+        await this.#orthographicWidget.seedFromCameraAsync();
     }
 
     readonly #vtkScene: VtkScene;
@@ -393,6 +412,29 @@ export class WasmRenderer implements IRenderer {
         }
     }
 
+    /**
+     * Send one view-level widget payload to its server trigger.
+     *
+     * Sibling of `#sendTriggerAsync` above; same no-sender/no-op and
+     * logged-and-swallowed-rejection rationale, not repeated here.
+     *
+     * Separate only because a widget trigger has no `nodeId` to name in the
+     * error line, so the log prefix here is distinct and greppable on its own.
+     */
+    async #sendWidgetTriggerAsync(
+        triggerName: string,
+        payload: Record<string, unknown>
+    ): Promise<void> {
+        if (this.#triggerSender == null) {
+            return;
+        }
+        try {
+            await this.#triggerSender(triggerName, payload);
+        } catch (err) {
+            console.error(`[VISOR] widget trigger send failed: trigger='${triggerName}'`, err);
+        }
+    }
+
     async sendPartVisibilityAsync(nodeId: NodeId, visible: boolean): Promise<void> {
         await this.#sendTriggerAsync('set_part_visibility', nodeId, {
             nodeId,
@@ -454,8 +496,23 @@ export class WasmRenderer implements IRenderer {
     }
 
     // ---- View-level widgets -------------------------------------------------
+    /**
+     * The four methods below report to the server *after* the local write,
+     * reading their own widget back rather than forwarding the argument they
+     * were given -- required, not stylistic: the toolbar calls all four with
+     * **no argument** (`Panel_BottomMiddle.tsx`), so each widget resolves the
+     * absent argument by negating its own cached flag, and only it knows what
+     * it settled on. The read-back uses the same getter `getAppStateAsync`
+     * does, so the value sent and the value saved cannot disagree.
+     *
+     * Every payload is absolute, never a toggle or delta, so a send that is
+     * suppressed, duplicated, or reordered is harmless.
+     */
     async setCrossSectionVisibilityAsync(visible?: boolean): Promise<void> {
         await this.#crossSectionWidget.setVisibilityAsync(visible);
+        await this.#sendWidgetTriggerAsync('set_cross_section_visibility', {
+            visible: this.isCrossSectionVisible(),
+        });
     }
 
     isCrossSectionVisible(): boolean {
@@ -485,6 +542,9 @@ export class WasmRenderer implements IRenderer {
     async setBoundingBoxVisibilityAsync(visible?: boolean): Promise<void> {
         this.#requireSceneGraphAttached('setBoundingBoxVisibilityAsync');
         await this.#boundingBoxWidget!.setVisibilityAsync(visible);
+        await this.#sendWidgetTriggerAsync('set_bounding_box_visibility', {
+            visible: this.isBoundingBoxVisible(),
+        });
     }
 
     isBoundingBoxVisible(): boolean {
@@ -499,6 +559,9 @@ export class WasmRenderer implements IRenderer {
 
     async setOrthographicModeAsync(enable?: boolean): Promise<void> {
         await this.#orthographicWidget.setOrthographicModeAsync(enable);
+        await this.#sendWidgetTriggerAsync('set_projection', {
+            parallel: this.isOrthographicEnabled(),
+        });
     }
 
     isOrthographicEnabled(): boolean {
@@ -508,6 +571,9 @@ export class WasmRenderer implements IRenderer {
     async setEdgeVisibilityGlobalAsync(visible?: boolean): Promise<void> {
         this.#requireSceneGraphAttached('setEdgeVisibilityGlobalAsync');
         await this.#edgesWidget!.setEdgesVisibleAsync(visible);
+        await this.#sendWidgetTriggerAsync('set_edges_visible', {
+            visible: this.#edgesWidget!.enabled,
+        });
     }
 
     areEdgesVisibleGlobally(): boolean {
