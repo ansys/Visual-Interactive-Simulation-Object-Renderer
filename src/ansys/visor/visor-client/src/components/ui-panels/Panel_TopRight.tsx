@@ -493,7 +493,8 @@ export const Panel_TopRight: FC<{
                         legendTabElem.click();
                     }
                 },
-                () => tabIndex
+                () => tabIndex,
+                () => onSelectionChangeAsync(treeViewUtil.selectedNodes)
             );
             visorState.setPanelTopRightUtil(util);
             // Must stay on the line after the util handoff: it suppresses the three mount writes

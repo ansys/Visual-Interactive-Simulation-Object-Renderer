@@ -4,7 +4,6 @@ import { getPromiseResolver } from './utils/JsHelpers';
 import VisorAppState from './state/appstate/VisorAppState.tsx';
 import VisorDatasetState from './state/appstate/VisorDatasetState.tsx';
 import VisorPartState from './state/appstate/VisorPartState.tsx';
-import VisorVariableState from './state/appstate/VisorVariableState.tsx';
 import { TreeViewUtil } from './treeview/TreeView.tsx';
 import { StateInput } from './state/appstate/VisorStateCommon.tsx';
 import VisorVtkSceneNode from './state/appstate/vtkInfo/VisorVtkSceneNode.tsx';
@@ -305,29 +304,9 @@ export class VisorFrontend {
                 }
                 sceneState.copyDataset(datasetState);
             }
-            const variableInfos = variableManager.globalVariableCollection;
-            for (const variableInfo of variableInfos.array) {
-                const variableState = new VisorVariableState();
-                variableState.setId(variableInfo.id.toString());
-                variableState.setArrayName(variableInfo.name);
-                variableState.setType(variableInfo.type);
-                variableState.setNumComponents(variableInfo.numComponents);
-                const magnitudeRange = variableInfo.getRangeInfo(-1);
-                if (magnitudeRange == null) {
-                    throw new Error(`range at component ${-1} not found`);
-                }
-                variableState.setMagnitudeRange(magnitudeRange.customRange);
-                const ranges: number[][] = [];
-                for (let i = 0; i < variableInfo.numComponents; i++) {
-                    const range = variableInfo.getRangeInfo(i);
-                    if (range == null) {
-                        throw new Error(`range at component ${i} not found`);
-                    }
-                    ranges.push(range.customRange);
-                }
-                variableState.setRanges(ranges);
-                sceneState.copyVariable(variableState);
-            }
+            // No variable block: the server owns the variable records and
+            // delivers them on every push.  Carrying a copy across a rebuild
+            // would replace the delivered records with this one.
             return appState;
         };
         this.setAppStateAsync = async (state, updateUI) => {
@@ -460,6 +439,13 @@ export class VisorFrontend {
                 const promise = renderer.setCrossSectionNormalAsync(crossSectionState.normal);
                 promises.push(promise);
             }
+            // Held before the part loop: a part coloured below reads its
+            // range from these records.  Guarded on presence, so a state with
+            // no variable block leaves the held records alone, while an empty
+            // block clears them.
+            if (sceneState.hasVariableStates) {
+                variableManager.setRecords(sceneState.getVariableStates());
+            }
             for (const dataset_state of sceneState.getDatasetStates()) {
                 for (const part_state of dataset_state.getPartStates()) {
                     let node;
@@ -548,6 +534,13 @@ export class VisorFrontend {
                 // Selection and visibility are both applied to the nodes
                 // above; the tree derives its rows from them here.
                 treeViewUtil.synchronize();
+            }
+            // After the tree has taken the delivered selection, so the panel
+            // re-reads that selection's ranges from the records just held.
+            // Skipped until the panel exists; its mount reads them itself.
+            if (isPanelTopRightUtilSet()) {
+                const panelTopRight = await panelTopRightUtilPromise;
+                await panelTopRight.refreshSelectionAsync();
             }
             await renderer.resizeAsync();
         };
