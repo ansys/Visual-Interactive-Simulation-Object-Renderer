@@ -84,7 +84,7 @@ def main():
 
     # Check if the server is running before executing instance commands
     # unless the command is to start the server
-    if not (args.group == "server" and args.action in ["start", "health"]):
+    if not (args.group == "server" and args.action in ["start", "health"] or args.group == "log"):
         if not check_server_running(args.api_host, args.api_port):
             print("Server is not running. Please start the server first.")
             sys.exit(1)
@@ -132,12 +132,14 @@ def main():
         elif args.action == "load":
             api.load(args.state_dir)
 
-    if args.group == "logs":
+    if args.group == "log":
         api = LogsAPI(log_dir=args.log_dir)
-        if not args.log_name:
+        if args.action == "list":
             api.list_logs()
-        else:
+        elif args.action == "show":
             api.show_log(args.log_name, args.follow, args.lines)
+        elif args.action == "clear":
+            api.clear_logs()
         return
 
 

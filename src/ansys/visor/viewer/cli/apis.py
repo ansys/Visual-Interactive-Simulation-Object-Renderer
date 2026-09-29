@@ -1,7 +1,9 @@
 """API client for controlling a Visor server."""
 
 import json
+import logging
 import os
+import shutil
 import time
 
 import requests
@@ -229,9 +231,9 @@ class LogsAPI:
             return
         files = [f for f in os.listdir(self.log_dir) if f.endswith(".log")]
         if not files:
-            print("No log files found.")
+            print(f"No log files found in log dir {self.log_dir}.")
         else:
-            print("Available log files:")
+            print(f"Available log files in log dir {self.log_dir}:")
             for f in files:
                 print("  " + f[:-4])  # strip .log
 
@@ -272,3 +274,22 @@ class LogsAPI:
                     print("".join(deque(f, maxlen=lines)), end="")
         except FileNotFoundError:
             print(f"Log file not found: {log_path}")
+
+    def clear_logs(self):
+        """Delete the log directory."""
+        if not os.path.isdir(self.log_dir):
+            print(f"Log directory not found: {self.log_dir}")
+            return
+        print(f"Clear log directory {self.log_dir}? (y/n): ", end="")
+        choice = input().strip().lower()
+        if choice != "y":
+            print("Aborted.")
+            return
+        try:
+            # Release this process's own file handles (e.g. visor.log opened by
+            # module-level loggers on import) so Windows allows deletion.
+            logging.shutdown()
+            shutil.rmtree(self.log_dir)
+            print("Log directory cleared.")
+        except Exception as e:
+            print(f"Failed to clear log directory: {e}")

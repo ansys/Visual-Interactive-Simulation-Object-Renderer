@@ -117,19 +117,33 @@ def parse_args():
     ######################
     # Logs subcommands
     ######################
-    logs_parser = subparsers.add_parser("logs", help="Log file operations")
-    logs_parser.add_argument("log_name", nargs="?", help="Name of the log file (without .log)")
-    logs_parser.add_argument("-f", "--follow",
-                             action="store_true",
-                             help="Follow the log file (like tail -f)"
-                             )
+    logs_parser = subparsers.add_parser("log", help="Log file operations")
     logs_parser.add_argument("--log-dir",
                              default=None,
                              help="Directory containing log files (default: from settings)"
                              )
-    logs_parser.add_argument(
+    logs_sub = logs_parser.add_subparsers(dest="action", required=True)
+
+    # list API
+    logs_sub.add_parser("list", help="List available logs")
+
+    # show API
+    show_parser = logs_sub.add_parser("show", help="Show the log file")
+    show_parser.add_argument("log_name",
+                             nargs="?",
+                             help="Name of the log file (without .log)",
+                             default="visor")
+    show_parser.add_argument("-f", "--follow",
+                             action="store_true",
+                             help="Follow the log file (like tail -f)"
+                             )
+    show_parser.add_argument(
         "-n", "--lines", type=int, default=10,
         help="Number of lines to show from the end of the log file (default: 10)"
     )
+
+    # clear API
+    logs_sub.add_parser("clear", help="Clear available logs")
+
 
     return parser.parse_args()
