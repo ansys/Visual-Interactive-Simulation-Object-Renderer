@@ -94,13 +94,31 @@ def test_main_server_info_list(mock_parse_args, mock_server_api):
 
 def test_main_server_init(mock_parse_args, mock_server_api):
     """Verify that server initialization forwards the expected arguments."""
-    args = make_args("server", "init", host="h", port=42, rendering_mode=RenderingMode.LOCAL, standalone=True, dark_mode=False)
+    args = make_args(
+        "server", "init",
+        host="h", port=42, rendering_mode=RenderingMode.LOCAL,
+        standalone=True, dark_mode=False, start=False,
+    )
     mock_parse_args.return_value = args
     api = MagicMock()
     mock_server_api.return_value = api
     with patch("ansys.visor.viewer.cli.visor_cli.check_server_running", return_value=True):
         visor_cli.main()
-        api.initialize.assert_called_once_with("h", 42, RenderingMode.LOCAL, True, False)
+        api.initialize.assert_called_once_with("h", 42, RenderingMode.LOCAL, True, False, False)
+
+def test_main_server_init_with_start(mock_parse_args, mock_server_api):
+    """Verify that server initialization forwards the --start flag."""
+    args = make_args(
+        "server", "init",
+        host="h", port=42, rendering_mode=RenderingMode.LOCAL,
+        standalone=True, dark_mode=False, start=True,
+    )
+    mock_parse_args.return_value = args
+    api = MagicMock()
+    mock_server_api.return_value = api
+    with patch("ansys.visor.viewer.cli.visor_cli.check_server_running", return_value=True):
+        visor_cli.main()
+        api.initialize.assert_called_once_with("h", 42, RenderingMode.LOCAL, True, False, True)
 
 def test_main_instance_actions(mock_parse_args, mock_instance_api):
     """Verify that instance actions invoke the corresponding API methods."""
@@ -126,7 +144,7 @@ def test_main_instance_actions(mock_parse_args, mock_instance_api):
 
 def test_main_logs_list(mock_parse_args, mock_logs_api):
     """Verify that log listing invokes the list_logs method."""
-    args = make_args("logs", None, log_name=None, follow=False, log_dir=None, lines=10)
+    args = make_args("log", "list", log_name=None, follow=False, log_dir=None, lines=10)
     mock_parse_args.return_value = args
     api = MagicMock()
     mock_logs_api.return_value = api
@@ -136,13 +154,34 @@ def test_main_logs_list(mock_parse_args, mock_logs_api):
 
 def test_main_logs_show(mock_parse_args, mock_logs_api):
     """Verify that log display invokes show_log with the requested options."""
-    args = make_args("logs", None, log_name="mylog", follow=True, log_dir="dir", lines=5)
+    args = make_args("log", "show", log_name="mylog", follow=True, log_dir="dir", lines=5)
     mock_parse_args.return_value = args
     api = MagicMock()
     mock_logs_api.return_value = api
     with patch("ansys.visor.viewer.cli.visor_cli.check_server_running", return_value=True):
         visor_cli.main()
         api.show_log.assert_called_once_with("mylog", True, 5)
+
+def test_main_logs_clear(mock_parse_args, mock_logs_api):
+    """Verify that log clear invokes the clear_logs method."""
+    args = make_args("log", "clear", log_dir=None)
+    mock_parse_args.return_value = args
+    api = MagicMock()
+    mock_logs_api.return_value = api
+    with patch("ansys.visor.viewer.cli.visor_cli.check_server_running", return_value=True):
+        visor_cli.main()
+        api.clear_logs.assert_called_once()
+
+def test_main_logs_does_not_require_running_server(mock_parse_args, mock_logs_api):
+    """Verify that log commands do not require the server to be running."""
+    args = make_args("log", "list", log_name=None, follow=False, log_dir=None, lines=10)
+    mock_parse_args.return_value = args
+    api = MagicMock()
+    mock_logs_api.return_value = api
+    with patch("ansys.visor.viewer.cli.visor_cli.check_server_running") as mock_check:
+        visor_cli.main()
+        mock_check.assert_not_called()
+        api.list_logs.assert_called_once()
 
 def test_main_server_not_running_exits(mock_parse_args, capsys):
     """Verify that instance commands exit when the server is not running."""

@@ -41,9 +41,22 @@ def test_serverapi_initialize_prints_response():
     api = ServerAPI("host", 1234)
     with patch("requests.post") as mock_post, patch("builtins.print") as mock_print:
         mock_post.return_value.json.return_value = {"result": "ok"}
-        api.initialize("h", 1, RenderingMode.LOCAL, True, dark_mode=False)
+        api.initialize("h", 1, RenderingMode.LOCAL, True, dark_mode=False, start=False)
         mock_post.assert_called_once()
         mock_print.assert_called_with({"result": "ok"})
+
+def test_serverapi_initialize_with_start_also_starts_instance():
+    """Verify that passing start=True also posts to the /start endpoint."""
+    api = ServerAPI("host", 1234)
+    with patch("requests.post") as mock_post, patch("builtins.print"):
+        mock_post.return_value.json.return_value = {"result": "ok"}
+        api.initialize("h", 1, RenderingMode.LOCAL, True, dark_mode=False, start=True)
+        assert mock_post.call_count == 2
+        mock_post.assert_any_call(f"{api.base}/initialize", json={
+            "host": "h", "port": 1, "rendering_mode": RenderingMode.LOCAL,
+            "standalone": True, "dark_mode": False,
+        })
+        mock_post.assert_any_call(f"{api.base}/start", json={})
 
 def test_serverapi_list_prints_urls():
     """Verify that available instance URLs are printed."""
@@ -137,7 +150,7 @@ def test_logsapi_list_logs_prints_files(tmp_path):
     api = LogsAPI(str(log_dir))
     with patch("builtins.print") as mock_print:
         api.list_logs()
-        mock_print.assert_any_call("Available log files:")
+        mock_print.assert_any_call(f"Available log files in log dir {log_dir}:")
         mock_print.assert_any_call("  foo")
         mock_print.assert_any_call("  bar")
 
@@ -146,7 +159,7 @@ def test_logsapi_list_logs_prints_no_files(tmp_path):
     api = LogsAPI(str(tmp_path))
     with patch("builtins.print") as mock_print:
         api.list_logs()
-        mock_print.assert_any_call("No log files found.")
+        mock_print.assert_any_call(f"No log files found in log dir {tmp_path}.")
 
 def test_logsapi_list_logs_prints_dir_not_found():
     """Verify that a missing log directory is reported."""
@@ -201,3 +214,43 @@ def test_logsapi_show_log_follow_prints_and_waits(monkeypatch):
             pass
         printed = "".join([call.args[0] for call in mock_print.call_args_list])
         assert "line2" in printed or "line3" in printed
+
+def test_logsapi_clear_logs_prints_dir_not_found():
+    """Verify that a missing log directory is reported when clearing."""
+    api = LogsAPI("not_a_dir")
+    with patch("builtins.print") as mock_print:
+        api.clear_logs()
+        mock_print.assert_any_call("Log directory not found: not_a_dir")
+
+def test_logsapi_clear_logs_aborted_on_no(tmp_path):
+    """Verify that clearing is aborted when the user does not confirm."""
+    api = LogsAPI(str(tmp_path))
+    with patch("builtins.input", return_value="n"), \
+         patch("builtins.print") as mock_print, \
+         patch("shutil.rmtree") as mock_rmtree:
+        api.clear_logs()
+        mock_print.assert_any_call("Aborted.")
+        mock_rmtree.assert_not_called()
+
+def test_logsapi_clear_logs_removes_dir_on_confirm(tmp_path):
+    """Verify that the log directory is removed when the user confirms."""
+    api = LogsAPI(str(tmp_path))
+    with patch("builtins.input", return_value="y"), \
+         patch("builtins.print") as mock_print, \
+         patch("logging.shutdown") as mock_shutdown, \
+         patch("shutil.rmtree") as mock_rmtree:
+        api.clear_logs()
+        mock_shutdown.assert_called_once()
+        mock_rmtree.assert_called_once_with(str(tmp_path))
+        mock_print.assert_any_call("Log directory cleared.")
+
+def test_logsapi_clear_logs_reports_failure(tmp_path):
+    """Verify that failures during removal are reported."""
+    api = LogsAPI(str(tmp_path))
+    with patch("builtins.input", return_value="y"), \
+         patch("builtins.print") as mock_print, \
+         patch("logging.shutdown"), \
+         patch("shutil.rmtree", side_effect=OSError("boom")):
+        api.clear_logs()
+        mock_print.assert_any_call("Failed to clear log directory: boom")
+
