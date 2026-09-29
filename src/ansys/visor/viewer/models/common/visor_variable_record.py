@@ -195,8 +195,18 @@ class VisorVariableRecords(BaseModel):
             variables[variable_id] = accumulator.to_record(previous.variables.get(variable_id))
         return cls(variables=variables)
 
-    def overlay(self, file_states: Dict[str, VisorVariableState]) -> "VisorVariableRecords":
-        """Apply a file's ranges to this fresh build by the D3 load rule and return this holder.
+    @classmethod
+    def from_file(
+            cls,
+            registry: "VisorDatasetRegistry",
+            file_states: Dict[str, VisorVariableState],
+    ) -> "VisorVariableRecords":
+        """Build a fresh holder from the registry and apply the file's ranges by the D3 load rule."""
+        return cls.from_registry(registry, VisorVariableRecords())._overlay(file_states)
+
+    def _overlay(self, file_states: Dict[str, VisorVariableState]) -> "VisorVariableRecords":
+        """Apply a file's ranges to this fresh build by the D3 load rule and return this holder; called only by
+           from_file.
 
         - A null or absent ``magnitudeRange`` falls back to the default (DEBUG).
         - ``ranges`` whose length differs from ``num_components`` fall back to the default (DEBUG).
