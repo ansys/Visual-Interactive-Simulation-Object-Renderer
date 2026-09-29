@@ -101,6 +101,12 @@ class NullRenderer(IRenderer):
     def clear_color_variable(self, node_id: int) -> None:
         pass
 
+    def serialize_part_state(self, node_id: int) -> None:
+        """See :meth:`IRenderer.serialize_part_state`.
+
+        No-op: this renderer serves the client no VTK object state.
+        """
+
     def refresh_color_variable_range(
         self,
         node_id: int,

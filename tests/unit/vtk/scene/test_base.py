@@ -437,12 +437,48 @@ def test_set_part_selected_flushes_under_the_lock_after_the_apply(scene, pipelin
 
 # ===========================================================================
 # set_part_color_variable
+#
+# The range applied is the server record's, so each test seeds a literal
+# record whose effective ranges differ from every default and from any range
+# a client might send.
 # ===========================================================================
+
+SEEDED_MAGNITUDE_RANGE = (1.5, 8.5)
+SEEDED_COMPONENT_RANGE = (3.25, 6.75)
+MAPPER_WASM_ID = 8150003
+
+
+def _seeded_record(**overrides):
+    """The "pressure" record on NODE_ID with custom ranges distinct from its defaults."""
+    fields = dict(magnitude_range=SEEDED_MAGNITUDE_RANGE, ranges=[SEEDED_COMPONENT_RANGE])
+    fields.update(overrides)
+    return _pressure_record(**fields)
+
+
+def _seed_records(scene, *records):
+    """Install *records* as the scene's held variable records."""
+    scene._variable_records.variables = {record.id: record for record in records}
+
+
+def _temperature_record():
+    """A cell-association record on NODE_ID for the fixture's "temperature" array."""
+    return _pressure_record(
+        id="CELL::temperature::1",
+        array_name="temperature",
+        type=VisorVtkVariableType.CELL,
+        default_magnitude_range=(0.0, 95.0),
+        default_ranges=[(0.0, 95.0)],
+        magnitude_range=(0.0, 95.0),
+        ranges=[(0.0, 95.0)],
+    )
+
 
 def test_set_part_color_variable_writes_the_registry_record(scene, registry):
     """Store half: variable id and component are recorded together."""
+    _seed_records(scene, _seeded_record())
+
     scene.set_part_color_variable(
-        NODE_ID, "POINT::pressure::1", VisorVtkVariableType.POINT, "pressure", 0, 0.0, 49.0
+        NODE_ID, "POINT::pressure::1", VisorVtkVariableType.POINT, "pressure", 0
     )
 
     state = registry.get_part_state(NODE_ID)
@@ -451,22 +487,26 @@ def test_set_part_color_variable_writes_the_registry_record(scene, registry):
 
 
 def test_set_part_color_variable_applies_to_the_vtk_mapper(scene, pipeline):
-    """Apply half: the mapper selects the array and honours the given range."""
+    """Apply half: the mapper selects the array and honours the record's range."""
+    _seed_records(scene, _seeded_record())
+
     scene.set_part_color_variable(
-        NODE_ID, "POINT::pressure::1", VisorVtkVariableType.POINT, "pressure", 0, 0.0, 49.0
+        NODE_ID, "POINT::pressure::1", VisorVtkVariableType.POINT, "pressure", 0
     )
 
     mapper = pipeline.mapper
     assert mapper.GetScalarVisibility() == 1
     assert mapper.GetArrayName() == "pressure"
     assert mapper.GetArrayComponent() == 0
-    assert mapper.GetScalarRange() == pytest.approx((0.0, 49.0))
+    assert mapper.GetScalarRange() == pytest.approx((3.25, 6.75))
 
 
 def test_set_part_color_variable_applies_a_cell_association(scene, pipeline):
     """Apply half, cell branch: the cell array is selected."""
+    _seed_records(scene, _temperature_record())
+
     scene.set_part_color_variable(
-        NODE_ID, "CELL::temperature::1", VisorVtkVariableType.CELL, "temperature", 0, 0.0, 95.0
+        NODE_ID, "CELL::temperature::1", VisorVtkVariableType.CELL, "temperature", 0
     )
 
     assert pipeline.mapper.GetArrayName() == "temperature"
@@ -475,11 +515,12 @@ def test_set_part_color_variable_applies_a_cell_association(scene, pipeline):
 
 def test_set_part_color_variable_flushes_under_the_lock_after_the_apply(scene, pipeline):
     """Lock held, and the mapper already configured, when the flush runs."""
+    _seed_records(scene, _seeded_record())
     scene._vtk_lock = _LockSpy()
     record = _spy_flush(scene, lambda: pipeline.mapper.GetArrayName())
 
     scene.set_part_color_variable(
-        NODE_ID, "POINT::pressure::1", VisorVtkVariableType.POINT, "pressure", 0, 0.0, 49.0
+        NODE_ID, "POINT::pressure::1", VisorVtkVariableType.POINT, "pressure", 0
     )
 
     # TODO: change "calls" to 1 and uncomment "depth" and "value" when we add round trips
@@ -487,6 +528,187 @@ def test_set_part_color_variable_flushes_under_the_lock_after_the_apply(scene, p
     # assert record["depth"] >= 1
     # assert record["value"] == "pressure"
     assert scene._vtk_lock.enter_count == scene._vtk_lock.exit_count
+
+
+def test_set_part_color_variable_applies_the_record_range(scene, pipeline):
+    """The component slot's effective range comes from the record, not from any caller value."""
+    _seed_records(scene, _seeded_record())
+
+    assert scene.set_part_color_variable(
+        NODE_ID, "POINT::pressure::1", VisorVtkVariableType.POINT, "pressure", 0
+    ) is True
+
+    assert pipeline.mapper.GetScalarRange() == pytest.approx((3.25, 6.75))
+
+
+def test_set_part_color_variable_non_participating_part_is_refused_and_not_stored(
+    scene, registry
+):
+    """A part outside the record's part_ids is refused before the registry is written."""
+    _seed_records(scene, _seeded_record(part_ids=[SECOND_NODE_ID]))
+
+    result = scene.set_part_color_variable(
+        NODE_ID, "POINT::pressure::1", VisorVtkVariableType.POINT, "pressure", 0
+    )
+
+    assert result is False
+    assert registry.get_part_state(NODE_ID) is None
+
+
+def test_set_part_color_variable_reserializes_the_mapper_after_the_write_under_the_lock(
+    scene, pipeline
+):
+    """The mapper is re-serialized by its own id, after the range is written, with the lock held."""
+    _seed_records(scene, _seeded_record())
+    scene._vtk_lock = _LockSpy()
+    object_manager = scene._renderer._object_manager
+    mapper = pipeline.mapper
+    other_ids = object_manager.GetId.side_effect
+    object_manager.GetId.side_effect = (
+        lambda obj: MAPPER_WASM_ID if obj is mapper else other_ids(obj)
+    )
+    serialized = []
+    object_manager.UpdateStateFromObject.side_effect = lambda object_id: serialized.append(
+        (object_id, scene._vtk_lock.depth, tuple(mapper.GetScalarRange()))
+    )
+
+    scene.set_part_color_variable(
+        NODE_ID, "POINT::pressure::1", VisorVtkVariableType.POINT, "pressure", 0
+    )
+
+    assert len(serialized) == 1
+    object_id, depth, served_range = serialized[0]
+    assert object_id == 8150003
+    assert depth >= 1
+    assert served_range == pytest.approx((3.25, 6.75))
+
+
+# ===========================================================================
+# _resolve_color_variable
+# ===========================================================================
+
+def test_resolve_color_variable_magnitude_slot_returns_the_record_magnitude_range(scene):
+    """Component -1 resolves to the record's magnitude_range, for the part asked about."""
+    _seed_records(scene, _seeded_record())
+
+    binding = scene._resolve_color_variable(NODE_ID, "POINT::pressure::1", -1)
+
+    assert binding.part_id == 7
+    assert (binding.min_val, binding.max_val) == (1.5, 8.5)
+
+
+def test_resolve_color_variable_component_slot_returns_the_record_component_range(scene):
+    """Component 0 resolves to ranges[0], not the magnitude range."""
+    _seed_records(scene, _seeded_record())
+
+    binding = scene._resolve_color_variable(NODE_ID, "POINT::pressure::1", 0)
+
+    assert binding.component == 0
+    assert (binding.min_val, binding.max_val) == (3.25, 6.75)
+
+
+def test_resolve_color_variable_component_out_of_range_is_refused(scene):
+    """A component past the record's width names no slot."""
+    _seed_records(scene, _seeded_record())
+
+    with patch("ansys.visor.viewer.vtk.scene.base.logger") as mock_logger:
+        binding = scene._resolve_color_variable(NODE_ID, "POINT::pressure::1", 1)
+
+    assert binding is None
+    assert mock_logger.warning.call_count == 1
+
+
+def test_resolve_color_variable_non_participating_part_is_refused(scene):
+    """A part not in part_ids is refused; a same-named array of another width lands here."""
+    _seed_records(scene, _seeded_record(part_ids=[SECOND_NODE_ID]))
+
+    with patch("ansys.visor.viewer.vtk.scene.base.logger") as mock_logger:
+        binding = scene._resolve_color_variable(NODE_ID, "POINT::pressure::1", 0)
+
+    assert binding is None
+    assert mock_logger.warning.call_count == 1
+
+
+def test_apply_state_resolves_through_the_color_variable_helper(scene, registry, pipeline):
+    """The load path resolves a colored part through the same helper the live trigger uses."""
+    _seed_part_variables(registry, [_pressure_variable()])
+
+    with patch.object(
+        scene, "_resolve_color_variable", wraps=scene._resolve_color_variable
+    ) as spy:
+        _apply(scene, _color_variable_state(0), _file_entries())
+
+    spy.assert_called_once_with(7, "POINT::pressure::1", 0)
+
+
+# ===========================================================================
+# set_variable_range
+# ===========================================================================
+
+def test_set_variable_range_stores_the_slot_by_copy_on_write_without_a_push(scene):
+    """The slot is replaced in a new dict; a reader's earlier dict is unchanged; nothing is pushed."""
+    _seed_records(scene, _seeded_record())
+    scene._push_runtime_state = MagicMock(name="_push_runtime_state")
+    before = scene._variable_records.variables
+
+    assert scene.set_variable_range("POINT::pressure::1", 0, 3.0, 4.0) is True
+
+    stored = scene._variable_records.variables["POINT::pressure::1"]
+    assert stored.ranges == [(3.0, 4.0)]
+    assert stored.magnitude_range == (1.5, 8.5)
+    assert scene._variable_records.variables is not before
+    assert before["POINT::pressure::1"].ranges == [(3.25, 6.75)]
+    scene._renderer.flush_wasm_state.assert_not_called()
+    scene._push_runtime_state.assert_not_called()
+
+
+def test_set_variable_range_applies_to_parts_referencing_the_slot(
+    scene, registry, pipeline, renderer, array_dataset
+):
+    """A part referencing the slot takes the range; one on another slot of the same id does not."""
+    registry.datasets = {1: _make_part_dataset(1, [NODE_ID, SECOND_NODE_ID])}
+    second = VtkNodePipeline.from_dataset(array_dataset)
+    renderer._pipelines[SECOND_NODE_ID] = second
+    _seed_records(scene, _seeded_record(part_ids=[NODE_ID, SECOND_NODE_ID]))
+    registry.set_part_color_variable(NODE_ID, "POINT::pressure::1", 0)
+    registry.set_part_color_variable(SECOND_NODE_ID, "POINT::pressure::1", -1)
+    _seed_unconfigured_mapper(pipeline)
+    _seed_unconfigured_mapper(second)
+
+    scene.set_variable_range("POINT::pressure::1", 0, 3.0, 4.0)
+
+    assert pipeline.mapper.GetScalarVisibility() == 1
+    assert pipeline.mapper.GetScalarRange() == pytest.approx((3.0, 4.0))
+    assert second.mapper.GetScalarVisibility() == 0
+    assert second.mapper.GetScalarRange() == pytest.approx((11.0, 22.0))
+
+
+REFUSED_RANGE_CALLS = {
+    "unknown_id": ("POINT::absent::1", 0, 3.0, 4.0),
+    "component_out_of_range": ("POINT::pressure::1", 1, 3.0, 4.0),
+    "min_above_max": ("POINT::pressure::1", 0, 4.0, 3.0),
+    "non_finite": ("POINT::pressure::1", 0, float("nan"), 4.0),
+}
+
+
+@pytest.mark.parametrize("case", list(REFUSED_RANGE_CALLS))
+def test_set_variable_range_refusal_writes_nothing_and_returns_false(
+    scene, registry, pipeline, case
+):
+    """Refused: False, one WARNING, the held dict not rebound, the referencing mapper untouched."""
+    _seed_records(scene, _seeded_record())
+    registry.set_part_color_variable(NODE_ID, "POINT::pressure::1", 0)
+    _seed_unconfigured_mapper(pipeline)
+    before = scene._variable_records.variables
+
+    with patch("ansys.visor.viewer.vtk.scene.base.logger") as mock_logger:
+        result = scene.set_variable_range(*REFUSED_RANGE_CALLS[case])
+
+    assert result is False
+    assert mock_logger.warning.call_count == 1
+    assert scene._variable_records.variables is before
+    assert pipeline.mapper.GetScalarVisibility() == 0
+    assert pipeline.mapper.GetScalarRange() == pytest.approx((11.0, 22.0))
 
 
 # ===========================================================================
@@ -506,8 +728,9 @@ def test_clear_part_color_variable_clears_the_registry_record(scene, registry):
 
 def test_clear_part_color_variable_disables_scalar_visibility_on_the_mapper(scene, pipeline):
     """Apply half: scalar colouring is off on the mapper."""
+    _seed_records(scene, _seeded_record())
     scene.set_part_color_variable(
-        NODE_ID, "POINT::pressure::1", VisorVtkVariableType.POINT, "pressure", 0, 0.0, 49.0
+        NODE_ID, "POINT::pressure::1", VisorVtkVariableType.POINT, "pressure", 0
     )
 
     scene.clear_part_color_variable(NODE_ID)
@@ -538,15 +761,6 @@ COORDINATOR_CALLS = {
     "set_part_opacity": (UNKNOWN_NODE_ID, 0.25),
     "set_part_diffuse_color": (UNKNOWN_NODE_ID, [1.0, 0.0, 0.0]),
     "set_part_selected": (UNKNOWN_NODE_ID, True),
-    "set_part_color_variable": (
-        UNKNOWN_NODE_ID,
-        "POINT::pressure::1",
-        VisorVtkVariableType.POINT,
-        "pressure",
-        0,
-        0.0,
-        49.0,
-    ),
     "clear_part_color_variable": (UNKNOWN_NODE_ID,),
 }
 

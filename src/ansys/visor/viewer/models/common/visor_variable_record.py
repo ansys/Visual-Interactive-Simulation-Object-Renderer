@@ -76,6 +76,21 @@ class VisorVariableRecord(BaseModel):
             return self.ranges[component]
         return None
 
+    def with_range(self, component: int, value_range: Range) -> "VisorVariableRecord":
+        """Return a copy with one effective slot replaced: ``-1`` is magnitude, ``0..n-1`` a component.
+
+        The caller validates *component*; a slot outside ``[-1, num_components)`` raises ``IndexError``.
+        This record is never mutated.
+        """
+        new_range = (float(value_range[0]), float(value_range[1]))
+        if component == -1:
+            return self.model_copy(update={"magnitude_range": new_range}, deep=True)
+        if not 0 <= component < len(self.ranges):
+            raise IndexError(f"component {component} is outside [-1, {len(self.ranges)})")
+        ranges = [tuple(r) for r in self.ranges]
+        ranges[component] = new_range
+        return self.model_copy(update={"ranges": ranges}, deep=True)
+
 
 @dataclass
 class _VariableAccumulator:
