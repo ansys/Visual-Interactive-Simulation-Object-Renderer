@@ -350,3 +350,99 @@ def test_data_array_type_is_str_and_point_or_cell_in_emitted_json():
         assert d["type"] in {"POINT", "CELL"}
 
 
+# ---------------------------------------------------------------------------
+# 3.5.1 increment 1: the server's variable records on the scene-details wire.
+#
+# The registry holds two hand-written datasets sharing "pressure"; the scene
+# graph is the fixture sphere and plays no part in the variables.  Expected
+# values are hand-written literals.
+# ---------------------------------------------------------------------------
+
+class _VariablesOnlyDataset:
+    """Dataset stand-in answering the two reads get_scene_details and the rebuild make."""
+
+    def __init__(self, dataset_id, parts):
+        from ansys.visor.viewer.models.runtime.dataset.runtime_dataset_state import (
+            RuntimeDatasetState,
+        )
+        self.state = RuntimeDatasetState(id=dataset_id, part_states={})
+        self._parts = parts
+
+    def list_variables(self):
+        from ansys.visor.viewer.vtk.variables.visor_part_variables import VisorPartVariables
+        return [
+            VisorPartVariables(part_id=part_id, part_name=f"p{part_id}", variables=variables)
+            for part_id, variables in self._parts.items()
+        ]
+
+
+def _variable(name, ranges, magnitude):
+    from ansys.visor.viewer.core.visor_enums import VisorVtkVariableType
+    from ansys.visor.viewer.vtk.variables.visor_variables import VisorVariable
+    return VisorVariable(
+        index=0, type=VisorVtkVariableType.POINT, name=name, num_components=len(ranges),
+        num_points=4, ranges=list(ranges), magnitude_range=magnitude,
+    )
+
+
+def _scene_with_two_datasets_sharing_pressure():
+    scene = _build_scene(_sphere_polydata())
+    scene._dataset_registry.datasets = {
+        1: _VariablesOnlyDataset(1, {
+            11: [
+                _variable("pressure", [(0.0, 10.0)], (0.0, 10.0)),
+                _variable("velocity", [(0.0, 1.0), (0.0, 2.0), (0.0, 3.0)], (0.0, 4.0)),
+            ],
+        }),
+        2: _VariablesOnlyDataset(2, {21: [_variable("pressure", [(-5.0, 4.0)], (-5.0, 4.0))]}),
+    }
+    scene._rebuild_variable_records("add")
+    return scene
+
+
+def test_scene_details_json_carries_every_record_key_and_no_null():
+    """#17: every record key for every variable, no null, on two datasets sharing one variable."""
+    scene = _scene_with_two_datasets_sharing_pressure()
+
+    payload = json.loads(scene.get_scene_details_json())
+
+    assert payload["appState"]["scene"]["variableStates"] == {
+        "POINT::pressure::1": {
+            "id": "POINT::pressure::1",
+            "arrayName": "pressure",
+            "type": "POINT",
+            "numComponents": 1,
+            "partIds": [11, 21],
+            "defaultMagnitudeRange": [-5.0, 10.0],
+            "defaultRanges": [[-5.0, 10.0]],
+            "magnitudeRange": [-5.0, 10.0],
+            "ranges": [[-5.0, 10.0]],
+        },
+        "POINT::velocity::3": {
+            "id": "POINT::velocity::3",
+            "arrayName": "velocity",
+            "type": "POINT",
+            "numComponents": 3,
+            "partIds": [11],
+            "defaultMagnitudeRange": [0.0, 4.0],
+            "defaultRanges": [[0.0, 1.0], [0.0, 2.0], [0.0, 3.0]],
+            "magnitudeRange": [0.0, 4.0],
+            "ranges": [[0.0, 1.0], [0.0, 2.0], [0.0, 3.0]],
+        },
+    }
+
+
+def test_mutating_the_handed_out_records_leaves_the_holder_unchanged():
+    """#24: get_scene_details hands out a deep copy; mutating its entries does not reach the holder."""
+    scene = _scene_with_two_datasets_sharing_pressure()
+
+    details = scene.get_scene_details()
+    handed_out = details.app_state.scene.variable_states["POINT::pressure::1"]
+    handed_out.magnitude_range = (900.0, 901.0)
+    handed_out.ranges[0] = (902.0, 903.0)
+    handed_out.part_ids.append(999)
+
+    held = scene._variable_records.variables["POINT::pressure::1"]
+    assert held.magnitude_range == (-5.0, 10.0)
+    assert held.ranges == [(-5.0, 10.0)]
+    assert held.part_ids == [11, 21]

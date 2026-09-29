@@ -3,7 +3,7 @@
 import json
 import threading
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING, Dict, List
 
 from trame_server import Server
 
@@ -15,6 +15,8 @@ from ansys.visor.viewer.core.visor_logging import VisorDefaultLogger
 from ansys.visor.viewer.core.visor_types import VisorDatasetType
 from ansys.visor.viewer.models.common.visor_camera_state import VisorCameraState
 from ansys.visor.viewer.models.common.visor_ui_state import VisorUIState
+from ansys.visor.viewer.models.common.visor_variable_record import VisorVariableRecords
+from ansys.visor.viewer.models.common.visor_variable_state import VisorVariableState
 from ansys.visor.viewer.models.persist.persisted_viewer_state import PersistedViewerStateV1
 from ansys.visor.viewer.models.runtime.visor_scene_details import VisorSceneDetails
 from ansys.visor.viewer.renderer.base import IRenderer
@@ -24,6 +26,10 @@ from ansys.visor.viewer.vtk.scene.scene_graph_state_builder import SceneGraphSta
 from ansys.visor.viewer.vtk.scene.visor_state_mapper import VisorStateMapper
 from ansys.visor.viewer.vtk.scene_graph import VisorSceneGraph
 from ansys.visor.viewer.vtk.variables.visor_part_variables import VisorPartVariables
+from ansys.visor.viewer.vtk.variables.visor_variable_aggregate import (
+    build_variable_records,
+    overlay_persisted_ranges,
+)
 from ansys.visor.viewer.vtk.variables.visor_variable_update import VisorVariableUpdate
 
 if TYPE_CHECKING:
@@ -69,6 +75,7 @@ class VisorSceneBase(ABC):
     _edges_enabled: bool
     _bounding_box_enabled: bool
     _ui_state: VisorUIState
+    _variable_records: VisorVariableRecords
 
     def __init__(
             self,
@@ -101,6 +108,13 @@ class VisorSceneBase(ABC):
             panel_top_right_legend_collapsed=False,
             panel_top_right_tab_index=0,
         )
+
+        # The server's variable records, keyed by composed identifier.  Created once
+        # here and never rebound.  Written only by _rebuild_variable_records, under
+        # _vtk_lock, by assigning a new dict (copy-on-write) so the unlocked reader in
+        # get_scene_details never sees a dict change size.  Handed out only as
+        # model_copy(deep=True): a shallow copy would share the dict and its entries.
+        self._variable_records = VisorVariableRecords()
 
         # Server-tracked widget toggles.  Absolute values, never toggles.
         # Initialised to the client widgets' own constructor defaults so a
@@ -261,6 +275,9 @@ class VisorSceneBase(ABC):
             runtime_state.scene.edges_enabled = self._edges_enabled
             runtime_state.scene.bounding_box_enabled = self._bounding_box_enabled
             runtime_state.ui = self._ui_state.model_copy()
+            # Variables and unit are the server's, never the browser's reply.
+            runtime_state.scene.variable_states = self._variable_records.model_copy(deep=True).variables
+            runtime_state.scene.unit = self._dataset_registry.unit
         runtime_state.scene.dataset_states = registry_dataset_states
 
         persisted = self._state_mapper.runtime_to_persisted(runtime_state)
@@ -283,12 +300,17 @@ class VisorSceneBase(ABC):
             # Transform the frontend PersistedViewerStateV1 -> RuntimeAppState
             runtime_app_state = self._state_mapper.persisted_to_runtime(state)
 
+            # Variable records: rebuilt from the registry and overlaid with the file's
+            # ranges, then placed on the runtime state (CC-1), all before
+            # _restore_part_states, which reads each colored part's range from that dict.
+            self._rebuild_variable_records("load", persisted=state.scene.variable_states)
+            runtime_app_state.scene.variable_states = self._variable_records.model_copy(deep=True).variables
+
             # One call per state class: updates the server's stored state and its VTK objects.
             self._restore_part_states(runtime_app_state)
             self._restore_widget_state(runtime_app_state)
             self._restore_ui_state(runtime_app_state)
             self._restore_camera_state(runtime_app_state)
-            # TODO: restore variable states when they are synced back to the server.
 
             # Finalize here, not on the load path.  On a cold load -- viewer started with no dataset,
             # then a state loaded -- load_state adds the datasets and only then calls apply_state, so a
@@ -337,6 +359,10 @@ class VisorSceneBase(ABC):
         The UI record is passed as a copy and never as the instance, for the
         reason :meth:`get_state` gives: a panel trigger landing after this
         call would otherwise mutate a payload already served.
+
+        The variable records are passed as a deep copy of the holder, also
+        without the lock: writers rebind ``variables`` to a new dict, so this
+        read sees either the old dict or the new one, never one in flux.
         """
         if self._scene_graph is None:
             self._initialize_scene_graph()
@@ -355,6 +381,7 @@ class VisorSceneBase(ABC):
             cross_section_enabled=self._cross_section_enabled,
             edges_enabled=self._edges_enabled,
             bounding_box_enabled=self._bounding_box_enabled,
+            variable_states=self._variable_records.model_copy(deep=True).variables,
         )
 
     def get_scene_details_json(self) -> str:
@@ -375,6 +402,7 @@ class VisorSceneBase(ABC):
                 self._renderer.deregister_all()
             self._dataset_registry.clear()
             self._scene_graph = None
+            self._rebuild_variable_records("clear")
 
     def populate_scene(self):
         """Update widgets to reflect the current scene contents.
@@ -460,6 +488,7 @@ class VisorSceneBase(ABC):
                 node_ids = [leaf.id for leaf in part_nodes]
 
             self._dataset_registry.add(dataset_id, dataset_name, input, node_ids, metadata)
+            self._rebuild_variable_records("add")
 
             return dataset_id
 
@@ -491,6 +520,7 @@ class VisorSceneBase(ABC):
 
             # Unregister the dataset
             self._dataset_registry.remove(dataset_id)
+            self._rebuild_variable_records("remove")
 
     def list_variables_for_dataset(self, dataset_id: int) -> List[VisorPartVariables]:
         return self._dataset_registry.list_variables(dataset_id)
@@ -515,10 +545,36 @@ class VisorSceneBase(ABC):
             with timer.phase("update_descendant_parts"):
                 dataset_node.refresh_descendant_variable_metadata(include_self=True)
 
+            # After the reload and the metadata refresh: a width change changes the id.
+            self._rebuild_variable_records("update_variables")
+
             with timer.phase("render"):
                 self.render()
 
             timer.log()
+
+    def _rebuild_variable_records(
+            self,
+            point: str,
+            persisted: Dict[str, VisorVariableState] | None = None,
+    ) -> None:
+        """Rebuild the variable records from the registry.
+
+        ``persisted`` is ``None`` at add, remove, clear and update: the previous
+        records are carried by the custom-range rule.  On load it is the file's
+        ``variable_states``: the records are built fresh and the file's ranges
+        overlaid.
+
+        Under ``_vtk_lock``.  Assigns a new dict to the holder (copy-on-write);
+        never mutates the live dict or its entries.
+        """
+        with self._vtk_lock:
+            if persisted is None:
+                records = build_variable_records(self._dataset_registry, self._variable_records.variables)
+            else:
+                records = overlay_persisted_ranges(build_variable_records(self._dataset_registry, {}), persisted)
+            self._variable_records.variables = records
+            logger.debug("variable records rebuilt at %s: %d records", point, len(records))
 
     def render(self):
         """Delegate to the renderer backend.

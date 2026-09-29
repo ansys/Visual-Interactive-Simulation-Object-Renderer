@@ -1,6 +1,26 @@
 import pytest
 
+from ansys.visor.viewer.core.visor_enums import VisorVtkVariableType
+from ansys.visor.viewer.models.common.visor_ui_state import VisorUIState
+from ansys.visor.viewer.models.common.visor_variable_record import VisorVariableRecord
+from ansys.visor.viewer.models.common.visor_variable_state import VisorVariableState
+from ansys.visor.viewer.models.runtime.scene.runtime_app_state import RuntimeAppState
 from ansys.visor.viewer.vtk.scene.visor_state_mapper import VisorStateMapper
+
+
+def _literal_record() -> VisorVariableRecord:
+    """A record whose custom range (2.0, 3.0) differs from its default (0.0, 10.0)."""
+    return VisorVariableRecord(
+        id="POINT::pressure::1",
+        array_name="pressure",
+        type=VisorVtkVariableType.POINT,
+        num_components=1,
+        part_ids=[1],
+        default_magnitude_range=(0.0, 10.0),
+        default_ranges=[(0.0, 10.0)],
+        magnitude_range=(2.0, 3.0),
+        ranges=[(2.0, 3.0)],
+    )
 
 # ------------------------------------------------------------------
 # Helpers / fakes
@@ -66,7 +86,7 @@ def test_runtime_to_persisted_basic(monkeypatch):
         "scene": type("Scene", (), {
             "unit": "m",
             "camera": "cam",
-            "variable_states": {"var": 1},
+            "variable_states": {"POINT::pressure::1": _literal_record()},
             "dataset_states": {1: {"state": 123}},
             "cross_section": "cs",
             "orthographic_enabled": True,
@@ -83,7 +103,40 @@ def test_runtime_to_persisted_basic(monkeypatch):
     assert called["datasets"] == {"dsA": {"converted": {"state": 123}}}
     assert called["unit"] == "m"
     assert called["camera"] == "cam"
-    assert called["variable_states"] == {"var": 1}
+    # Rewritten in place (3.5.1 increment 1): the record is projected, not passed through.
+    assert called["variable_states"] == {
+        "POINT::pressure::1": VisorVariableState(
+            id="POINT::pressure::1",
+            array_name="pressure",
+            type=VisorVtkVariableType.POINT,
+            num_components=1,
+            magnitude_range=(2.0, 3.0),
+            ranges=[(2.0, 3.0)],
+        )
+    }
+
+
+def test_runtime_to_persisted_projects_records_onto_the_persisted_entry():
+    """#22: through the real persisted model, the saved entry carries the effective range and no default keys."""
+    registry = FakeRegistry(datasets={})
+    runtime_app_state = RuntimeAppState.from_components(
+        ui=VisorUIState(),
+        unit="m",
+        dataset_states={},
+        variable_states={"POINT::pressure::1": _literal_record()},
+    )
+
+    persisted = VisorStateMapper(registry).runtime_to_persisted(runtime_app_state)
+
+    entry = persisted.model_dump(by_alias=True)["scene"]["variable_states"]["POINT::pressure::1"]
+    assert entry == {
+        "id": "POINT::pressure::1",
+        "arrayName": "pressure",
+        "type": "POINT",
+        "numComponents": 1,
+        "magnitudeRange": (2.0, 3.0),
+        "ranges": [(2.0, 3.0)],
+    }
 
 
 def test_runtime_to_persisted_skips_missing_dataset(monkeypatch):
