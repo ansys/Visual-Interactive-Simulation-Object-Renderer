@@ -115,7 +115,9 @@ export const CreateVisorSceneGraph = (() => {
         }
         const nodeId = simpleNode.id;
 
-        const variableCollection = variableManager.addDataArrayMetadata(simpleNode.dataArrays);
+        // A live view: the node is frozen, and the records it reads are
+        // replaced on every delivery.
+        const variableCollection = variableManager.getPartVariableCollection(nodeId);
 
         const node: VisorSceneNodeExtended = {
             id: simpleNode.id,

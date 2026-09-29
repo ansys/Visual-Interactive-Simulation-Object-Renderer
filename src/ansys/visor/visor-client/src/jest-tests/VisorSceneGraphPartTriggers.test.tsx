@@ -1,4 +1,6 @@
 import { CreateVisorSceneGraph, VisorSceneNodeExtended } from '../state/VisorSceneGraph.tsx';
+import { getVariableManager } from '../state/VisorVariableManager.tsx';
+import VisorVariableState from '../state/appstate/VisorVariableState.tsx';
 import VisorVtkDataArray from '../state/appstate/vtkInfo/VisorVtkDataArray.tsx';
 import type { IRenderer } from '../renderer/IRenderer';
 
@@ -35,6 +37,25 @@ function makePressureArray(): VisorVtkDataArray {
     });
 }
 
+/**
+ * The server's record for `pressure`, listing both parts.  A part's colour
+ * variable is read from the record, not from the part's data arrays, so the
+ * component range the descriptor carries is `ranges[0]`, the custom range.
+ */
+function makePressureRecord(): VisorVariableState {
+    return new VisorVariableState({
+        id: VARIABLE_ID,
+        arrayName: 'pressure',
+        type: 'POINT',
+        numComponents: 1,
+        partIds: [PART_A_ID, PART_B_ID],
+        defaultMagnitudeRange: [0, 10],
+        defaultRanges: [[0, 10]],
+        magnitudeRange: [0, 10],
+        ranges: [[2, 8]],
+    });
+}
+
 function makeRendererDouble() {
     return {
         // The per-part applies that already existed.
@@ -60,6 +81,8 @@ function makeRendererDouble() {
 type RendererDouble = ReturnType<typeof makeRendererDouble>;
 
 function makeGraph(renderer: RendererDouble): VisorSceneNodeExtended {
+    const variableManager = getVariableManager();
+    variableManager.setRecords([makePressureRecord()]);
     return CreateVisorSceneGraph(
         {
             id: ROOT_ID,
@@ -95,7 +118,7 @@ function makeGraph(renderer: RendererDouble): VisorSceneNodeExtended {
                 },
             ],
         },
-        undefined,
+        variableManager,
         renderer as unknown as IRenderer
     );
 }

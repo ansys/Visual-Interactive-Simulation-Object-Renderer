@@ -1,4 +1,5 @@
 import VisorVtkDataArray from '../state/appstate/vtkInfo/VisorVtkDataArray.tsx';
+import VisorVariableState from '../state/appstate/VisorVariableState.tsx';
 import { getVariableManager, VisorVariableInfo } from '../state/VisorVariableManager.tsx';
 
 describe('getVariableManager', () => {
@@ -43,7 +44,19 @@ describe('getVariableManager', () => {
             const firstManager = getVariableManager();
             const secondManager = getVariableManager();
 
-            firstManager.addDataArrayMetadata([createDataArray()]);
+            firstManager.setRecords([
+                new VisorVariableState({
+                    id: 'POINT::temperature::1',
+                    arrayName: 'temperature',
+                    type: 'POINT',
+                    numComponents: 1,
+                    partIds: [1],
+                    defaultMagnitudeRange: [0, 10],
+                    defaultRanges: [[0, 10]],
+                    magnitudeRange: [0, 10],
+                    ranges: [[0, 10]],
+                }),
+            ]);
             firstManager.finishAddingDataArrayMetadata();
             secondManager.finishAddingDataArrayMetadata();
 
@@ -521,58 +534,6 @@ describe('getVariableManager', () => {
     });
 
     describe('global variable collection', () => {
-        test('contains variables added before finishing', () => {
-            const manager = getVariableManager();
-
-            manager.addDataArrayMetadata([
-                createDataArray({
-                    name: 'temperature',
-                }),
-                createDataArray({
-                    name: 'pressure',
-                }),
-            ]);
-
-            manager.finishAddingDataArrayMetadata();
-
-            const global = manager.globalVariableCollection;
-
-            expect(global.array).toHaveLength(2);
-            expect(global.array.map((item) => item.name)).toEqual(['temperature', 'pressure']);
-        });
-
-        test('contains only one entry for duplicate variable IDs', () => {
-            const manager = getVariableManager();
-
-            manager.addDataArrayMetadata([
-                createDataArray({
-                    name: 'temperature',
-                }),
-            ]);
-
-            manager.addDataArrayMetadata([
-                createDataArray({
-                    name: 'temperature',
-                }),
-            ]);
-
-            manager.finishAddingDataArrayMetadata();
-
-            expect(manager.globalVariableCollection.array).toHaveLength(1);
-        });
-
-        test('returns the same variable object as a local collection', () => {
-            const manager = getVariableManager();
-
-            const local = manager.addDataArrayMetadata([createDataArray()]);
-
-            manager.finishAddingDataArrayMetadata();
-
-            const id = local.array[0].id;
-            const global = manager.globalVariableCollection;
-
-            expect(global.getVariable(id)).toBe(local.array[0]);
-        });
 
         test('returns null for null and unknown global IDs', () => {
             const manager = getVariableManager();

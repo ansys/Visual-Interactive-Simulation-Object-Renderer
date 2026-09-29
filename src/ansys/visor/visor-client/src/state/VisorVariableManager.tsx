@@ -1,4 +1,5 @@
 import VisorVtkDataArray, { FieldAssociation } from './appstate/vtkInfo/VisorVtkDataArray.tsx';
+import type VisorVariableState from './appstate/VisorVariableState.tsx';
 
 /**
  * Describes a selectable component of a variable.
@@ -125,7 +126,25 @@ export type VisorVariableManager = Readonly<{
     finishAddingDataArrayMetadata: () => void;
 
     /**
-     * Finalized collection of all globally registered variables.
+     * Replaces the held variable records with a delivered set.
+     *
+     * @param records - Every variable record in the delivery, each complete.
+     *
+     * @throws Error if any record is missing a field, carries fewer ranges than
+     * components, or has an unsupported component count.  The held set is then
+     * left unchanged.
+     */
+    setRecords: (records: VisorVariableState[]) => void;
+
+    /**
+     * Gets a live collection of the held variables whose records list a part.
+     *
+     * @param partId - Scene-graph id of the part.
+     */
+    getPartVariableCollection: (partId: number) => VisorVariableCollection;
+
+    /**
+     * Live collection of every held variable record.
      *
      * @throws Error if
      * {@link VisorVariableManager.finishAddingDataArrayMetadata} has not yet
@@ -133,6 +152,108 @@ export type VisorVariableManager = Readonly<{
      */
     globalVariableCollection: VisorVariableCollection;
 }>;
+
+/**
+ * One held variable record, with its ranges in slot order: slot 0 is the
+ * magnitude and slot `i + 1` is component `i`.
+ */
+class HeldVariableRecord {
+    private constructor(
+        private readonly partIds: ReadonlySet<number>,
+        private readonly defaultRanges: number[][],
+        private readonly customRanges: number[][]
+    ) {}
+
+    /**
+     * Copies a delivered record into slot order.
+     *
+     * @throws Error if the record is missing a field or carries fewer ranges
+     * than components.
+     */
+    static fromState(state: VisorVariableState): HeldVariableRecord {
+        const id = state.id;
+        const numComponents = state.numComponents;
+        const missing = (field: string) =>
+            new Error(`Variable record '${id}' is missing '${field}'`);
+
+        if (id === '') {
+            throw missing('id');
+        } else if (state.arrayName === '') {
+            throw missing('arrayName');
+        } else if (state.type === undefined) {
+            throw missing('type');
+        } else if (!(numComponents > 0)) {
+            throw missing('numComponents');
+        } else if (state.partIds === undefined) {
+            throw missing('partIds');
+        }
+
+        const defaultMagnitudeRange = state.defaultMagnitudeRange;
+        const defaultRanges = state.defaultRanges;
+        const magnitudeRange = state.magnitudeRange;
+        if (defaultMagnitudeRange === undefined) {
+            throw missing('defaultMagnitudeRange');
+        } else if (defaultRanges === undefined) {
+            throw missing('defaultRanges');
+        } else if (magnitudeRange === undefined) {
+            throw missing('magnitudeRange');
+        }
+
+        const toSlots = (
+            field: string,
+            magnitude: number[],
+            perComponent: (number[] | undefined)[]
+        ): number[][] => {
+            const slots: number[][] = [[magnitude[0], magnitude[1]]];
+            for (let i = 0; i < numComponents; i++) {
+                const range = perComponent[i];
+                if (range === undefined) {
+                    throw new Error(
+                        `Variable record '${id}' has no entry ${i} in '${field}' for ${numComponents} component(s)`
+                    );
+                }
+                slots.push([range[0], range[1]]);
+            }
+            return slots;
+        };
+
+        return new HeldVariableRecord(
+            new Set(state.partIds),
+            toSlots('defaultRanges', defaultMagnitudeRange, defaultRanges),
+            toSlots('ranges', magnitudeRange, state.ranges)
+        );
+    }
+
+    /** Whether the record lists the part. */
+    includesPart(partId: number): boolean {
+        return this.partIds.has(partId);
+    }
+
+    /** Cloned default and custom range of a component, `-1` being the magnitude. */
+    getRangeInfo(
+        component: number | null | undefined
+    ): null | { defaultRange: number[]; customRange: number[] } {
+        if (component == null) {
+            return null;
+        }
+        const slot = component + 1;
+        return slot >= 0 && slot < this.customRanges.length
+            ? {
+                  defaultRange: [...this.defaultRanges[slot]],
+                  customRange: [...this.customRanges[slot]],
+              }
+            : null;
+    }
+
+    /** Writes the custom range of a component, `-1` being the magnitude; ignores any other id. */
+    setCustomRange(component: number, min: number, max: number): void {
+        const slot = component + 1;
+        if (slot >= 0 && slot < this.customRanges.length) {
+            this.customRanges[slot][0] = min;
+            this.customRanges[slot][1] = max;
+        }
+    }
+}
 
 /**
  * Creates a variable manager for aggregating metadata from VTK data arrays.
@@ -195,55 +316,134 @@ export function getVariableManager(): VisorVariableManager {
         componentLabels: ['Magnitude', 'XX', 'XY', 'XZ', 'YX', 'YY', 'YZ', 'ZX', 'ZY', 'ZZ'],
     });
 
-    /** Finalized global collection, or `null` until registration is complete. */
-    let globalVariableCollection: VisorVariableCollection | null = null;
+    /** Held records by id, each with the variable object that reads it, in delivery order. */
+    let heldRecords: Map<string, { record: HeldVariableRecord; info: VisorVariableInfo }> =
+        new Map();
+
+    /** Whether the global collection may be read. */
+    let finished = false;
+
+    /** The one global collection: a live view over the held records. */
+    const globalVariableCollection: VisorVariableCollection = Object.freeze({
+        get array() {
+            return [...heldRecords.values()].map((entry) => entry.info);
+        },
+
+        /**
+         * Finds a held variable.
+         *
+         * @param id - Variable identifier, or `null`.
+         * @returns The matching variable, or `null` when none is held.
+         */
+        getVariable(id: string | null) {
+            return id != null ? (heldRecords.get(id)?.info ?? null) : null;
+        },
+    });
 
     return Object.freeze({
         addDataArrayMetadata,
 
         /**
-         * Finalizes the global collection after all data-array metadata has been added.
+         * Opens the global collection for reading.
          *
-         * @throws Error if the global collection has already been finalized.
+         * @throws Error if the global collection has already been opened.
          */
         finishAddingDataArrayMetadata() {
-            if (globalVariableCollection != null) {
+            if (finished) {
                 throw new Error(`finishAddingDataArrayMetadata() has already been called`);
             }
+            finished = true;
+        },
 
-            const array = [];
-            for (const item of globalVariableMap.values()) {
-                array.push(item);
+        setRecords(records: VisorVariableState[]) {
+            const next: Map<string, { record: HeldVariableRecord; info: VisorVariableInfo }> =
+                new Map();
+            for (const state of records) {
+                const record = HeldVariableRecord.fromState(state);
+                const existing = heldRecords.get(state.id)?.info;
+                const info =
+                    existing != null &&
+                    existing.name === state.arrayName &&
+                    existing.type === state.type &&
+                    existing.numComponents === state.numComponents
+                        ? existing
+                        : createRecordVariableInfo(state);
+                next.set(state.id, { record, info });
             }
+            heldRecords = next;
+        },
 
-            globalVariableCollection = Object.freeze({
-                array,
+        getPartVariableCollection(partId: number): VisorVariableCollection {
+            return Object.freeze({
+                get array() {
+                    return [...heldRecords.values()]
+                        .filter((entry) => entry.record.includesPart(partId))
+                        .map((entry) => entry.info);
+                },
 
                 /**
-                 * Finds a globally registered variable.
+                 * Finds a held variable whose record lists this part.
                  *
                  * @param id - Variable identifier, or `null`.
-                 * @returns The matching variable, or `null` when none exists.
+                 * @returns The matching variable, or `null` when none is held for the part.
                  */
                 getVariable(id: string | null) {
-                    return id != null ? (globalVariableMap.get(id) ?? null) : null;
+                    const entry = id != null ? heldRecords.get(id) : undefined;
+                    return entry != null && entry.record.includesPart(partId) ? entry.info : null;
                 },
             });
         },
 
         /**
-         * Gets the finalized global variable collection.
+         * Gets the global variable collection.
          *
-         * @throws Error if metadata registration has not yet been finalized.
+         * @throws Error if the collection has not yet been opened.
          */
         get globalVariableCollection() {
-            if (globalVariableCollection == null) {
+            if (!finished) {
                 throw new Error(`finishAddingDataArrayMetadata() has not been called yet`);
             }
 
             return globalVariableCollection;
         },
     });
+
+    /**
+     * Creates the variable object for a held record.  Its ranges are read from,
+     * and written to, whichever record is held under its id at the time.
+     *
+     * @throws Error if the record has an unsupported component count.
+     */
+    function createRecordVariableInfo(state: VisorVariableState): VisorVariableInfo {
+        const id = state.id;
+        const type = state.type!;
+        const name = state.arrayName;
+        const numComponents = state.numComponents;
+        const labelInfo = labelInfoMap.get(numComponents);
+        if (labelInfo == null) {
+            const msg = `No label info was found for variable record '${id}'. Do we support label info`;
+            throw new Error(`${msg} for variables with ${numComponents} component(s)?`);
+        }
+
+        const componentOptions: VisorVariableComponentMetadata[] = labelInfo.componentLabels.map(
+            (label, i) => ({ id: i - 1, name: label })
+        );
+
+        return Object.freeze({
+            id,
+            type,
+            name,
+            shape: labelInfo.shape,
+            fullName: `${type} - ${name} (${labelInfo.shape})`,
+            numComponents,
+            componentOptions,
+            getRangeInfo: (component: number | null | undefined) =>
+                heldRecords.get(id)?.record.getRangeInfo(component) ?? null,
+            setCustomRange: (component: number, min: number, max: number) => {
+                heldRecords.get(id)?.record.setCustomRange(component, min, max);
+            },
+        });
+    }
 
     /**
      * Creates or updates variable information for a data array.
