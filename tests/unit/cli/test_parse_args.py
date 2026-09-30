@@ -152,6 +152,21 @@ def test_logs_clear_args():
     args = run_parse_args(["visor-cli", "log", "clear"])
     assert args.group == "log"
     assert args.action == "clear"
+    assert args.force is False
+
+def test_logs_clear_args_force_short_flag():
+    """Verify that the -f flag sets force=True for log clear."""
+    args = run_parse_args(["visor-cli", "log", "clear", "-f"])
+    assert args.group == "log"
+    assert args.action == "clear"
+    assert args.force is True
+
+def test_logs_clear_args_force_long_flag():
+    """Verify that the --force flag sets force=True for log clear."""
+    args = run_parse_args(["visor-cli", "log", "clear", "--force"])
+    assert args.group == "log"
+    assert args.action == "clear"
+    assert args.force is True
 
 def test_missing_group_raises():
     """Verify that omitting the command group raises SystemExit."""

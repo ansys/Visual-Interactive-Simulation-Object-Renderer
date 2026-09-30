@@ -149,7 +149,9 @@ def parse_args():
     )
 
     # clear API
-    logs_sub.add_parser("clear", help="Clear available logs")
-
+    clear_parser = logs_sub.add_parser("clear", help="Delete the log directory and its contents")
+    clear_parser.add_argument("-f", "--force",
+                              action="store_true",
+                              help="Delete the log directory without prompting for confirmation")
 
     return parser.parse_args()

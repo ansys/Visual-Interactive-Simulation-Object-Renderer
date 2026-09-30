@@ -139,7 +139,7 @@ def main():
         elif args.action == "tail":
             api.tail_log(args.log_name, args.follow, args.lines)
         elif args.action == "clear":
-            api.clear_logs()
+            api.clear_logs(args.force)
         return
 
 

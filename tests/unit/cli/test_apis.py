@@ -254,3 +254,16 @@ def test_logsapi_clear_logs_reports_failure(tmp_path):
         api.clear_logs()
         mock_print.assert_any_call("Failed to clear log directory: boom")
 
+def test_logsapi_clear_logs_force_skips_confirmation(tmp_path):
+    """Verify that force=True removes the log directory without prompting."""
+    api = LogsAPI(str(tmp_path))
+    with patch("builtins.input") as mock_input, \
+         patch("builtins.print") as mock_print, \
+         patch("logging.shutdown") as mock_shutdown, \
+         patch("shutil.rmtree") as mock_rmtree:
+        api.clear_logs(force=True)
+        mock_input.assert_not_called()
+        mock_shutdown.assert_called_once()
+        mock_rmtree.assert_called_once_with(str(tmp_path))
+        mock_print.assert_any_call("Log directory cleared.")
+

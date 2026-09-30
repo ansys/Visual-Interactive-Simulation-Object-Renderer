@@ -164,13 +164,23 @@ def test_main_logs_tail(mock_parse_args, mock_logs_api):
 
 def test_main_logs_clear(mock_parse_args, mock_logs_api):
     """Verify that log clear invokes the clear_logs method."""
-    args = make_args("log", "clear", log_dir=None)
+    args = make_args("log", "clear", log_dir=None, force=False)
     mock_parse_args.return_value = args
     api = MagicMock()
     mock_logs_api.return_value = api
     with patch("ansys.visor.viewer.cli.visor_cli.check_server_running", return_value=True):
         visor_cli.main()
-        api.clear_logs.assert_called_once()
+        api.clear_logs.assert_called_once_with(False)
+
+def test_main_logs_clear_force(mock_parse_args, mock_logs_api):
+    """Verify that log clear -f forwards force=True to clear_logs."""
+    args = make_args("log", "clear", log_dir=None, force=True)
+    mock_parse_args.return_value = args
+    api = MagicMock()
+    mock_logs_api.return_value = api
+    with patch("ansys.visor.viewer.cli.visor_cli.check_server_running", return_value=True):
+        visor_cli.main()
+        api.clear_logs.assert_called_once_with(True)
 
 def test_main_logs_does_not_require_running_server(mock_parse_args, mock_logs_api):
     """Verify that log commands do not require the server to be running."""

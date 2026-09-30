@@ -283,16 +283,17 @@ class LogsAPI:
         except FileNotFoundError:
             print(f"Log file not found: {log_path}")
 
-    def clear_logs(self):
+    def clear_logs(self, force=False):
         """Delete the log directory."""
         if not os.path.isdir(self.log_dir):
             print(f"Log directory not found: {self.log_dir}")
             return
-        print(f"Clear log directory {self.log_dir}? (y/n): ", end="")
-        choice = input().strip().lower()
-        if choice != "y":
-            print("Aborted.")
-            return
+        if not force:
+            print(f"Clear log directory {self.log_dir}? (y/n): ", end="")
+            choice = input().strip().lower()
+            if choice != "y":
+                print("Aborted.")
+                return
         try:
             # Release this process's own file handles (e.g. visor.log opened by
             # module-level loggers on import) so Windows allows deletion.
