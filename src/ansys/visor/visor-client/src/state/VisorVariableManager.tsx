@@ -1,4 +1,4 @@
-import VisorVtkDataArray, { FieldAssociation } from './appstate/vtkInfo/VisorVtkDataArray.tsx';
+import { FieldAssociation } from './appstate/vtkInfo/VisorVtkDataArray.tsx';
 import type VisorVariableState from './appstate/VisorVariableState.tsx';
 
 /**
@@ -60,7 +60,7 @@ export type VisorVariableInfo = Readonly<{
      * missing or outside the supported range.
      */
     getRangeInfo: (component: number | null | undefined) => null | {
-        /** Aggregate range calculated from all matching data arrays. */
+        /** Delivered default range of the component. */
         defaultRange: number[];
 
         /** User-configurable range for the selected component. */
@@ -97,29 +97,16 @@ export type VisorVariableCollection = Readonly<{
 }>;
 
 /**
- * Coordinates variable metadata across multiple groups of VTK data arrays.
+ * Holds the delivered variable records and projects them as variables.
  *
  * @remarks
- * Call {@link VisorVariableManager.addDataArrayMetadata} for every relevant
- * group of arrays, then call
- * {@link VisorVariableManager.finishAddingDataArrayMetadata} once. The global
- * collection is unavailable until finalization is complete.
+ * {@link VisorVariableManager.setRecords} replaces the held records on every
+ * delivery.  Call {@link VisorVariableManager.finishAddingDataArrayMetadata}
+ * once before reading the global collection.
  */
 export type VisorVariableManager = Readonly<{
     /**
-     * Adds metadata for a group of VTK data arrays.
-     *
-     * @param dataArrays - Data arrays from which variable metadata is derived.
-     * @returns A collection containing one variable for each supplied data array.
-     *
-     * @remarks
-     * Arrays with the same type, name, and component count share a global
-     * variable. Their default ranges are expanded to include all observed values.
-     */
-    addDataArrayMetadata: (dataArrays: VisorVtkDataArray[]) => VisorVariableCollection;
-
-    /**
-     * Finalizes the global variable collection.
+     * Opens the global collection for reading.
      *
      * @throws Error if this method has already been called.
      */
@@ -256,22 +243,13 @@ class HeldVariableRecord {
 }
 
 /**
- * Creates a variable manager for aggregating metadata from VTK data arrays.
+ * Creates a variable manager holding delivered variable records.
  *
- * @returns A new variable manager with no registered variables.
+ * @returns A new variable manager with no held records.
  */
 export function getVariableManager(): VisorVariableManager {
     /** Tracks variable IDs and their assigned lookup positions. */
     const variableIdLookup: Map<string, number> = new Map();
-
-    /** Stores each globally unique variable by its ID. */
-    const globalVariableMap: Map<string, VisorVariableInfo> = new Map();
-
-    /** Stores aggregate default ranges for each variable. */
-    const globalDefaultRanges: Map<string, number[][]> = new Map();
-
-    /** Stores user-configurable ranges for each variable. */
-    const globalCustomRanges: Map<string, number[][]> = new Map();
 
     /** Maps supported component counts to shape and component-label metadata. */
     const labelInfoMap: Map<
@@ -341,8 +319,6 @@ export function getVariableManager(): VisorVariableManager {
     });
 
     return Object.freeze({
-        addDataArrayMetadata,
-
         /**
          * Opens the global collection for reading.
          *
@@ -441,164 +417,6 @@ export function getVariableManager(): VisorVariableManager {
                 heldRecords.get(id)?.record.getRangeInfo(component) ?? null,
             setCustomRange: (component: number, min: number, max: number) => {
                 heldRecords.get(id)?.record.setCustomRange(component, min, max);
-            },
-        });
-    }
-
-    /**
-     * Creates or updates variable information for a data array.
-     *
-     * @param dataArray - Source data array metadata.
-     * @returns The newly created variable, or the existing compatible variable.
-     *
-     * @remarks
-     * When a compatible variable already exists, its default ranges are expanded
-     * to include the new array's ranges. Its custom ranges are then reset to the
-     * updated defaults.
-     *
-     * @throws Error if the data array has an unsupported component count.
-     */
-    function tryAddVariableInfo(dataArray: VisorVtkDataArray): VisorVariableInfo {
-        const { type, name, numComponents, magnitudeRange, ranges } = dataArray;
-
-        // Use a human-readable ID like 'point::displacement::3'
-        const id = `${type}::${name}::${numComponents}`;
-
-        if (globalVariableMap.has(id)) {
-            // Update the existing ranges for this variable
-            // with each subsequent new set of ranges.
-            const defaultRanges = globalDefaultRanges.get(id)!;
-            const customRanges = globalCustomRanges.get(id)!;
-
-            magnitudeRange[0] < defaultRanges[0][0] && (defaultRanges[0][0] = magnitudeRange[0]);
-            magnitudeRange[1] > defaultRanges[0][1] && (defaultRanges[0][1] = magnitudeRange[1]);
-
-            ranges.forEach((range, i) => {
-                range[0] < defaultRanges[i + 1][0] && (defaultRanges[i + 1][0] = range[0]);
-                range[1] > defaultRanges[i + 1][1] && (defaultRanges[i + 1][1] = range[1]);
-            });
-
-            customRanges.forEach((range, i) => {
-                range[0] = defaultRanges[i][0];
-                range[1] = defaultRanges[i][1];
-            });
-
-            return globalVariableMap.get(id)!;
-        }
-
-        const labelInfo = labelInfoMap.get(numComponents);
-        if (labelInfo == null) {
-            const msg = `No label info was found for this data array. Do we support label info`;
-            throw new Error(`${msg} for data arrays with ${numComponents} component(s)?`);
-        }
-
-        const componentOptions: VisorVariableComponentMetadata[] = [];
-        for (let i = 0; i < labelInfo.componentLabels.length; i++) {
-            componentOptions.push({
-                id: i - 1,
-                name: labelInfo.componentLabels[i],
-            });
-        }
-
-        const [defaultRanges, customRanges] = (() => {
-            const arr: number[][] = [];
-            const arrClone: number[][] = [];
-
-            arr.push([magnitudeRange[0], magnitudeRange[1]]);
-            arrClone.push([magnitudeRange[0], magnitudeRange[1]]);
-
-            for (let i = 0; i < numComponents; i++) {
-                arr.push([ranges[i][0], ranges[i][1]]);
-                arrClone.push([ranges[i][0], ranges[i][1]]);
-            }
-
-            return [arr, arrClone];
-        })();
-
-        globalDefaultRanges.set(id, defaultRanges);
-        globalCustomRanges.set(id, customRanges);
-
-        const info: VisorVariableInfo = Object.freeze({
-            id,
-            type,
-            name,
-            shape: labelInfo.shape,
-            fullName: `${type} - ${name} (${labelInfo.shape})`,
-            numComponents,
-            componentOptions,
-
-            /**
-             * Gets cloned range information for a component.
-             *
-             * @param component - Component index, with `-1` representing magnitude.
-             * @returns Range information, or `null` for an invalid component.
-             */
-            getRangeInfo: (component) => {
-                if (component == null) {
-                    return null;
-                }
-
-                const i = component + 1; // Add 1 because "magnitude" occupies index 0.
-
-                return i >= 0 && i < customRanges.length
-                    ? {
-                          // Clone the arrays so they cannot be directly modified by the user.
-                          defaultRange: [...defaultRanges[i]],
-                          customRange: [...customRanges[i]],
-                      }
-                    : null;
-            },
-
-            /**
-             * Changes the custom range for a component.
-             *
-             * @param component - Component index, with `-1` representing magnitude.
-             * @param min - New minimum range value.
-             * @param max - New maximum range value.
-             */
-            setCustomRange: (component, min, max) => {
-                const i = component + 1; // Add 1 because "magnitude" occupies index 0.
-
-                if (i >= 0 && i < customRanges.length) {
-                    customRanges[i][0] = min;
-                    customRanges[i][1] = max;
-                }
-            },
-        });
-
-        globalVariableMap.set(id, info);
-        return info;
-    }
-
-    /**
-     * Registers a group of data arrays and creates its local variable collection.
-     *
-     * @param dataArrays - Data arrays to register.
-     * @returns An immutable collection containing variables for the supplied arrays.
-     */
-    function addDataArrayMetadata(dataArrays: VisorVtkDataArray[]): VisorVariableCollection {
-        const array: VisorVariableInfo[] = [];
-        const map: Map<string, VisorVariableInfo> = new Map();
-
-        for (let i = 0; i < dataArrays.length; i++) {
-            const info = tryAddVariableInfo(dataArrays[i]);
-            array.push(info);
-            map.set(info.id, info);
-        }
-
-        Object.freeze(array);
-
-        return Object.freeze({
-            array,
-
-            /**
-             * Finds a variable within this local collection.
-             *
-             * @param id - Variable identifier, or `null`.
-             * @returns The matching variable, or `null` when none exists.
-             */
-            getVariable(id: string | null) {
-                return id != null ? (map.get(id) ?? null) : null;
             },
         });
     }

@@ -45,7 +45,9 @@ export type VisorSceneNodeExtended = Readonly<{
     setSelectedAsync: (selected: boolean) => Promise<void>;
     setOpacityAsync: (opacity: number) => Promise<void>;
     clearColorVariableAsync: () => Promise<void>;
+    /** Colours the part by a variable slot at its held range; on the slot already applied, re-applies only a changed range and sends nothing. */
     setColorVariableAsync: (id: string, component?: number | null) => Promise<void>;
+    /** Applies a scalar range to the part and records it as the part's applied range; sends nothing. */
     setScalarRangeAsync: (min: number, max: number) => Promise<void>;
     variableCollection: VisorVariableCollection;
     variableId: string | null;
@@ -195,6 +197,16 @@ export const CreateVisorSceneGraph = (() => {
             },
             async setColorVariableAsync(id, component) {
                 if (_variableId === id && _variableComponent === component) {
+                    // Already coloured by this slot: only a held range that
+                    // differs from the one last applied reaches the actor.
+                    const held = variableCollection.getVariable(id)?.getRangeInfo(component);
+                    if (held == null) {
+                        return;
+                    }
+                    const [heldMin, heldMax] = held.customRange;
+                    if (heldMin !== _variableMin || heldMax !== _variableMax) {
+                        await node.setScalarRangeAsync(heldMin, heldMax);
+                    }
                     return;
                 } else if (component == null) {
                     return;
@@ -225,6 +237,8 @@ export const CreateVisorSceneGraph = (() => {
                 await renderer!.sendPartColorVariableAsync(nodeId, descriptor);
             },
             async setScalarRangeAsync(min, max) {
+                _variableMin = min;
+                _variableMax = max;
                 await renderer!.setScalarRangeAsync(nodeId, min, max);
             },
             async setVisibilityAsync(visible) {
