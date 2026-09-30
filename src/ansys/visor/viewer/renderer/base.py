@@ -8,8 +8,8 @@ The scene coordinator programs against this interface. Swapping backends
 without touching scene coordination.
 
 Contract covers node lifecycle, per-part visual mutations,
-camera, widget control (cross-section, bounding box), widget fan-out (scene
-bounds, actor count), picking, and render/flush. Not covered yet:
+camera, widget control (cross-section, bounding box, edges), widget fan-out
+(scene bounds, actor count), picking, and render/flush. Not covered yet:
 state-authority hooks, trigger-facing methods, round-trip additions.
 
 """
@@ -106,10 +106,6 @@ class IRenderer(ABC):
         """Set the actor-property diffuse colour for *node_id*."""
 
     @abstractmethod
-    def apply_edge_visibility(self, node_id: int, edge_visible: bool) -> None:
-        """Toggle edge / wireframe visibility for *node_id*."""
-
-    @abstractmethod
     def apply_selected(
         self, node_id: int, selected: bool, diffuse_rgb: list
     ) -> None:
@@ -203,6 +199,19 @@ class IRenderer(ABC):
         """
 
     @abstractmethod
+    def set_projection(self, parallel: bool) -> None:
+        """Set parallel projection on the camera record, then project it.
+
+        Writes ``parallel_projection`` on the existing record in place
+        (preserving :meth:`sync_camera`'s identity contract) before applying
+        to the pipeline camera, so a raising VTK setter still leaves the
+        record holding what was asked. A ``None`` record is not seeded: the
+        pipeline write still happens, but the value is lost until the next
+        :meth:`reset_camera` imports it. Does not re-serialise; that is the
+        coordinator's job.
+        """
+
+    @abstractmethod
     def serialize_camera_state(self) -> None:
         """Make the state served to the client current for the camera.
 
@@ -220,8 +229,17 @@ class IRenderer(ABC):
         """
 
     # ------------------------------------------------------------------------
-    # Widget control (cross-section, bounding box)
+    # Widget control (cross-section, bounding box, edges)
     # ------------------------------------------------------------------------
+
+    @abstractmethod
+    def set_edges_visible(self, visible: bool) -> None:
+        """Show or hide edges on every part in the scene.
+
+        Scene-wide, not per-node: edges are a single global toggle and the
+        per-part surface that once mirrored it had no reader, no sender and
+        no model field.
+        """
 
     @abstractmethod
     def set_cross_section_visibility(self, visible: bool) -> None:

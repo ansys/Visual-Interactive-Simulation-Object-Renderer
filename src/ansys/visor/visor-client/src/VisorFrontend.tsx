@@ -378,10 +378,9 @@ export class VisorFrontend {
                     uiScaffold.setUnit(unit);
                 })();
             }
-            if (sceneState.orthographicEnabled !== undefined) {
-                const promise = renderer.setOrthographicModeAsync(sceneState.orthographicEnabled);
-                promises.push(promise);
-            }
+            // `sceneState.orthographicEnabled` is deliberately not read;
+            // projection's sole writer is the camera write below. See
+            // AppStateProjectionLoad.test.ts for why.
             if (sceneState.crossSectionEnabled !== undefined) {
                 const promise = renderer.setCrossSectionVisibilityAsync(
                     sceneState.crossSectionEnabled
@@ -416,9 +415,9 @@ export class VisorFrontend {
                 promises.push(promise);
             }
             if (cameraState.parallelProjection !== undefined) {
-                const promise = renderer.setCameraParallelProjectionAsync(
-                    cameraState.parallelProjection
-                );
+                // Routed through setOrthographicModeAsync, not setCameraParallelProjectionAsync: only
+                // the former also sets the widget flag, so the latter would leave it stale for the next save.
+                const promise = renderer.setOrthographicModeAsync(cameraState.parallelProjection);
                 promises.push(promise);
             }
             if (cameraState.viewAngle !== undefined) {

@@ -1,4 +1,4 @@
-import { FC, RefObject, useEffect, useRef } from 'react';
+import { FC, useEffect } from 'react';
 import { AwcIcons } from '../AwcIcons';
 import { VisorFrontend } from '../../VisorFrontend.tsx';
 import { makeTooltip } from '../../utils/Tooltip';
@@ -10,7 +10,6 @@ export const Panel_BottomMiddle: FC<{
     visorState: VisorFrontend;
     onLoad: (util: Panel_BottomMiddle_Util) => void;
 }> = ({ visorState, onLoad }) => {
-    const edgeVisibility: RefObject<boolean> = useRef(false);
     const tableElemId = `tableElem-${crypto.randomUUID()}`;
     const selectionModeContainerId = `selMode-${crypto.randomUUID()}`;
     useEffect(() => {

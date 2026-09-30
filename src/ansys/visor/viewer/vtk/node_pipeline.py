@@ -153,6 +153,19 @@ class VtkNodePipeline:
         """
         self.actor.SetVisibility(1 if visible else 0)
 
+    def set_edge_visibility(self, visible: bool) -> None:
+        """Show or hide this part's edges.
+
+        Mutates the actor's property, not the actor: edge visibility is a
+        property flag, where :meth:`set_visibility` is an actor flag.
+
+        Parameters
+        ----------
+        visible:
+            Target state.  Absolute, never a toggle.
+        """
+        self.actor.GetProperty().SetEdgeVisibility(1 if visible else 0)
+
     def set_opacity(self, opacity: float) -> None:
         """Set this part's opacity.
 

@@ -13,6 +13,12 @@ from ansys.visor.viewer.core.visor_enums import VisorVtkVariableType
 from ansys.visor.viewer.core.visor_logging import VisorDefaultLogger
 from ansys.visor.viewer.models.common.visor_camera_state import VisorCameraState
 from ansys.visor.viewer.models.runtime.requests.sync_camera_payload import SyncCameraPayload
+from ansys.visor.viewer.models.runtime.requests.widget_state_payloads import (
+    SetBoundingBoxVisibilityPayload,
+    SetCrossSectionVisibilityPayload,
+    SetEdgesVisiblePayload,
+    SetProjectionPayload,
+)
 
 logger = VisorDefaultLogger(__name__)
 
@@ -20,17 +26,18 @@ logger = VisorDefaultLogger(__name__)
 vtkObject.GlobalWarningDisplayOff()
 
 
-class ScenePartStateApi(Protocol):
-    """Structural type of the per-part coordinator surface LocalApp calls.
+class SceneMutationApi(Protocol):
+    """Structural type of the coordinator surface LocalApp calls.
 
     Typing only: there is no ``runtime_checkable`` decoration and no
     ``isinstance`` check anywhere against it.  Declaring it here rather than
     importing the scene keeps this module free of any scene type, so the
     injected object remains LocalApp's only route to the scene.
 
-    ``sync_camera`` is not per-part, and it is declared here anyway: the one
-    production injection site passes the whole scene coordinator, so a second
-    protocol would be the same object under a second name.
+    Covers both per-part mutations (visibility, opacity, colour, selection)
+    and scene-wide ones (camera sync, the widget-state toggles, projection,
+    cross-section plane).  The one production injection site passes the
+    whole scene coordinator, so this protocol describes that whole surface.
     """
 
     def set_part_visibility(self, node_id: int, visible: bool) -> None: ...
@@ -55,6 +62,14 @@ class ScenePartStateApi(Protocol):
     def clear_part_color_variable(self, node_id: int) -> None: ...
 
     def sync_camera(self, camera_state: VisorCameraState) -> None: ...
+
+    def set_cross_section_visibility(self, visible: bool) -> None: ...
+
+    def set_edges_visible(self, visible: bool) -> None: ...
+
+    def set_bounding_box_visibility(self, visible: bool) -> None: ...
+
+    def set_projection(self, parallel: bool) -> None: ...
 
 
 # ----------------------------------------------------------------------
@@ -184,6 +199,10 @@ class LocalApp:
         set_part_color_variable: colours one part by a scalar variable
         clear_part_color_variable: stops colouring one part by a scalar variable
         sync_camera: records a settled camera reported by the frontend
+        set_cross_section_visibility: shows or hides the cross-section plane
+        set_edges_visible: shows or hides edges on every part
+        set_bounding_box_visibility: shows or hides the bounding-box outline
+        set_projection: sets parallel or perspective projection on the camera record
         set_only_cookie: sets a cookie on the server (note: Trame server only allows a single cookie header)
     Protected Methods:
         _cleanup(): Cleans up the active actor in the visualization pipeline.
@@ -196,7 +215,7 @@ class LocalApp:
             standalone: bool = True,
             trame_logger: Logger | None = None,
             pick_geometry=None,
-            scene_part_state_api: ScenePartStateApi | None = None,
+            scene_mutation_api: SceneMutationApi | None = None,
     ):
         self.server = server
         # Callable to get the scene details in JSON format
@@ -205,10 +224,10 @@ class LocalApp:
         self._handle_save_state_response = handle_save_state_response
         # Callable for sub-geometry picking (optional)
         self._pick_geometry = pick_geometry
-        # Per-part visual state coordinator (see ScenePartStateApi).  The one
+        # Per-part visual state coordinator (see SceneMutationApi).  The one
         # production construction site always supplies it; it is optional so
         # that the class stays constructible without a scene.
-        self._scene_part_state_api = scene_part_state_api
+        self._scene_mutation_api = scene_mutation_api
         # logger for logging trame server lifecycle info
         self.__trame_logger = trame_logger
 
@@ -333,18 +352,19 @@ class LocalApp:
     # body.
     # ------------------------------------------------------------------
 
-    def _part_state_api(self, trigger_name: str) -> ScenePartStateApi | None:
+    def _mutation_api(self, trigger_name: str, payload: BaseModel) -> SceneMutationApi | None:
         """Return the injected coordinator, or ``None`` after logging."""
-        if self._scene_part_state_api is None:
+        logger.debug("[trigger] %s arrived: %s.", trigger_name, payload)
+        if self._scene_mutation_api is None:
             logger.debug("%s: no scene part-state API injected; ignoring.", trigger_name)
             return None
-        return self._scene_part_state_api
+        return self._scene_mutation_api
 
     @trigger("set_part_visibility")
     @parse_payload(SetPartVisibilityPayload)
     def set_part_visibility(self, payload) -> None:
         """Frontend -> Backend: set whether one part is visible."""
-        api = self._part_state_api("set_part_visibility")
+        api = self._mutation_api("set_part_visibility", payload)
         if api is None:
             return
         api.set_part_visibility(payload.node_id, payload.visible)
@@ -357,7 +377,7 @@ class LocalApp:
         An opacity outside ``[0.0, 1.0]`` fails validation and is a logged
         no-op; it does not reach VTK to be clamped.
         """
-        api = self._part_state_api("set_part_opacity")
+        api = self._mutation_api("set_part_opacity", payload)
         if api is None:
             return
         api.set_part_opacity(payload.node_id, payload.opacity)
@@ -372,7 +392,7 @@ class LocalApp:
         or a colour that is not exactly three components, is a logged
         no-op -- nothing is delegated, so nothing is written to the store.
         """
-        api = self._part_state_api("set_part_diffuse_color")
+        api = self._mutation_api("set_part_diffuse_color", payload)
         if api is None:
             return
         api.set_part_diffuse_color(payload.node_id, payload.diffuse_rgb)
@@ -385,7 +405,7 @@ class LocalApp:
         No colour crosses this trigger: the server reads the part's stored
         diffuse colour from its own record.
         """
-        api = self._part_state_api("set_part_selected")
+        api = self._mutation_api("set_part_selected", payload)
         if api is None:
             return
         api.set_part_selected(payload.node_id, payload.selected)
@@ -403,7 +423,7 @@ class LocalApp:
         name.  ``variableId`` is forwarded verbatim and is never parsed by
         the server.
         """
-        api = self._part_state_api("set_part_color_variable")
+        api = self._mutation_api("set_part_color_variable", payload)
         if api is None:
             return
         api.set_part_color_variable(
@@ -420,7 +440,7 @@ class LocalApp:
     @parse_payload(ClearPartColorVariablePayload)
     def clear_part_color_variable(self, payload) -> None:
         """Frontend -> Backend: stop colouring one part by a scalar variable."""
-        api = self._part_state_api("clear_part_color_variable")
+        api = self._mutation_api("clear_part_color_variable", payload)
         if api is None:
             return
         api.clear_part_color_variable(payload.node_id)
@@ -457,7 +477,7 @@ class LocalApp:
         if payload.origin != "gesture":
             logger.debug("sync_camera: origin=%s; dropping.", payload.origin)
             return
-        api = self._part_state_api("sync_camera")
+        api = self._mutation_api("sync_camera", payload)
         if api is None:
             return
         logger.debug(
@@ -466,6 +486,60 @@ class LocalApp:
             payload.camera.position,
         )
         api.sync_camera(payload.camera)
+
+    # ------------------------------------------------------------------
+    # Widget-state triggers
+    #
+    # Frontend -> Backend.  One trigger per server-tracked toggle. Each
+    # carries the absolute target value, not a delta, so a redundant
+    # message is indistinguishable from a no-op one, and both are fine.
+    # No ``origin`` field: unlike the camera, a toggle echo is idempotent.
+    #
+    # ``set_projection`` lives here too: it is delivered the same way, but
+    # it writes the camera record's projection field rather than a toggle
+    # of its own.
+    # ------------------------------------------------------------------
+
+    @trigger("set_cross_section_visibility")
+    @parse_payload(SetCrossSectionVisibilityPayload)
+    def set_cross_section_visibility(self, payload) -> None:
+        """Frontend -> Backend: show or hide the cross-section plane."""
+        api = self._mutation_api("set_cross_section_visibility", payload)
+        if api is None:
+            return
+        api.set_cross_section_visibility(payload.visible)
+
+    @trigger("set_edges_visible")
+    @parse_payload(SetEdgesVisiblePayload)
+    def set_edges_visible(self, payload) -> None:
+        """Frontend -> Backend: show or hide edges on every part."""
+        api = self._mutation_api("set_edges_visible", payload)
+        if api is None:
+            return
+        api.set_edges_visible(payload.visible)
+
+    @trigger("set_bounding_box_visibility")
+    @parse_payload(SetBoundingBoxVisibilityPayload)
+    def set_bounding_box_visibility(self, payload) -> None:
+        """Frontend -> Backend: show or hide the bounding-box outline."""
+        api = self._mutation_api("set_bounding_box_visibility", payload)
+        if api is None:
+            return
+        api.set_bounding_box_visibility(payload.visible)
+
+    @trigger("set_projection")
+    @parse_payload(SetProjectionPayload)
+    def set_projection(self, payload) -> None:
+        """Frontend -> Backend: set parallel or perspective projection.
+
+        The projection is the camera record's field, not a toggle of its
+        own: the coordinator writes the record and re-serialises the
+        camera in one critical section.
+        """
+        api = self._mutation_api("set_projection", payload)
+        if api is None:
+            return
+        api.set_projection(payload.parallel)
 
     def set_only_cookie(self, key: str, value: str):
         """
