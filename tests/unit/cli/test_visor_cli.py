@@ -152,15 +152,15 @@ def test_main_logs_list(mock_parse_args, mock_logs_api):
         visor_cli.main()
         api.list_logs.assert_called_once()
 
-def test_main_logs_show(mock_parse_args, mock_logs_api):
-    """Verify that log display invokes show_log with the requested options."""
-    args = make_args("log", "show", log_name="mylog", follow=True, log_dir="dir", lines=5)
+def test_main_logs_tail(mock_parse_args, mock_logs_api):
+    """Verify that log tail invokes tail_log with the requested options."""
+    args = make_args("log", "tail", log_name="mylog", follow=True, log_dir="dir", lines=5)
     mock_parse_args.return_value = args
     api = MagicMock()
     mock_logs_api.return_value = api
     with patch("ansys.visor.viewer.cli.visor_cli.check_server_running", return_value=True):
         visor_cli.main()
-        api.show_log.assert_called_once_with("mylog", True, 5)
+        api.tail_log.assert_called_once_with("mylog", True, 5)
 
 def test_main_logs_clear(mock_parse_args, mock_logs_api):
     """Verify that log clear invokes the clear_logs method."""

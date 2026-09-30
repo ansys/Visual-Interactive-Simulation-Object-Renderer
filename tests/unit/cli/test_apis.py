@@ -168,25 +168,25 @@ def test_logsapi_list_logs_prints_dir_not_found():
         api.list_logs()
         mock_print.assert_any_call("Log directory not found: not_a_dir")
 
-def test_logsapi_show_log_prints_last_lines():
+def test_logsapi_tail_log_prints_last_lines():
     """Verify that the requested tail of the log file is printed."""
     api = LogsAPI()
     log_content = "line1\nline2\nline3\n"
     m = mock_open(read_data=log_content)
     with patch("builtins.open", m), patch("builtins.print") as mock_print, patch("os.path.join", return_value="file.log"):
-        api.show_log("file", follow=False, lines=2)
+        api.tail_log("file", follow=False, lines=2)
         # Should print last 2 lines
         printed = "".join([call.args[0] for call in mock_print.call_args_list])
         assert "line2" in printed and "line3" in printed
 
-def test_logsapi_show_log_file_not_found():
+def test_logsapi_tail_log_file_not_found():
     """Verify that a missing log file is reported."""
     api = LogsAPI()
     with patch("builtins.open", side_effect=FileNotFoundError), patch("builtins.print") as mock_print, patch("os.path.join", return_value="file.log"):
-        api.show_log("file")
+        api.tail_log("file")
         mock_print.assert_any_call("Log file not found: file.log")
 
-def test_logsapi_show_log_follow_prints_and_waits(monkeypatch):
+def test_logsapi_tail_log_follow_prints_and_waits(monkeypatch):
     """Verify that follow mode continues monitoring the log file."""
     api = LogsAPI()
     log_content = "line1\nline2\nline3\n"
@@ -209,7 +209,7 @@ def test_logsapi_show_log_follow_prints_and_waits(monkeypatch):
 
     with patch("builtins.print") as mock_print, patch("time.sleep", side_effect=sleep_side_effect):
         try:
-            api.show_log("file", follow=True, lines=2)
+            api.tail_log("file", follow=True, lines=2)
         except SystemExit:
             pass
         printed = "".join([call.args[0] for call in mock_print.call_args_list])

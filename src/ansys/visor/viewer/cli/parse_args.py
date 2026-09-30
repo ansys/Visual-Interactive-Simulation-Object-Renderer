@@ -134,16 +134,16 @@ def parse_args():
     logs_sub.add_parser("list", help="List available logs")
 
     # show API
-    show_parser = logs_sub.add_parser("show", help="Show the log file")
-    show_parser.add_argument("log_name",
+    tail_parser = logs_sub.add_parser("tail", help="Tail the log file")
+    tail_parser.add_argument("log_name",
                              nargs="?",
                              help="Name of the log file (without .log)",
                              default="visor")
-    show_parser.add_argument("-f", "--follow",
+    tail_parser.add_argument("-f", "--follow",
                              action="store_true",
                              help="Follow the log file (like tail -f)"
                              )
-    show_parser.add_argument(
+    tail_parser.add_argument(
         "-n", "--lines", type=int, default=10,
         help="Number of lines to show from the end of the log file (default: 10)"
     )

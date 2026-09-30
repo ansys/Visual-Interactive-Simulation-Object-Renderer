@@ -127,20 +127,20 @@ def test_logs_list_args_defaults():
     assert args.action == "list"
     assert args.log_dir is None
 
-def test_logs_show_args_defaults():
-    """Verify that log show uses the expected default argument values."""
-    args = run_parse_args(["visor-cli", "log", "show"])
+def test_logs_tail_args_defaults():
+    """Verify that log tail uses the expected default argument values."""
+    args = run_parse_args(["visor-cli", "log", "tail"])
     assert args.group == "log"
-    assert args.action == "show"
+    assert args.action == "tail"
     assert args.log_name == "visor"
     assert args.follow is False
     assert args.log_dir is None
     assert args.lines == 10
 
-def test_logs_show_args_custom():
-    """Verify that custom log display arguments are parsed correctly."""
+def test_logs_tail_args_custom():
+    """Verify that custom log tail arguments are parsed correctly."""
     args = run_parse_args([
-        "visor-cli", "log", "--log-dir", "/tmp", "show", "mylog", "-f", "-n", "5"
+        "visor-cli", "log", "--log-dir", "/tmp", "tail", "mylog", "-f", "-n", "5"
     ])
     assert args.log_name == "mylog"
     assert args.follow is True

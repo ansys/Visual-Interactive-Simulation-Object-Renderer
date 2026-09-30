@@ -136,8 +136,8 @@ def main():
         api = LogsAPI(log_dir=args.log_dir)
         if args.action == "list":
             api.list_logs()
-        elif args.action == "show":
-            api.show_log(args.log_name, args.follow, args.lines)
+        elif args.action == "tail":
+            api.tail_log(args.log_name, args.follow, args.lines)
         elif args.action == "clear":
             api.clear_logs()
         return

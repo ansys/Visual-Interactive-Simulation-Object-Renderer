@@ -245,19 +245,19 @@ class LogsAPI:
             for f in files:
                 print("  " + f[:-4])  # strip .log
 
-    def show_log(self, log_name, follow=False, lines=10):
+    def tail_log(self, log_name, follow=False, lines=10):
         """Display the contents of a log file.
 
         Parameters
         ----------
         log_name : str
-            Name of the log file to display, without the ``.log`` extension.
+            Name of the log file to tail, without the ``.log`` extension.
         follow : bool, optional
             When ``True``, print the last *lines* lines and then stream new
             content as it is appended (like ``tail -f``).  Defaults to
             ``False``.
         lines : int, optional
-            Number of lines from the end of the file to display.  Defaults
+            Number of lines from the end of the file to tail.  Defaults
             to ``10``.
         """
         log_path = os.path.join(self.log_dir, f"{log_name}.log")
