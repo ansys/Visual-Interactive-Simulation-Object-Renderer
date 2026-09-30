@@ -29,8 +29,14 @@ import type VisorVtkSceneNode from '../state/appstate/vtkInfo/VisorVtkSceneNode.
  *      delivery, after the tree has synchronized, so a delivered range reaches
  *      the legend with no selection change.
  *
- * Expected values are hand-written literals.  The trigger sender is a double
- * that absorbs every send; nothing here asserts on it.
+ *   4. The range trigger is sent once per edit, carrying the server's
+ *      component convention, and never for a delivery.  A delivered range
+ *      that differs from the one a part last applied reaches that part with
+ *      no send at all.
+ *
+ * Expected values are hand-written literals.  The trigger-sender double
+ * absorbs every send except in the range-trigger tests, which assert its
+ * calls after clearing it and the renderer double at the end of their setup.
  *
  * jsdom has no `ResizeObserver` and jest here runs with no `setupFiles`, so
  * the stub below is this module's own.
@@ -47,6 +53,7 @@ const PART_A_ID = 1;
 const PART_B_ID = 2;
 const PRESSURE_ID = 'POINT::pressure::1';
 const TEMPERATURE_ID = 'POINT::temperature::1';
+const VELOCITY_ID = 'POINT::velocity::2';
 
 /** A complete wire record for `pressure`, custom range [2, 8] inside default [0, 10]. */
 function pressureRecord(overrides: Record<string, unknown> = {}): Record<string, unknown> {
@@ -76,6 +83,27 @@ function temperatureRecord(): Record<string, unknown> {
         defaultRanges: [[-20, 100]],
         magnitudeRange: [-20, 100],
         ranges: [[-20, 100]],
+    };
+}
+
+/** A complete wire record for two-component `velocity`, listing part A. */
+function velocityRecord(): Record<string, unknown> {
+    return {
+        id: VELOCITY_ID,
+        arrayName: 'velocity',
+        type: 'POINT',
+        numComponents: 2,
+        partIds: [PART_A_ID],
+        defaultMagnitudeRange: [0, 10],
+        defaultRanges: [
+            [-1, 1],
+            [-2, 2],
+        ],
+        magnitudeRange: [0, 10],
+        ranges: [
+            [-1, 1],
+            [-2, 2],
+        ],
     };
 }
 
@@ -165,14 +193,21 @@ function makeRendererDouble() {
 
 type RendererDouble = ReturnType<typeof makeRendererDouble>;
 
-function makeFrontend(): { frontend: VisorFrontend; renderer: RendererDouble } {
+type TriggerSenderDouble = jest.Mock<Promise<unknown>, [string, unknown]>;
+
+function makeFrontend(): {
+    frontend: VisorFrontend;
+    renderer: RendererDouble;
+    triggerSender: TriggerSenderDouble;
+} {
     const renderer = makeRendererDouble();
+    const triggerSender = jest.fn(async () => undefined) as unknown as TriggerSenderDouble;
     const frontend = new VisorFrontend(
         renderer as unknown as IRenderer,
         makeSceneGraphNode() as unknown as VisorVtkSceneNode,
-        jest.fn(async () => undefined)
+        triggerSender
     );
-    return { frontend, renderer };
+    return { frontend, renderer, triggerSender };
 }
 
 /** The tree-view util members the frontend and the mounted panel reach. */
@@ -430,49 +465,90 @@ describe('setAppStateAsync holds a delivered variable block', () => {
     });
 });
 
+/**
+ * A real frontend holding one delivered record, with part A coloured by the
+ * given slot and selected in the tree, and the top-right panel mounted on it.
+ */
+async function mountOnDeliveredRecord(
+    record: Record<string, unknown>,
+    variableId: string,
+    component: number
+): Promise<{
+    frontend: VisorFrontend;
+    container: HTMLElement;
+    triggerSender: TriggerSenderDouble;
+}> {
+    const { frontend, triggerSender } = makeFrontend();
+    const part = frontend.sceneGraph.descendantActorNodesOrSelfDictionary[PART_A_ID];
+    frontend.setTreeViewUtil(makeTreeViewUtilDouble([part]));
+    await frontend.setAppStateAsync(
+        { scene: { variableStates: { [variableId]: record } } },
+        false
+    );
+    await part.setColorVariableAsync(variableId, component);
+
+    let container: HTMLElement = null!;
+    await act(async () => {
+        container = render(
+            <Panel_TopRight visorState={frontend} onLoad={() => {}} />
+        ).container;
+    });
+    await frontend.panelTopRightUtilPromise;
+    return { frontend, container, triggerSender };
+}
+
+/**
+ * The legend's min or max row, located by its heading: the ids in this
+ * component are `randomId()`-generated.
+ */
+function legendRow(container: HTMLElement, heading: 'Min' | 'Max') {
+    const label = within(container).getByText(heading, { selector: 'div' }).closest('label')!;
+    return {
+        input: label.querySelector('input') as HTMLInputElement,
+        reset: label.querySelector('a') as HTMLAnchorElement,
+    };
+}
+
+/** Types a range into the legend and clicks Apply, then lets its handler settle. */
+async function applyRange(container: HTMLElement, min: string, max: string): Promise<void> {
+    legendRow(container, 'Min').input.value = min;
+    legendRow(container, 'Max').input.value = max;
+    const apply = within(container).getByText('Apply', { selector: 'button' });
+    await act(async () => {
+        fireEvent.click(apply);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+}
+
+/** The `set_variable_range` sends among a trigger-sender double's calls. */
+function rangeSends(triggerSender: TriggerSenderDouble): unknown[][] {
+    return triggerSender.mock.calls.filter(([name]) => name === 'set_variable_range');
+}
+
+/** A delivery holding one `pressure` record and colouring part A by its magnitude. */
+function deliveryColouringPartA(record: Record<string, unknown>) {
+    return {
+        scene: {
+            variableStates: { [PRESSURE_ID]: record },
+            datasetStates: {
+                '0': {
+                    id: '0',
+                    partStates: {
+                        '1': { id: '1', variableId: PRESSURE_ID, variableComponent: -1 },
+                    },
+                },
+            },
+        },
+    };
+}
+
 describe('the legend follows a delivery with no selection change', () => {
-    /**
-     * A real frontend holding `pressure` at [2, 8], with part A coloured by
-     * its magnitude and selected in the tree, and the top-right panel mounted
-     * on it.
-     */
-    async function mountOnDeliveredRecord(): Promise<{
-        frontend: VisorFrontend;
-        container: HTMLElement;
-    }> {
-        const { frontend } = makeFrontend();
-        const part = frontend.sceneGraph.descendantActorNodesOrSelfDictionary[PART_A_ID];
-        frontend.setTreeViewUtil(makeTreeViewUtilDouble([part]));
-        await frontend.setAppStateAsync(
-            { scene: { variableStates: { [PRESSURE_ID]: pressureRecord() } } },
-            false
-        );
-        await part.setColorVariableAsync(PRESSURE_ID, -1);
-
-        let container: HTMLElement = null!;
-        await act(async () => {
-            container = render(
-                <Panel_TopRight visorState={frontend} onLoad={() => {}} />
-            ).container;
-        });
-        await frontend.panelTopRightUtilPromise;
-        return { frontend, container };
-    }
-
-    /**
-     * The legend's min or max row, located by its heading: the ids in this
-     * component are `randomId()`-generated.
-     */
-    function legendRow(container: HTMLElement, heading: 'Min' | 'Max') {
-        const label = within(container).getByText(heading, { selector: 'div' }).closest('label')!;
-        return {
-            input: label.querySelector('input') as HTMLInputElement,
-            reset: label.querySelector('a') as HTMLAnchorElement,
-        };
-    }
-
     test('a delivered custom range is shown in the legend', async () => {
-        const { frontend, container } = await mountOnDeliveredRecord();
+        const { frontend, container } = await mountOnDeliveredRecord(
+            pressureRecord(),
+            PRESSURE_ID,
+            -1
+        );
         expect(legendRow(container, 'Min').input.value).toBe('2');
         expect(legendRow(container, 'Max').input.value).toBe('8');
 
@@ -494,7 +570,11 @@ describe('the legend follows a delivery with no selection change', () => {
     });
 
     test('reset shows the delivered default range', async () => {
-        const { frontend, container } = await mountOnDeliveredRecord();
+        const { frontend, container } = await mountOnDeliveredRecord(
+            pressureRecord(),
+            PRESSURE_ID,
+            -1
+        );
 
         await act(async () => {
             await frontend.setAppStateAsync(
@@ -514,5 +594,84 @@ describe('the legend follows a delivery with no selection change', () => {
         });
 
         expect(minRow.input.value).toBe('-1');
+    });
+});
+
+describe('the range trigger is sent for an edit and never for a delivery', () => {
+    test('an apply click on the magnitude sends one set_variable_range with component -1', async () => {
+        const { container, triggerSender } = await mountOnDeliveredRecord(
+            pressureRecord(),
+            PRESSURE_ID,
+            -1
+        );
+        triggerSender.mockClear();
+
+        await applyRange(container, '3', '7');
+
+        expect(triggerSender.mock.calls).toEqual([
+            [
+                'set_variable_range',
+                { variableId: 'POINT::pressure::1', component: -1, min: 3, max: 7 },
+            ],
+        ]);
+    });
+
+    test('an apply click on component 1 sends component 1', async () => {
+        const { container, triggerSender } = await mountOnDeliveredRecord(
+            velocityRecord(),
+            VELOCITY_ID,
+            1
+        );
+        triggerSender.mockClear();
+
+        await applyRange(container, '-1', '1');
+
+        expect(triggerSender.mock.calls).toEqual([
+            [
+                'set_variable_range',
+                { variableId: 'POINT::velocity::2', component: 1, min: -1, max: 1 },
+            ],
+        ]);
+    });
+
+    test('a delivered push sends no set_variable_range', async () => {
+        const { frontend, triggerSender } = makeFrontend();
+
+        await frontend.setAppStateAsync(deliveryColouringPartA(pressureRecord()), false);
+
+        expect(rangeSends(triggerSender)).toEqual([]);
+    });
+
+    test('a changed delivered range reaches a part already coloured by that slot, sending nothing', async () => {
+        const { frontend, renderer, triggerSender } = makeFrontend();
+        await frontend.setAppStateAsync(deliveryColouringPartA(pressureRecord()), false);
+        renderer.setScalarRangeAsync.mockClear();
+        renderer.sendPartColorVariableAsync.mockClear();
+        triggerSender.mockClear();
+
+        // Magnitude moves to [3, 7]; component 0 stays at [2, 8].
+        await frontend.setAppStateAsync(
+            deliveryColouringPartA(pressureRecord({ magnitudeRange: [3, 7] })),
+            false
+        );
+
+        expect(renderer.setScalarRangeAsync.mock.calls).toEqual([[1, 3, 7]]);
+        expect(renderer.sendPartColorVariableAsync).not.toHaveBeenCalled();
+        expect(rangeSends(triggerSender)).toEqual([]);
+    });
+
+    test('a delivered range differing from the last edit reaches a part already coloured by that slot', async () => {
+        const { frontend, renderer, triggerSender } = makeFrontend();
+        await frontend.setAppStateAsync(deliveryColouringPartA(pressureRecord()), false);
+        await frontend.setVariableRangeAsync(PRESSURE_ID, -1, 3, 7);
+        renderer.setScalarRangeAsync.mockClear();
+        renderer.sendPartColorVariableAsync.mockClear();
+        triggerSender.mockClear();
+
+        await frontend.setAppStateAsync(deliveryColouringPartA(pressureRecord()), false);
+
+        expect(renderer.setScalarRangeAsync.mock.calls).toEqual([[1, 2, 8]]);
+        expect(renderer.sendPartColorVariableAsync).not.toHaveBeenCalled();
+        expect(rangeSends(triggerSender)).toEqual([]);
     });
 });
