@@ -242,7 +242,7 @@ def test_logsapi_clear_logs_removes_dir_on_confirm(tmp_path):
         api.clear_logs()
         mock_shutdown.assert_called_once()
         mock_rmtree.assert_called_once_with(str(tmp_path))
-        mock_print.assert_any_call("Log directory cleared.")
+        mock_print.assert_any_call("Log directory removed: " + str(tmp_path))
 
 def test_logsapi_clear_logs_reports_failure(tmp_path):
     """Verify that failures during removal are reported."""
@@ -252,7 +252,7 @@ def test_logsapi_clear_logs_reports_failure(tmp_path):
          patch("logging.shutdown"), \
          patch("shutil.rmtree", side_effect=OSError("boom")):
         api.clear_logs()
-        mock_print.assert_any_call("Failed to clear log directory: boom")
+        mock_print.assert_any_call(f"Failed to remove log directory {tmp_path}: boom")
 
 def test_logsapi_clear_logs_force_skips_confirmation(tmp_path):
     """Verify that force=True removes the log directory without prompting."""
@@ -265,5 +265,5 @@ def test_logsapi_clear_logs_force_skips_confirmation(tmp_path):
         mock_input.assert_not_called()
         mock_shutdown.assert_called_once()
         mock_rmtree.assert_called_once_with(str(tmp_path))
-        mock_print.assert_any_call("Log directory cleared.")
+        mock_print.assert_any_call("Log directory removed: " + str(tmp_path))
 

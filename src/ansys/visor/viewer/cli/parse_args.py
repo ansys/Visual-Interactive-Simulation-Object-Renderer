@@ -123,7 +123,7 @@ def parse_args():
     ######################
     # Logs subcommands
     ######################
-    logs_parser = subparsers.add_parser("log", help="Log file operations")
+    logs_parser = subparsers.add_parser("logs", help="Log file operations")
     logs_parser.add_argument("--log-dir",
                              default=None,
                              help="Directory containing log files (default: from settings)"

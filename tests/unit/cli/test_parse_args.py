@@ -122,15 +122,15 @@ def test_instance_stop_args():
 
 def test_logs_list_args_defaults():
     """Verify that log list arguments use the expected default values."""
-    args = run_parse_args(["visor-cli", "log", "list"])
-    assert args.group == "log"
+    args = run_parse_args(["visor-cli", "logs", "list"])
+    assert args.group == "logs"
     assert args.action == "list"
     assert args.log_dir is None
 
 def test_logs_tail_args_defaults():
     """Verify that log tail uses the expected default argument values."""
-    args = run_parse_args(["visor-cli", "log", "tail"])
-    assert args.group == "log"
+    args = run_parse_args(["visor-cli", "logs", "tail"])
+    assert args.group == "logs"
     assert args.action == "tail"
     assert args.log_name == "visor"
     assert args.follow is False
@@ -140,7 +140,7 @@ def test_logs_tail_args_defaults():
 def test_logs_tail_args_custom():
     """Verify that custom log tail arguments are parsed correctly."""
     args = run_parse_args([
-        "visor-cli", "log", "--log-dir", "/tmp", "tail", "mylog", "-f", "-n", "5"
+        "visor-cli", "logs", "--log-dir", "/tmp", "tail", "mylog", "-f", "-n", "5"
     ])
     assert args.log_name == "mylog"
     assert args.follow is True
@@ -149,22 +149,22 @@ def test_logs_tail_args_custom():
 
 def test_logs_clear_args():
     """Verify that the log clear subcommand is parsed correctly."""
-    args = run_parse_args(["visor-cli", "log", "clear"])
-    assert args.group == "log"
+    args = run_parse_args(["visor-cli", "logs", "clear"])
+    assert args.group == "logs"
     assert args.action == "clear"
     assert args.force is False
 
 def test_logs_clear_args_force_short_flag():
     """Verify that the -f flag sets force=True for log clear."""
-    args = run_parse_args(["visor-cli", "log", "clear", "-f"])
-    assert args.group == "log"
+    args = run_parse_args(["visor-cli", "logs", "clear", "-f"])
+    assert args.group == "logs"
     assert args.action == "clear"
     assert args.force is True
 
 def test_logs_clear_args_force_long_flag():
     """Verify that the --force flag sets force=True for log clear."""
-    args = run_parse_args(["visor-cli", "log", "clear", "--force"])
-    assert args.group == "log"
+    args = run_parse_args(["visor-cli", "logs", "clear", "--force"])
+    assert args.group == "logs"
     assert args.action == "clear"
     assert args.force is True
 

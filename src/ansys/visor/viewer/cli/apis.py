@@ -289,7 +289,7 @@ class LogsAPI:
             print(f"Log directory not found: {self.log_dir}")
             return
         if not force:
-            print(f"Clear log directory {self.log_dir}? (y/n): ", end="")
+            print(f"Remove log directory {self.log_dir}? (y/n): ", end="")
             choice = input().strip().lower()
             if choice != "y":
                 print("Aborted.")
@@ -299,6 +299,6 @@ class LogsAPI:
             # module-level loggers on import) so Windows allows deletion.
             logging.shutdown()
             shutil.rmtree(self.log_dir)
-            print("Log directory cleared.")
+            print(f"Log directory removed: {self.log_dir}")
         except Exception as e:
-            print(f"Failed to clear log directory: {e}")
+            print(f"Failed to remove log directory {self.log_dir}: {e}")

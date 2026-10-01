@@ -144,7 +144,7 @@ def test_main_instance_actions(mock_parse_args, mock_instance_api):
 
 def test_main_logs_list(mock_parse_args, mock_logs_api):
     """Verify that log listing invokes the list_logs method."""
-    args = make_args("log", "list", log_name=None, follow=False, log_dir=None, lines=10)
+    args = make_args("logs", "list", log_name=None, follow=False, log_dir=None, lines=10)
     mock_parse_args.return_value = args
     api = MagicMock()
     mock_logs_api.return_value = api
@@ -154,7 +154,7 @@ def test_main_logs_list(mock_parse_args, mock_logs_api):
 
 def test_main_logs_tail(mock_parse_args, mock_logs_api):
     """Verify that log tail invokes tail_log with the requested options."""
-    args = make_args("log", "tail", log_name="mylog", follow=True, log_dir="dir", lines=5)
+    args = make_args("logs", "tail", log_name="mylog", follow=True, log_dir="dir", lines=5)
     mock_parse_args.return_value = args
     api = MagicMock()
     mock_logs_api.return_value = api
@@ -164,7 +164,7 @@ def test_main_logs_tail(mock_parse_args, mock_logs_api):
 
 def test_main_logs_clear(mock_parse_args, mock_logs_api):
     """Verify that log clear invokes the clear_logs method."""
-    args = make_args("log", "clear", log_dir=None, force=False)
+    args = make_args("logs", "clear", log_dir=None, force=False)
     mock_parse_args.return_value = args
     api = MagicMock()
     mock_logs_api.return_value = api
@@ -174,7 +174,7 @@ def test_main_logs_clear(mock_parse_args, mock_logs_api):
 
 def test_main_logs_clear_force(mock_parse_args, mock_logs_api):
     """Verify that log clear -f forwards force=True to clear_logs."""
-    args = make_args("log", "clear", log_dir=None, force=True)
+    args = make_args("logs", "clear", log_dir=None, force=True)
     mock_parse_args.return_value = args
     api = MagicMock()
     mock_logs_api.return_value = api
@@ -184,7 +184,7 @@ def test_main_logs_clear_force(mock_parse_args, mock_logs_api):
 
 def test_main_logs_does_not_require_running_server(mock_parse_args, mock_logs_api):
     """Verify that log commands do not require the server to be running."""
-    args = make_args("log", "list", log_name=None, follow=False, log_dir=None, lines=10)
+    args = make_args("logs", "list", log_name=None, follow=False, log_dir=None, lines=10)
     mock_parse_args.return_value = args
     api = MagicMock()
     mock_logs_api.return_value = api
