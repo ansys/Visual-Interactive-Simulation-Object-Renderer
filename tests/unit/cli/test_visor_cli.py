@@ -1,3 +1,4 @@
+import socket
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -197,25 +198,24 @@ def test_main_logs_clear_rejected_when_server_reachable(mock_parse_args, mock_lo
     api.clear_logs.assert_not_called()
     assert "Server is running" in capsys.readouterr().out
 
-@pytest.mark.parametrize("status_code", [200, 404, 500, 503])
-def test_check_server_reachable_any_http_response(mock_requests_get, status_code):
-    """Verify that any HTTP response, healthy or not, counts as reachable."""
-    mock_requests_get.return_value = MagicMock(status_code=status_code)
-    assert visor_cli.check_server_reachable("host", 1234) is True
+def test_check_server_reachable_connected():
+    """Verify that an established TCP connection counts as reachable."""
+    with patch("ansys.visor.viewer.cli.visor_cli.socket.create_connection") as mock_conn:
+        assert visor_cli.check_server_reachable("host", 1234) is True
+    mock_conn.assert_called_once_with(("host", 1234), timeout=1)
 
 @pytest.mark.parametrize(
-    "exc, expected",
+    "exc",
     [
-        (requests.exceptions.ConnectionError("refused"), False),
-        (requests.exceptions.ConnectTimeout("connect timeout"), False),
-        (requests.exceptions.SSLError("bad handshake"), True),
-        (requests.exceptions.ReadTimeout("no reply"), True),
+        ConnectionRefusedError("refused"),
+        socket.timeout("connect timeout"),
+        socket.gaierror("dns failure"),
     ],
 )
-def test_check_server_reachable_exceptions(mock_requests_get, exc, expected):
+def test_check_server_reachable_connect_failure(exc):
     """Verify that only failing to establish a connection counts as unreachable."""
-    mock_requests_get.side_effect = exc
-    assert visor_cli.check_server_reachable("host", 1234) is expected
+    with patch("ansys.visor.viewer.cli.visor_cli.socket.create_connection", side_effect=exc):
+        assert visor_cli.check_server_reachable("host", 1234) is False
 
 @pytest.mark.parametrize(
     "group, action, expected",

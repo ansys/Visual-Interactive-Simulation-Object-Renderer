@@ -1,5 +1,6 @@
 """Command line interface for Visor Viewer."""
 
+import socket
 import sys
 
 import requests
@@ -30,23 +31,17 @@ def check_server_reachable(host, port):
     """
     Check whether anything is listening on the server address, healthy or not.
 
-    Intended for guarding destructive commands: any HTTP response (including
-    errors such as 500) or an established-but-failing connection counts as
-    reachable.  Returns False only when a connection cannot be established.
+    Intended for guarding destructive commands. Probes the TCP socket directly
+    so that post-connect failures (resets, protocol errors, no reply) still
+    count as reachable.  Returns False only when a TCP connection cannot be
+    established.
     """
     binding_host = settings.binding_host or host
-    url = f"{settings.url_scheme}://{binding_host}:{port}/health"
     try:
-        requests.get(url, timeout=1)
-    except requests.exceptions.SSLError:
-        return True  # TCP connection was made; something is listening
-    except requests.exceptions.ConnectionError:
-        return False  # refused or connect timeout: nothing is listening
-    except requests.exceptions.RequestException:
-        return True  # e.g. read timeout: connected but no reply, assume running
-    except Exception:
-        return True  # unknown failure: assume the server may be running
-    return True
+        with socket.create_connection((binding_host, port), timeout=1):
+            return True
+    except OSError:
+        return False  # refused, unreachable, DNS failure, or connect timeout
 
 def check_init_args(
         api_host,
