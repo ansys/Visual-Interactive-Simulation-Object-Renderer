@@ -1,4 +1,6 @@
 import json
+import subprocess
+import sys
 from unittest.mock import mock_open, patch
 
 from ansys.visor.viewer.cli.apis import InstanceAPI, LogsAPI, ServerAPI
@@ -237,10 +239,8 @@ def test_logsapi_clear_logs_removes_dir_on_confirm(tmp_path):
     api = LogsAPI(str(tmp_path))
     with patch("builtins.input", return_value="y"), \
          patch("builtins.print") as mock_print, \
-         patch("logging.shutdown") as mock_shutdown, \
          patch("shutil.rmtree") as mock_rmtree:
         api.clear_logs()
-        mock_shutdown.assert_called_once()
         mock_rmtree.assert_called_once_with(str(tmp_path))
         mock_print.assert_any_call("Log directory removed: " + str(tmp_path))
 
@@ -249,7 +249,6 @@ def test_logsapi_clear_logs_reports_failure(tmp_path):
     api = LogsAPI(str(tmp_path))
     with patch("builtins.input", return_value="y"), \
          patch("builtins.print") as mock_print, \
-         patch("logging.shutdown"), \
          patch("shutil.rmtree", side_effect=OSError("boom")):
         api.clear_logs()
         mock_print.assert_any_call(f"Failed to remove log directory {tmp_path}: boom")
@@ -259,11 +258,28 @@ def test_logsapi_clear_logs_force_skips_confirmation(tmp_path):
     api = LogsAPI(str(tmp_path))
     with patch("builtins.input") as mock_input, \
          patch("builtins.print") as mock_print, \
-         patch("logging.shutdown") as mock_shutdown, \
          patch("shutil.rmtree") as mock_rmtree:
         api.clear_logs(force=True)
         mock_input.assert_not_called()
-        mock_shutdown.assert_called_once()
         mock_rmtree.assert_called_once_with(str(tmp_path))
         mock_print.assert_any_call("Log directory removed: " + str(tmp_path))
 
+def test_cli_import_does_not_open_log_files(tmp_path):
+    """Verify that importing the CLI does not load app loggers or open log files.
+
+    Runs in a fresh interpreter because other tests may already have imported
+    the application modules into this process.
+    """
+    code = (
+        "import logging, sys\n"
+        "import ansys.visor.viewer.cli.visor_cli\n"
+        "assert 'ansys.visor.viewer.core.visor_logging' not in sys.modules, 'visor_logging imported'\n"
+        "assert 'ansys.visor.viewer.app.visor' not in sys.modules, 'app imported'\n"
+        "files = [r() for r in logging._handlerList if isinstance(r(), logging.FileHandler)]\n"
+        "assert not files, files\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code], cwd=tmp_path, capture_output=True, text=True
+    )
+    assert result.returncode == 0, result.stderr
+    assert not (tmp_path / "logs").exists()

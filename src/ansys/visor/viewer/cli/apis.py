@@ -1,7 +1,6 @@
 """API client for controlling a Visor server."""
 
 import json
-import logging
 import os
 import shutil
 import time
@@ -285,7 +284,19 @@ class LogsAPI:
             print(f"Log file not found: {log_path}")
 
     def clear_logs(self, force=False):
-        """Delete the log directory."""
+        """Delete the log directory.
+
+        Parameters
+        ----------
+        force : bool, optional
+            When ``True``, skip the confirmation prompt.  Defaults to ``False``.
+
+        Notes
+        -----
+        Nothing should be writing to the log directory (e.g. a running Visor
+        server); otherwise deletion may fail on Windows or remove files that
+        are still in use on Unix.
+        """
         if not os.path.isdir(self.log_dir):
             print(f"Log directory not found: {self.log_dir}")
             return
@@ -296,9 +307,6 @@ class LogsAPI:
                 print("Aborted.")
                 return
         try:
-            # Release this process's own file handles (e.g. visor.log opened by
-            # module-level loggers on import) so Windows allows deletion.
-            logging.shutdown()
             shutil.rmtree(self.log_dir)
             print(f"Log directory removed: {self.log_dir}")
         except Exception as e:

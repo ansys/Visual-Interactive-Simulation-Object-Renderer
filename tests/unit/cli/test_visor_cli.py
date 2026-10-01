@@ -168,7 +168,7 @@ def test_main_logs_clear(mock_parse_args, mock_logs_api):
     mock_parse_args.return_value = args
     api = MagicMock()
     mock_logs_api.return_value = api
-    with patch("ansys.visor.viewer.cli.visor_cli.check_server_running", return_value=True):
+    with patch("ansys.visor.viewer.cli.visor_cli.check_server_running", return_value=False):
         visor_cli.main()
         api.clear_logs.assert_called_once_with(False)
 
@@ -178,9 +178,54 @@ def test_main_logs_clear_force(mock_parse_args, mock_logs_api):
     mock_parse_args.return_value = args
     api = MagicMock()
     mock_logs_api.return_value = api
-    with patch("ansys.visor.viewer.cli.visor_cli.check_server_running", return_value=True):
+    with patch("ansys.visor.viewer.cli.visor_cli.check_server_running", return_value=False):
         visor_cli.main()
         api.clear_logs.assert_called_once_with(True)
+
+def test_main_logs_clear_rejected_when_server_running(mock_parse_args, mock_logs_api, capsys):
+    """Verify that log clear exits without clearing when the server is running."""
+    args = make_args("logs", "clear", log_dir=None, force=True)
+    mock_parse_args.return_value = args
+    api = MagicMock()
+    mock_logs_api.return_value = api
+    with patch("ansys.visor.viewer.cli.visor_cli.check_server_running", return_value=True) as mock_check:
+        with pytest.raises(SystemExit) as exc:
+            visor_cli.main()
+    assert exc.value.code == 1
+    mock_check.assert_called_once_with("host", 1234, verbose=False)
+    api.clear_logs.assert_not_called()
+    assert "Server is running" in capsys.readouterr().out
+
+@pytest.mark.parametrize(
+    "group, action, expected",
+    [
+        ("server", "start", False),
+        ("server", "health", False),
+        ("server", "info", True),
+        ("server", "init", True),
+        ("instance", "start", True),
+        ("logs", "list", False),
+        ("logs", "tail", False),
+        ("logs", "clear", False),
+    ],
+)
+def test_needs_server_running(group, action, expected):
+    """Verify which commands require a running server."""
+    assert visor_cli.needs_server_running(make_args(group, action)) is expected
+
+@pytest.mark.parametrize(
+    "group, action, expected",
+    [
+        ("logs", "clear", True),
+        ("logs", "list", False),
+        ("logs", "tail", False),
+        ("server", "start", False),
+        ("instance", "stop", False),
+    ],
+)
+def test_needs_server_stopped(group, action, expected):
+    """Verify that only log clear requires a stopped server."""
+    assert visor_cli.needs_server_stopped(make_args(group, action)) is expected
 
 def test_main_logs_does_not_require_running_server(mock_parse_args, mock_logs_api):
     """Verify that log commands do not require the server to be running."""

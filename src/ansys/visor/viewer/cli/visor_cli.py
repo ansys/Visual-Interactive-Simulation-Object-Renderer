@@ -13,7 +13,7 @@ from ansys.visor.viewer.cli.parse_args import parse_args
 from ansys.visor.viewer.config import settings
 
 
-def check_server_running(host, port):
+def check_server_running(host, port, verbose=True):
     """Check if the server is running by making a health check request"""
     try:
         binding_host = settings.binding_host or host
@@ -21,9 +21,11 @@ def check_server_running(host, port):
         resp = requests.get(f"{scheme}://{binding_host}:{port}/health", timeout=1)
         if resp.status_code == 200:
             return True
-        print("Server health check failed:", resp.text)
+        if verbose:
+            print("Server health check failed:", resp.text)
     except Exception as e:
-        print("Could not connect to server:", e)
+        if verbose:
+            print("Could not connect to server:", e)
     return False
 
 def check_init_args(
@@ -76,17 +78,42 @@ def check_init_args(
         )
         sys.exit(1)
 
+def needs_server_running(args):
+    """
+    Determine if the current command requires a running server.
+    Returns False if the command is 'server start', 'server health', or 'logs'.
+    """
+    if args.group == "logs" or \
+       args.group == "server" and args.action in ["start", "health"]:
+        return False
+    return True
+
+def needs_server_stopped(args):
+    """
+    Determine if the current command requires a stopped server.
+    Returns True if the command is 'logs clear'.
+    """
+    return args.group == "logs" and args.action == "clear"
 
 
 def main():
     """Main CLI tool for Visor Viewer."""
     args = parse_args()
 
-    # Check if the server is running before executing instance commands
-    # unless the command is to start the server
-    if not (args.group == "server" and args.action in ["start", "health"] or args.group == "logs"):
+    # Most commands talk to the server, so make sure it is up first
+    if needs_server_running(args):
         if not check_server_running(args.api_host, args.api_port):
             print("Server is not running. Please start the server first.")
+            sys.exit(1)
+
+    # Clearing logs while the server is writing to them is unsafe
+    if needs_server_stopped(args):
+        print(f"Checking if the server is running on {args.api_host}:{args.api_port}")
+        if check_server_running(args.api_host, args.api_port, verbose=False):
+            print(
+                f"Server is running on {args.api_host}:{args.api_port}. "
+                "Please stop the server before clearing logs."
+            )
             sys.exit(1)
 
     # Execute the appropriate API action based on the group and action
