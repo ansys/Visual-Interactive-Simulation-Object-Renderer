@@ -181,7 +181,8 @@ def main():
         elif args.action == "tail":
             api.tail_log(args.log_name, args.follow, args.lines)
         elif args.action == "clear":
-            api.clear_logs(args.force)
+            if not api.clear_logs(args.force):
+                sys.exit(1)
         return
 
 

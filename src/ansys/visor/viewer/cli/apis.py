@@ -299,15 +299,17 @@ class LogsAPI:
         """
         if not os.path.isdir(self.log_dir):
             print(f"Log directory not found: {self.log_dir}")
-            return
+            return True
         if not force:
             print(f"Remove log directory {self.log_dir}? (y/n): ", end="")
             choice = input().strip().lower()
             if choice != "y":
                 print("Aborted.")
-                return
+                return True
         try:
             shutil.rmtree(self.log_dir)
-            print(f"Log directory removed: {self.log_dir}")
         except Exception as e:
             print(f"Failed to remove log directory {self.log_dir}: {e}")
+            return False
+        print(f"Log directory removed: {self.log_dir}")
+        return True

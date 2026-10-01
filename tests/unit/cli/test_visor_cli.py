@@ -183,6 +183,18 @@ def test_main_logs_clear_force(mock_parse_args, mock_logs_api):
         visor_cli.main()
         api.clear_logs.assert_called_once_with(True)
 
+def test_main_logs_clear_failure_exits_nonzero(mock_parse_args, mock_logs_api):
+    """Verify that a failed log clear exits with a nonzero status."""
+    args = make_args("logs", "clear", log_dir=None, force=True)
+    mock_parse_args.return_value = args
+    api = MagicMock()
+    api.clear_logs.return_value = False
+    mock_logs_api.return_value = api
+    with patch("ansys.visor.viewer.cli.visor_cli.check_server_reachable", return_value=False):
+        with pytest.raises(SystemExit) as exc:
+            visor_cli.main()
+    assert exc.value.code == 1
+
 def test_main_logs_clear_rejected_when_server_reachable(mock_parse_args, mock_logs_api, capsys):
     """Verify that log clear exits without clearing when the server is reachable."""
     args = make_args("logs", "clear", log_dir=None, force=True)
