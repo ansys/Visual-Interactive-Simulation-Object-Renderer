@@ -1,12 +1,11 @@
-"""G4: variable metadata on a multiblock with an empty (None) block (3.5.1 increment 1, test 23).
+"""G4: variable metadata on a multiblock with an empty (None) block.
 
 The scene graph and the dataset's PartIndex must name the same parts with the
 same variables, or the record's ``part_ids`` name ids the client's nodes lack.
 
 Expected to fail today on F-E: ``VisorGroupNode._post_init`` walks every
 ``GetBlock(i)`` including ``None``, and node creation raises RuntimeError.
-PartIndex skips empty blocks.  Recorded as found-not-fixed; neither
-part_index.py nor group_node.py is edited in this increment.
+PartIndex skips empty blocks.  Found-not-fixed.
 """
 import pytest
 from vtkmodules.vtkCommonCore import vtkFloatArray
@@ -44,8 +43,8 @@ def _multiblock_with_an_empty_block() -> vtkMultiBlockDataSet:
 @pytest.mark.xfail(
     strict=True,
     raises=RuntimeError,
-    reason="F-E: VisorGroupNode._post_init walks the None block and node creation raises "
-           "RuntimeError; PartIndex skips it.  Found, not fixed, in 3.5.1 increment 1.",
+    reason="VisorGroupNode._post_init walks the None block and node creation raises "
+           "RuntimeError; PartIndex skips it.  Found, not fixed.",
 )
 def test_part_node_data_arrays_and_list_variables_agree_on_an_empty_block():
     """#23: per part id, part_node.data_arrays and dataset.list_variables() name the same arrays."""

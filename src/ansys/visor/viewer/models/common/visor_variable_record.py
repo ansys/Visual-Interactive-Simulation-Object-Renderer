@@ -143,7 +143,7 @@ class _VariableAccumulator:
             self.components[k] = self._widen(self.components[k], variable.ranges[k])
 
     def to_record(self, previous_record: VisorVariableRecord | None) -> VisorVariableRecord:
-        """Build the record, carrying each custom slot from ``previous_record`` by the D3 rule."""
+        """Build the record, carrying each custom slot from ``previous_record``."""
         n = self.num_components
         default_magnitude = self.magnitude or (0.0, 0.0)
         default_ranges = [slot if slot is not None else (0.0, 0.0) for slot in self.components]
@@ -216,12 +216,11 @@ class VisorVariableRecords(BaseModel):
             registry: "VisorDatasetRegistry",
             file_states: Dict[str, VisorVariableState],
     ) -> "VisorVariableRecords":
-        """Build a fresh holder from the registry and apply the file's ranges by the D3 load rule."""
+        """Build a fresh holder from the registry and apply the file's ranges."""
         return cls.from_registry(registry, VisorVariableRecords())._overlay(file_states)
 
     def _overlay(self, file_states: Dict[str, VisorVariableState]) -> "VisorVariableRecords":
-        """Apply a file's ranges to this fresh build by the D3 load rule and return this holder; called only by
-           from_file.
+        """Apply a file's ranges to this fresh build and return this holder; called only by from_file.
 
         - A null or absent ``magnitudeRange`` falls back to the default (DEBUG).
         - ``ranges`` whose length differs from ``num_components`` fall back to the default (DEBUG).
