@@ -2082,10 +2082,10 @@ def test_apply_state_component_beyond_the_stored_ranges_is_a_logged_no_op(
 
 
 def test_apply_state_absent_range_is_a_logged_no_op(scene, registry, pipeline):
-    """Rewritten in place (3.5.1 increment 1): an absent file range now loads at the default.
+    """An absent file range now loads at the default.
 
-    The overlay fills a null ``magnitudeRange`` from the record's default
-    (D3), so the entry the restore reads always carries a range: the part is
+    The overlay fills a null ``magnitudeRange`` from the record's default,
+    so the entry the restore reads always carries a range: the part is
     colored at the widened default (0.0, 49.0) and nothing is refused.
     """
     _seed_part_variables(registry, [_pressure_variable()])
@@ -2104,7 +2104,7 @@ def test_apply_state_unknown_variable_identifier_is_a_logged_no_op(
 ):
     """A stored identifier with no record applies nothing.
 
-    Rewritten in place (3.5.1 increment 1): the entry now comes from the
+    The entry comes from the
     record, which the registry's "pressure" always produces, so the part names
     an identifier no dataset carries.
     """
@@ -2121,7 +2121,7 @@ def test_apply_state_unknown_variable_identifier_is_a_logged_no_op(
 def test_apply_state_unknown_array_name_is_a_logged_no_op(scene, registry, pipeline):
     """An array the part does not carry applies nothing.
 
-    Rewritten in place (3.5.1 increment 1): the record's array name comes from
+    The record's array name comes from
     the registry, so "pressure" lives on another part and this part carries
     only a cell array.
     """
@@ -2142,7 +2142,7 @@ def test_apply_state_unknown_array_name_is_a_logged_no_op(scene, registry, pipel
 def test_apply_state_array_width_mismatch_is_a_logged_no_op(scene, registry, pipeline):
     """Same name and association, different width: a different quantity.
 
-    Rewritten in place (3.5.1 increment 1): the width-3 record exists because
+    The width-3 record exists because
     another part carries a width-3 "pressure"; this part's is width 1.
     """
     wide_pressure = VisorVariable(
@@ -2851,8 +2851,7 @@ def test_get_state_derives_orthographic_enabled_from_the_camera_record(scene):
     This is the assertion that closes AC-5.  The record carries the
     hand-written literal ``True`` while the reply carries the hand-written
     literal ``False``; revert the derivation and the assertion reports
-    ``False``, which is the reply's answer passed through -- the behaviour
-    before this increment.
+    ``False``, which is the reply's answer passed through.
 
     ``record_reads == 1`` is asserted here too: the record is bound once and
     read once, so the camera and the projection are answers to a single
@@ -3490,7 +3489,7 @@ def test_get_state_hands_out_a_copy_of_the_ui_record(scene):
 
 
 # ===========================================================================
-# 3.5.1 increment 1 -- the server's variable records
+# The server's variable records
 #
 # Rebuild points (#10-#16), the set_state push (#18) and get_state (#19, #20).
 # Expected values are hand-written literals: the fixture "pressure" variable is

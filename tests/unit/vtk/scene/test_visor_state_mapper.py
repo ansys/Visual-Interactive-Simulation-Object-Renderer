@@ -103,7 +103,7 @@ def test_runtime_to_persisted_basic(monkeypatch):
     assert called["datasets"] == {"dsA": {"converted": {"state": 123}}}
     assert called["unit"] == "m"
     assert called["camera"] == "cam"
-    # Rewritten in place (3.5.1 increment 1): the record is projected, not passed through.
+    # The record is projected, not passed through.
     assert called["variable_states"] == {
         "POINT::pressure::1": VisorVariableState(
             id="POINT::pressure::1",

@@ -115,9 +115,7 @@ def test_model_dump_contains_fields(monkeypatch):
 
 
 def test_save_path_rejects_a_variable_state_missing_the_identity_fields():
-    """Rewritten in place (3.5.1 increment 1): the save path no longer rejects this entry.
-
-    The server owns the variable records, so the browser's ``variableStates`` is
+    """ The server owns the variable records, so the browser's ``variableStates`` is
     discarded before validation.  An entry missing the identity fields (an old
     client) therefore parses, and nothing of it reaches the model.
     """
@@ -142,7 +140,7 @@ def test_save_path_rejects_a_variable_state_missing_the_identity_fields():
 
 
 def test_save_path_accepts_a_variable_state_carrying_the_identity_fields():
-    """Rewritten in place (3.5.1 increment 1): a complete browser entry is discarded too."""
+    """ The server owns the variable records, so the browser's ``variableStates`` is discarded before validation."""
     payload = {
         "requestId": 1,
         "appState": {

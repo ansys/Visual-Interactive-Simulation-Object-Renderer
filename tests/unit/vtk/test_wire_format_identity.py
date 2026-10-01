@@ -351,7 +351,7 @@ def test_data_array_type_is_str_and_point_or_cell_in_emitted_json():
 
 
 # ---------------------------------------------------------------------------
-# 3.5.1 increment 1: the server's variable records on the scene-details wire.
+# The server's variable records on the scene-details wire.
 #
 # The registry holds two hand-written datasets sharing "pressure"; the scene
 # graph is the fixture sphere and plays no part in the variables.  Expected
