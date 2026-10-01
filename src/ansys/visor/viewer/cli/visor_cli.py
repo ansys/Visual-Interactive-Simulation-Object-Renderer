@@ -13,7 +13,7 @@ from ansys.visor.viewer.cli.parse_args import parse_args
 from ansys.visor.viewer.config import settings
 
 
-def check_server_running(host, port, verbose=True):
+def check_server_running(host, port):
     """Check if the server is running by making a health check request"""
     try:
         binding_host = settings.binding_host or host
@@ -21,12 +21,32 @@ def check_server_running(host, port, verbose=True):
         resp = requests.get(f"{scheme}://{binding_host}:{port}/health", timeout=1)
         if resp.status_code == 200:
             return True
-        if verbose:
-            print("Server health check failed:", resp.text)
+        print("Server health check failed:", resp.text)
     except Exception as e:
-        if verbose:
-            print("Could not connect to server:", e)
+        print("Could not connect to server:", e)
     return False
+
+def check_server_reachable(host, port):
+    """
+    Check whether anything is listening on the server address, healthy or not.
+
+    Intended for guarding destructive commands: any HTTP response (including
+    errors such as 500) or an established-but-failing connection counts as
+    reachable.  Returns False only when a connection cannot be established.
+    """
+    binding_host = settings.binding_host or host
+    url = f"{settings.url_scheme}://{binding_host}:{port}/health"
+    try:
+        requests.get(url, timeout=1)
+    except requests.exceptions.SSLError:
+        return True  # TCP connection was made; something is listening
+    except requests.exceptions.ConnectionError:
+        return False  # refused or connect timeout: nothing is listening
+    except requests.exceptions.RequestException:
+        return True  # e.g. read timeout: connected but no reply, assume running
+    except Exception:
+        return True  # unknown failure: assume the server may be running
+    return True
 
 def check_init_args(
         api_host,
@@ -108,8 +128,8 @@ def main():
 
     # Clearing logs while the server is writing to them is unsafe
     if needs_server_stopped(args):
-        print(f"Checking if the server is running on {args.api_host}:{args.api_port}")
-        if check_server_running(args.api_host, args.api_port, verbose=False):
+        print(f"Checking if the server is running on {args.api_host}:{args.api_port}...")
+        if check_server_reachable(args.api_host, args.api_port):
             print(
                 f"Server is running on {args.api_host}:{args.api_port}. "
                 "Please stop the server before clearing logs."

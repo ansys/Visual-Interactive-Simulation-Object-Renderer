@@ -1,6 +1,7 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
+import requests
 
 import ansys.visor.viewer.cli.visor_cli as visor_cli
 from ansys.visor.viewer.core.visor_enums import RenderingMode
@@ -168,7 +169,7 @@ def test_main_logs_clear(mock_parse_args, mock_logs_api):
     mock_parse_args.return_value = args
     api = MagicMock()
     mock_logs_api.return_value = api
-    with patch("ansys.visor.viewer.cli.visor_cli.check_server_running", return_value=False):
+    with patch("ansys.visor.viewer.cli.visor_cli.check_server_reachable", return_value=False):
         visor_cli.main()
         api.clear_logs.assert_called_once_with(False)
 
@@ -178,23 +179,43 @@ def test_main_logs_clear_force(mock_parse_args, mock_logs_api):
     mock_parse_args.return_value = args
     api = MagicMock()
     mock_logs_api.return_value = api
-    with patch("ansys.visor.viewer.cli.visor_cli.check_server_running", return_value=False):
+    with patch("ansys.visor.viewer.cli.visor_cli.check_server_reachable", return_value=False):
         visor_cli.main()
         api.clear_logs.assert_called_once_with(True)
 
-def test_main_logs_clear_rejected_when_server_running(mock_parse_args, mock_logs_api, capsys):
-    """Verify that log clear exits without clearing when the server is running."""
+def test_main_logs_clear_rejected_when_server_reachable(mock_parse_args, mock_logs_api, capsys):
+    """Verify that log clear exits without clearing when the server is reachable."""
     args = make_args("logs", "clear", log_dir=None, force=True)
     mock_parse_args.return_value = args
     api = MagicMock()
     mock_logs_api.return_value = api
-    with patch("ansys.visor.viewer.cli.visor_cli.check_server_running", return_value=True) as mock_check:
+    with patch("ansys.visor.viewer.cli.visor_cli.check_server_reachable", return_value=True) as mock_check:
         with pytest.raises(SystemExit) as exc:
             visor_cli.main()
     assert exc.value.code == 1
-    mock_check.assert_called_once_with("host", 1234, verbose=False)
+    mock_check.assert_called_once_with("host", 1234)
     api.clear_logs.assert_not_called()
     assert "Server is running" in capsys.readouterr().out
+
+@pytest.mark.parametrize("status_code", [200, 404, 500, 503])
+def test_check_server_reachable_any_http_response(mock_requests_get, status_code):
+    """Verify that any HTTP response, healthy or not, counts as reachable."""
+    mock_requests_get.return_value = MagicMock(status_code=status_code)
+    assert visor_cli.check_server_reachable("host", 1234) is True
+
+@pytest.mark.parametrize(
+    "exc, expected",
+    [
+        (requests.exceptions.ConnectionError("refused"), False),
+        (requests.exceptions.ConnectTimeout("connect timeout"), False),
+        (requests.exceptions.SSLError("bad handshake"), True),
+        (requests.exceptions.ReadTimeout("no reply"), True),
+    ],
+)
+def test_check_server_reachable_exceptions(mock_requests_get, exc, expected):
+    """Verify that only failing to establish a connection counts as unreachable."""
+    mock_requests_get.side_effect = exc
+    assert visor_cli.check_server_reachable("host", 1234) is expected
 
 @pytest.mark.parametrize(
     "group, action, expected",
