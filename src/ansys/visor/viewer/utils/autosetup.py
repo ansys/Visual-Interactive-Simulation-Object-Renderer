@@ -47,7 +47,10 @@ def prepare_wasm_assets(project_root: Path) -> None:
     else:
         raise RuntimeError(f"Unsupported platform: {sys.platform}")
 
-    src = site_packages / "trame_vtklocal" / "module" / "serve" / "wasm" / version
+    # trame_vtklocal >= 1.6.2 no longer ships a flat "wasm/<version>" directory; it downloads
+    # per-architecture builds on demand into "wasm32/<version>" and "wasm64/<version>" instead.
+    # We bundle the wasm32 (non-threaded) build since it doesn't require crossOriginIsolated.
+    src = site_packages / "trame_vtklocal" / "module" / "serve" / "wasm32" / version
 
     if not src.is_dir():
         raise Exception(f"WASM not found at: {src}")

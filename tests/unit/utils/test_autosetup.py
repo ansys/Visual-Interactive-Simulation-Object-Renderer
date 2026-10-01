@@ -25,7 +25,7 @@ def test_prepare_wasm_assets_linux_success(monkeypatch, tmp_path):
     monkeypatch.setattr(f"{MODULE}.sys.platform", "linux")
 
     fake_site = tmp_path / "site-packages"
-    wasm_src = fake_site / "trame_vtklocal/module/serve/wasm/9.3"
+    wasm_src = fake_site / "trame_vtklocal/module/serve/wasm32/9.3"
     wasm_src.mkdir(parents=True)
 
     monkeypatch.setattr(f"{MODULE}.site.getsitepackages", lambda: [str(fake_site)])
@@ -52,7 +52,7 @@ def test_prepare_wasm_assets_windows_success(monkeypatch, tmp_path):
 
     monkeypatch.setattr(f"{MODULE}.sys.platform", "win32")
 
-    wasm_src = tmp_path / ".venv/Lib/site-packages/trame_vtklocal/module/serve/wasm/9.3"
+    wasm_src = tmp_path / ".venv/Lib/site-packages/trame_vtklocal/module/serve/wasm32/9.3"
     wasm_src.mkdir(parents=True)
 
     monkeypatch.setattr(f"{MODULE}.shutil.copytree", lambda s, d: None)
