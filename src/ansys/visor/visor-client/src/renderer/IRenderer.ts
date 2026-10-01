@@ -45,9 +45,9 @@ export type CameraOrigin = 'gesture' | 'programmatic';
 
 /** Descriptor consumed by setColorVariableAsync. */
 export type ColorVariableDescriptor = Readonly<{
-    spectrumId: string;
-    spectrumType: 'POINT' | 'CELL';
-    spectrumName: string;
+    variableId: string;
+    variableType: 'POINT' | 'CELL';
+    variableName: string;
     component: number; // -1 = magnitude
     min: number;
     max: number;

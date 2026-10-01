@@ -445,8 +445,8 @@ def test_set_part_color_variable_writes_the_registry_record(scene, registry):
     )
 
     state = registry.get_part_state(NODE_ID)
-    assert state.spectrum_id == "POINT::pressure::1"
-    assert state.spectrum_component == 0
+    assert state.variable_id == "POINT::pressure::1"
+    assert state.variable_component == 0
 
 
 def test_set_part_color_variable_applies_to_the_vtk_mapper(scene, pipeline):
@@ -499,8 +499,8 @@ def test_clear_part_color_variable_clears_the_registry_record(scene, registry):
     scene.clear_part_color_variable(NODE_ID)
 
     state = registry.get_part_state(NODE_ID)
-    assert state.spectrum_id is None
-    assert state.spectrum_component is None
+    assert state.variable_id is None
+    assert state.variable_component is None
 
 
 def test_clear_part_color_variable_disables_scalar_visibility_on_the_mapper(scene, pipeline):
@@ -1174,7 +1174,7 @@ def test_apply_state_pushes_a_json_encodable_runtime_state(scene, registry):
     _apply(
         scene,
         _runtime_state(
-            {NODE_ID: RuntimePartProperties(id=NODE_ID, opacity=0.25, spectrum_id=VARIABLE_ID)},
+            {NODE_ID: RuntimePartProperties(id=NODE_ID, opacity=0.25, variable_id=VARIABLE_ID)},
             variable_states={VARIABLE_ID: _variable_state()},
         ),
     )
@@ -1737,7 +1737,7 @@ def _color_variable_state(component, **variable_kwargs):
     return _runtime_state(
         {
             NODE_ID: RuntimePartProperties(
-                id=NODE_ID, spectrum_id=VARIABLE_ID, spectrum_component=component
+                id=NODE_ID, variable_id=VARIABLE_ID, variable_component=component
             )
         },
         variable_states={VARIABLE_ID: _variable_state(**variable_kwargs)},
@@ -1824,7 +1824,7 @@ def test_apply_state_unknown_variable_identifier_is_a_logged_no_op(
     runtime = _runtime_state(
         {
             NODE_ID: RuntimePartProperties(
-                id=NODE_ID, spectrum_id=VARIABLE_ID, spectrum_component=0
+                id=NODE_ID, variable_id=VARIABLE_ID, variable_component=0
             )
         },
         variable_states={},
@@ -1884,7 +1884,7 @@ def test_apply_state_variable_id_without_component_is_a_logged_no_op(
     _seed_part_variables(registry, [_pressure_variable()])
     _seed_unconfigured_mapper(pipeline)
     runtime = _runtime_state(
-        {NODE_ID: RuntimePartProperties(id=NODE_ID, spectrum_id=VARIABLE_ID)},
+        {NODE_ID: RuntimePartProperties(id=NODE_ID, variable_id=VARIABLE_ID)},
         variable_states={VARIABLE_ID: _variable_state()},
     )
 
@@ -1901,7 +1901,7 @@ def test_apply_state_component_without_variable_id_does_not_clear(
     """The mirror half: a component with no identifier must not fall through."""
     pipeline.mapper.SetScalarVisibility(1)
     runtime = _runtime_state(
-        {NODE_ID: RuntimePartProperties(id=NODE_ID, spectrum_component=0)},
+        {NODE_ID: RuntimePartProperties(id=NODE_ID, variable_component=0)},
         variable_states={VARIABLE_ID: _variable_state()},
     )
 

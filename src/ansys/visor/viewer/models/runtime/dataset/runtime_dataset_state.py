@@ -12,18 +12,18 @@ class RuntimePartProperties(BaseModel):
     Frontend-facing model of part properties for runtime state serialization.
 
     This class mirrors the fields of ``PartProperties`` using snake_case Python
-    attribute names, but serializes with camelCase aliases (``spectrumId``,
-    ``spectrumComponent``, ``diffuseRgb``) for parity with the frontend wire
+    attribute names, but serializes with camelCase aliases (``variableId``,
+    ``variableComponent``, ``diffuseRgb``) for parity with the frontend wire
     format.  Callers must pass ``by_alias=True`` when dumping (e.g., in
     ``get_scene_details_json``) so the emitted keys stay camelCase.
 
     Serialization semantics (aligned with the frontend state model):
 
-    - ``spectrumId`` is **always included** in the serialized output, even when
-      ``None``.  On the frontend, ``null`` means "no spectrum applied" (a real
+    - ``variableId`` is **always included** in the serialized output, even when
+      ``None``.  On the frontend, ``null`` means "no variable applied" (a real
       value), while an absent key means "leave this property unchanged".
     - All other optional fields (``opacity``, ``visible``, ``selected``,
-      ``spectrumComponent``, ``diffuseRgb``) are **omitted from the serialized
+      ``variableComponent``, ``diffuseRgb``) are **omitted from the serialized
       output when ``None``**, so that the frontend treats them as pass-through
       / unchanged.
 
@@ -31,9 +31,9 @@ class RuntimePartProperties(BaseModel):
     opacity: Optional[float]: The opacity of the part, between 0.0 (fully transparent) and 1.0 (fully opaque).
     visible: Optional[bool]: Whether the part is visible in the scene.
     selected: Optional[bool]: Whether the part is currently selected by the user.
-    spectrum_id: Optional[str]: The ID of the variable used to colour this part,
-        or ``None`` to indicate that no spectrum is applied.  Always serialized.
-    spectrum_component: Optional[int]: If the variable specified by spectrum_id has multiple components,
+    variable_id: Optional[str]: The ID of the variable used to colour this part,
+        or ``None`` to indicate that no variable is applied.  Always serialized.
+    variable_component: Optional[int]: If the variable specified by variable_id has multiple components,
         this specifies which component to use for coloring.
     """
     model_config = ConfigDict(populate_by_name=True)
@@ -43,11 +43,11 @@ class RuntimePartProperties(BaseModel):
     visible: Optional[bool] = Field(default=None)
     selected: Optional[bool] = Field(default=None)
 
-    # spectrum_id=None means "no spectrum applied" — a real, meaningful value.
+    # variable_id=None means "no variable applied" — a real, meaningful value.
     # It is always included in serialized output so the frontend can act on it.
-    spectrum_id: Optional[str] = Field(default=None, alias="spectrumId")
-    # If the variable with ID spectrum_id has multiple components, this specifies which component to use for coloring.
-    spectrum_component: Optional[int] = Field(default=None, alias="spectrumComponent")
+    variable_id: Optional[str] = Field(default=None, alias="variableId")
+    # If the variable with ID variable_id has multiple components, this specifies which component to use for coloring.
+    variable_component: Optional[int] = Field(default=None, alias="variableComponent")
 
     # If set, this part's color is determined by the specified RGB values (each between 0 and 1).
     diffuse_rgb: Optional[List[float]] = Field(default=None, alias="diffuseRgb")
@@ -56,7 +56,7 @@ class RuntimePartProperties(BaseModel):
     def _serialize(self, handler: Any, info: Any = None) -> dict:
         """Custom serializer that implements the frontend undefined-vs-null contract.
 
-        ``spectrumId`` is always present in the output (``null`` is meaningful).
+        ``variableId`` is always present in the output (``null`` is meaningful).
         All other optional fields are omitted when their value is ``None``, so
         the frontend interprets them as pass-through / undefined.
 
@@ -67,7 +67,7 @@ class RuntimePartProperties(BaseModel):
         data: dict = handler(self)
         keys_to_omit_when_none = {
             "opacity", "visible", "selected",
-            "spectrum_component", "spectrumComponent",
+            "variable_component", "variableComponent",
             "diffuse_rgb", "diffuseRgb",
         }
         return {k: v for k, v in data.items() if not (k in keys_to_omit_when_none and v is None)}
@@ -77,8 +77,8 @@ class RuntimePartProperties(BaseModel):
             opacity=self.opacity,
             visible=self.visible,
             selected=self.selected,
-            color_by=self.spectrum_id,
-            color_by_component=self.spectrum_component,
+            color_by=self.variable_id,
+            color_by_component=self.variable_component,
             diffuse_rgb=self.diffuse_rgb,
         )
 
@@ -89,8 +89,8 @@ class RuntimePartProperties(BaseModel):
             opacity=props.opacity,
             visible=props.visible,
             selected=props.selected,
-            spectrum_id=props.color_by,
-            spectrum_component=props.color_by_component,
+            variable_id=props.color_by,
+            variable_component=props.color_by_component,
             diffuse_rgb=props.diffuse_rgb,
         )
 

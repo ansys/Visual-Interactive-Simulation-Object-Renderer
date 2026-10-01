@@ -1,13 +1,13 @@
 import VisorVtkDataArray, { FieldAssociation } from './appstate/vtkInfo/VisorVtkDataArray.tsx';
 
 /**
- * Describes a selectable component of a spectrum.
+ * Describes a selectable component of a variable.
  *
  * @remarks
  * The magnitude component uses an ID of `-1`. Individual array components
  * begin at `0`.
  */
-export type VisorSpectrumComponentMetadata = Readonly<{
+export type VisorVariableComponentMetadata = Readonly<{
     /** Numeric identifier used to select the component. */
     id: number;
 
@@ -16,15 +16,15 @@ export type VisorSpectrumComponentMetadata = Readonly<{
 }>;
 
 /**
- * Describes a spectrum derived from one or more compatible VTK data arrays.
+ * Describes a variable derived from one or more compatible VTK data arrays.
  *
  * @remarks
- * Spectrum objects are immutable, although their custom ranges can be changed
- * through {@link VisorSpectrumInfo.setCustomRange}.
+ * Variable objects are immutable, although their custom ranges can be changed
+ * through {@link VisorVariableInfo.setCustomRange}.
  */
-export type VisorSpectrumInfo = Readonly<{
+export type VisorVariableInfo = Readonly<{
     /**
-     * Unique spectrum identifier.
+     * Unique variable identifier.
      *
      * @remarks
      * The identifier has the format
@@ -47,8 +47,8 @@ export type VisorSpectrumInfo = Readonly<{
     /** Number of components in the underlying data array. */
     numComponents: number;
 
-    /** Components that can be selected when displaying the spectrum. */
-    componentOptions: VisorSpectrumComponentMetadata[];
+    /** Components that can be selected when displaying the variable. */
+    componentOptions: VisorVariableComponentMetadata[];
 
     /**
      * Gets the default and custom ranges for a component.
@@ -80,76 +80,76 @@ export type VisorSpectrumInfo = Readonly<{
 }>;
 
 /**
- * A collection of spectra associated with a group of data arrays.
+ * A collection of variables associated with a group of data arrays.
  */
-export type VisorSpectrumCollection = Readonly<{
-    /** Spectra in collection order. */
-    array: VisorSpectrumInfo[];
+export type VisorVariableCollection = Readonly<{
+    /** Variables in collection order. */
+    array: VisorVariableInfo[];
 
     /**
-     * Finds a spectrum by its unique identifier.
+     * Finds a variable by its unique identifier.
      *
-     * @param id - Spectrum identifier, or `null` when no spectrum is selected.
-     * @returns The matching spectrum, or `null` when no match exists.
+     * @param id - Variable identifier, or `null` when no variable is selected.
+     * @returns The matching variable, or `null` when no match exists.
      */
-    getSpectrum: (id: string | null) => VisorSpectrumInfo | null;
+    getVariable: (id: string | null) => VisorVariableInfo | null;
 }>;
 
 /**
- * Coordinates spectrum metadata across multiple groups of VTK data arrays.
+ * Coordinates variable metadata across multiple groups of VTK data arrays.
  *
  * @remarks
- * Call {@link VisorSpectrumManager.addDataArrayMetadata} for every relevant
+ * Call {@link VisorVariableManager.addDataArrayMetadata} for every relevant
  * group of arrays, then call
- * {@link VisorSpectrumManager.finishAddingDataArrayMetadata} once. The global
+ * {@link VisorVariableManager.finishAddingDataArrayMetadata} once. The global
  * collection is unavailable until finalization is complete.
  */
-export type VisorSpectrumManager = Readonly<{
+export type VisorVariableManager = Readonly<{
     /**
      * Adds metadata for a group of VTK data arrays.
      *
-     * @param dataArrays - Data arrays from which spectrum metadata is derived.
-     * @returns A collection containing one spectrum for each supplied data array.
+     * @param dataArrays - Data arrays from which variable metadata is derived.
+     * @returns A collection containing one variable for each supplied data array.
      *
      * @remarks
      * Arrays with the same type, name, and component count share a global
-     * spectrum. Their default ranges are expanded to include all observed values.
+     * variable. Their default ranges are expanded to include all observed values.
      */
-    addDataArrayMetadata: (dataArrays: VisorVtkDataArray[]) => VisorSpectrumCollection;
+    addDataArrayMetadata: (dataArrays: VisorVtkDataArray[]) => VisorVariableCollection;
 
     /**
-     * Finalizes the global spectrum collection.
+     * Finalizes the global variable collection.
      *
      * @throws Error if this method has already been called.
      */
     finishAddingDataArrayMetadata: () => void;
 
     /**
-     * Finalized collection of all globally registered spectra.
+     * Finalized collection of all globally registered variables.
      *
      * @throws Error if
-     * {@link VisorSpectrumManager.finishAddingDataArrayMetadata} has not yet
+     * {@link VisorVariableManager.finishAddingDataArrayMetadata} has not yet
      * been called.
      */
-    globalSpectrumCollection: VisorSpectrumCollection;
+    globalVariableCollection: VisorVariableCollection;
 }>;
 
 /**
- * Creates a spectrum manager for aggregating metadata from VTK data arrays.
+ * Creates a variable manager for aggregating metadata from VTK data arrays.
  *
- * @returns A new spectrum manager with no registered spectra.
+ * @returns A new variable manager with no registered variables.
  */
-export function getSpectrumManager(): VisorSpectrumManager {
-    /** Tracks spectrum IDs and their assigned lookup positions. */
-    const spectrumIdLookup: Map<string, number> = new Map();
+export function getVariableManager(): VisorVariableManager {
+    /** Tracks variable IDs and their assigned lookup positions. */
+    const variableIdLookup: Map<string, number> = new Map();
 
-    /** Stores each globally unique spectrum by its ID. */
-    const globalSpectrumMap: Map<string, VisorSpectrumInfo> = new Map();
+    /** Stores each globally unique variable by its ID. */
+    const globalVariableMap: Map<string, VisorVariableInfo> = new Map();
 
-    /** Stores aggregate default ranges for each spectrum. */
+    /** Stores aggregate default ranges for each variable. */
     const globalDefaultRanges: Map<string, number[][]> = new Map();
 
-    /** Stores user-configurable ranges for each spectrum. */
+    /** Stores user-configurable ranges for each variable. */
     const globalCustomRanges: Map<string, number[][]> = new Map();
 
     /** Maps supported component counts to shape and component-label metadata. */
@@ -196,7 +196,7 @@ export function getSpectrumManager(): VisorSpectrumManager {
     });
 
     /** Finalized global collection, or `null` until registration is complete. */
-    let globalSpectrumCollection: VisorSpectrumCollection | null = null;
+    let globalVariableCollection: VisorVariableCollection | null = null;
 
     return Object.freeze({
         addDataArrayMetadata,
@@ -207,65 +207,65 @@ export function getSpectrumManager(): VisorSpectrumManager {
          * @throws Error if the global collection has already been finalized.
          */
         finishAddingDataArrayMetadata() {
-            if (globalSpectrumCollection != null) {
+            if (globalVariableCollection != null) {
                 throw new Error(`finishAddingDataArrayMetadata() has already been called`);
             }
 
             const array = [];
-            for (const item of globalSpectrumMap.values()) {
+            for (const item of globalVariableMap.values()) {
                 array.push(item);
             }
 
-            globalSpectrumCollection = Object.freeze({
+            globalVariableCollection = Object.freeze({
                 array,
 
                 /**
-                 * Finds a globally registered spectrum.
+                 * Finds a globally registered variable.
                  *
-                 * @param id - Spectrum identifier, or `null`.
-                 * @returns The matching spectrum, or `null` when none exists.
+                 * @param id - Variable identifier, or `null`.
+                 * @returns The matching variable, or `null` when none exists.
                  */
-                getSpectrum(id: string | null) {
-                    return id != null ? (globalSpectrumMap.get(id) ?? null) : null;
+                getVariable(id: string | null) {
+                    return id != null ? (globalVariableMap.get(id) ?? null) : null;
                 },
             });
         },
 
         /**
-         * Gets the finalized global spectrum collection.
+         * Gets the finalized global variable collection.
          *
          * @throws Error if metadata registration has not yet been finalized.
          */
-        get globalSpectrumCollection() {
-            if (globalSpectrumCollection == null) {
+        get globalVariableCollection() {
+            if (globalVariableCollection == null) {
                 throw new Error(`finishAddingDataArrayMetadata() has not been called yet`);
             }
 
-            return globalSpectrumCollection;
+            return globalVariableCollection;
         },
     });
 
     /**
-     * Creates or updates spectrum information for a data array.
+     * Creates or updates variable information for a data array.
      *
      * @param dataArray - Source data array metadata.
-     * @returns The newly created spectrum, or the existing compatible spectrum.
+     * @returns The newly created variable, or the existing compatible variable.
      *
      * @remarks
-     * When a compatible spectrum already exists, its default ranges are expanded
+     * When a compatible variable already exists, its default ranges are expanded
      * to include the new array's ranges. Its custom ranges are then reset to the
      * updated defaults.
      *
      * @throws Error if the data array has an unsupported component count.
      */
-    function tryAddSpectrumInfo(dataArray: VisorVtkDataArray): VisorSpectrumInfo {
+    function tryAddVariableInfo(dataArray: VisorVtkDataArray): VisorVariableInfo {
         const { type, name, numComponents, magnitudeRange, ranges } = dataArray;
 
         // Use a human-readable ID like 'point::displacement::3'
         const id = `${type}::${name}::${numComponents}`;
 
-        if (globalSpectrumMap.has(id)) {
-            // Update the existing ranges for this spectrum
+        if (globalVariableMap.has(id)) {
+            // Update the existing ranges for this variable
             // with each subsequent new set of ranges.
             const defaultRanges = globalDefaultRanges.get(id)!;
             const customRanges = globalCustomRanges.get(id)!;
@@ -283,7 +283,7 @@ export function getSpectrumManager(): VisorSpectrumManager {
                 range[1] = defaultRanges[i][1];
             });
 
-            return globalSpectrumMap.get(id)!;
+            return globalVariableMap.get(id)!;
         }
 
         const labelInfo = labelInfoMap.get(numComponents);
@@ -292,7 +292,7 @@ export function getSpectrumManager(): VisorSpectrumManager {
             throw new Error(`${msg} for data arrays with ${numComponents} component(s)?`);
         }
 
-        const componentOptions: VisorSpectrumComponentMetadata[] = [];
+        const componentOptions: VisorVariableComponentMetadata[] = [];
         for (let i = 0; i < labelInfo.componentLabels.length; i++) {
             componentOptions.push({
                 id: i - 1,
@@ -318,7 +318,7 @@ export function getSpectrumManager(): VisorSpectrumManager {
         globalDefaultRanges.set(id, defaultRanges);
         globalCustomRanges.set(id, customRanges);
 
-        const info: VisorSpectrumInfo = Object.freeze({
+        const info: VisorVariableInfo = Object.freeze({
             id,
             type,
             name,
@@ -366,22 +366,22 @@ export function getSpectrumManager(): VisorSpectrumManager {
             },
         });
 
-        globalSpectrumMap.set(id, info);
+        globalVariableMap.set(id, info);
         return info;
     }
 
     /**
-     * Registers a group of data arrays and creates its local spectrum collection.
+     * Registers a group of data arrays and creates its local variable collection.
      *
      * @param dataArrays - Data arrays to register.
-     * @returns An immutable collection containing spectra for the supplied arrays.
+     * @returns An immutable collection containing variables for the supplied arrays.
      */
-    function addDataArrayMetadata(dataArrays: VisorVtkDataArray[]): VisorSpectrumCollection {
-        const array: VisorSpectrumInfo[] = [];
-        const map: Map<string, VisorSpectrumInfo> = new Map();
+    function addDataArrayMetadata(dataArrays: VisorVtkDataArray[]): VisorVariableCollection {
+        const array: VisorVariableInfo[] = [];
+        const map: Map<string, VisorVariableInfo> = new Map();
 
         for (let i = 0; i < dataArrays.length; i++) {
-            const info = tryAddSpectrumInfo(dataArrays[i]);
+            const info = tryAddVariableInfo(dataArrays[i]);
             array.push(info);
             map.set(info.id, info);
         }
@@ -392,12 +392,12 @@ export function getSpectrumManager(): VisorSpectrumManager {
             array,
 
             /**
-             * Finds a spectrum within this local collection.
+             * Finds a variable within this local collection.
              *
-             * @param id - Spectrum identifier, or `null`.
-             * @returns The matching spectrum, or `null` when none exists.
+             * @param id - Variable identifier, or `null`.
+             * @returns The matching variable, or `null` when none exists.
              */
-            getSpectrum(id: string | null) {
+            getVariable(id: string | null) {
                 return id != null ? (map.get(id) ?? null) : null;
             },
         });

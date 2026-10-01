@@ -1,20 +1,20 @@
 import { AggregateSelectionInfo } from '../aggregate/AggregateSelectionInfo.tsx';
-import { AggregateSpectrumInfo } from '../aggregate/AggregateSpectrumInfo.tsx';
+import { AggregateVariableInfo } from '../aggregate/AggregateVariableInfo.tsx';
 import type { VisorSceneNodeExtended } from '../state/VisorSceneGraph.tsx';
 import type {
-    VisorSpectrumCollection,
-    VisorSpectrumComponentMetadata,
-    VisorSpectrumInfo,
-} from '../state/VisorSpectrumManager.tsx';
+    VisorVariableCollection,
+    VisorVariableComponentMetadata,
+    VisorVariableInfo,
+} from '../state/VisorVariableManager.tsx';
 import type { FieldAssociation } from '../state/appstate/vtkInfo/VisorVtkDataArray.tsx';
 
-describe('AggregateSpectrumInfo', () => {
+describe('AggregateVariableInfo', () => {
     afterEach(() => {
         jest.restoreAllMocks();
     });
 
-    test('exposes its spectrum ID and metadata', async () => {
-        const spectrum = createSpectrum({
+    test('exposes its variable ID and metadata', async () => {
+        const variable = createVariable({
             id: 'POINT::velocity::3',
             name: 'velocity',
             componentIds: [-1, 0, 1, 2],
@@ -22,21 +22,21 @@ describe('AggregateSpectrumInfo', () => {
 
         const selection = await createSelection([
             createActorNode({
-                spectrumId: spectrum.id,
-                spectrumComponent: 0,
-                spectra: [spectrum],
+                variableId: variable.id,
+                variableComponent: 0,
+                variables: [variable],
             }),
         ]);
 
-        const result = selection.currentSpectrumInfo;
+        const result = selection.currentVariableInfo;
 
-        expect(result).toBeInstanceOf(AggregateSpectrumInfo);
+        expect(result).toBeInstanceOf(AggregateVariableInfo);
         expect(result?.id).toBe('POINT::velocity::3');
-        expect(result?.metadata).toBe(spectrum);
+        expect(result?.metadata).toBe(variable);
     });
 
     test('creates one aggregate component option for each metadata component', async () => {
-        const spectrum = createSpectrum({
+        const variable = createVariable({
             id: 'POINT::velocity::3',
             name: 'velocity',
             componentIds: [-1, 0, 1, 2],
@@ -44,13 +44,13 @@ describe('AggregateSpectrumInfo', () => {
 
         const selection = await createSelection([
             createActorNode({
-                spectrumId: spectrum.id,
-                spectrumComponent: 0,
-                spectra: [spectrum],
+                variableId: variable.id,
+                variableComponent: 0,
+                variables: [variable],
             }),
         ]);
 
-        const result = selection.currentSpectrumInfo!;
+        const result = selection.currentVariableInfo!;
 
         expect([...result.componentOptions.keys()]).toEqual(['-1', '0', '1', '2']);
 
@@ -61,7 +61,7 @@ describe('AggregateSpectrumInfo', () => {
     });
 
     test('associates aggregate components with their metadata', async () => {
-        const spectrum = createSpectrum({
+        const variable = createVariable({
             id: 'POINT::velocity::3',
             name: 'velocity',
             componentIds: [-1, 0, 1, 2],
@@ -69,27 +69,27 @@ describe('AggregateSpectrumInfo', () => {
 
         const selection = await createSelection([
             createActorNode({
-                spectrumId: spectrum.id,
-                spectrumComponent: 1,
-                spectra: [spectrum],
+                variableId: variable.id,
+                variableComponent: 1,
+                variables: [variable],
             }),
         ]);
 
-        const result = selection.currentSpectrumInfo!;
+        const result = selection.currentVariableInfo!;
         const component = result.componentOptions.get('1')!;
 
-        expect(component.metadata).toBe(spectrum.componentOptions[2]);
-        expect(component.spectrumInfo).toBe(result);
+        expect(component.metadata).toBe(variable.componentOptions[2]);
+        expect(component.variableInfo).toBe(result);
     });
 
     test('selects the common component used by all actor nodes', async () => {
-        const firstSpectrum = createSpectrum({
+        const firstVariable = createVariable({
             id: 'POINT::velocity::3',
             name: 'velocity',
             componentIds: [-1, 0, 1, 2],
         });
 
-        const secondSpectrum = createSpectrum({
+        const secondVariable = createVariable({
             id: 'POINT::velocity::3',
             name: 'velocity',
             componentIds: [-1, 0, 1, 2],
@@ -97,31 +97,31 @@ describe('AggregateSpectrumInfo', () => {
 
         const selection = await createSelection([
             createActorNode({
-                spectrumId: firstSpectrum.id,
-                spectrumComponent: 1,
-                spectra: [firstSpectrum],
+                variableId: firstVariable.id,
+                variableComponent: 1,
+                variables: [firstVariable],
             }),
             createActorNode({
-                spectrumId: secondSpectrum.id,
-                spectrumComponent: 1,
-                spectra: [secondSpectrum],
+                variableId: secondVariable.id,
+                variableComponent: 1,
+                variables: [secondVariable],
             }),
         ]);
 
-        const result = selection.currentSpectrumInfo!;
+        const result = selection.currentVariableInfo!;
 
         expect(result.displayComponentId).toBe(1);
         expect(result.currentComponentInfo).toBe(result.componentOptions.get('1'));
     });
 
     test('uses undefined when actor nodes have different components', async () => {
-        const firstSpectrum = createSpectrum({
+        const firstVariable = createVariable({
             id: 'POINT::velocity::3',
             name: 'velocity',
             componentIds: [-1, 0, 1, 2],
         });
 
-        const secondSpectrum = createSpectrum({
+        const secondVariable = createVariable({
             id: 'POINT::velocity::3',
             name: 'velocity',
             componentIds: [-1, 0, 1, 2],
@@ -129,25 +129,25 @@ describe('AggregateSpectrumInfo', () => {
 
         const selection = await createSelection([
             createActorNode({
-                spectrumId: firstSpectrum.id,
-                spectrumComponent: 0,
-                spectra: [firstSpectrum],
+                variableId: firstVariable.id,
+                variableComponent: 0,
+                variables: [firstVariable],
             }),
             createActorNode({
-                spectrumId: secondSpectrum.id,
-                spectrumComponent: 1,
-                spectra: [secondSpectrum],
+                variableId: secondVariable.id,
+                variableComponent: 1,
+                variables: [secondVariable],
             }),
         ]);
 
-        const result = selection.currentSpectrumInfo!;
+        const result = selection.currentVariableInfo!;
 
         expect(result.displayComponentId).toBeUndefined();
         expect(result.currentComponentInfo).toBeUndefined();
     });
 
     test('defaults to the first component option when the selected component has no range', async () => {
-        const spectrum = createSpectrum({
+        const variable = createVariable({
             id: 'POINT::velocity::3',
             name: 'velocity',
             componentIds: [-1, 0, 1, 2],
@@ -155,20 +155,20 @@ describe('AggregateSpectrumInfo', () => {
 
         const selection = await createSelection([
             createActorNode({
-                spectrumId: spectrum.id,
-                spectrumComponent: 999,
-                spectra: [spectrum],
+                variableId: variable.id,
+                variableComponent: 999,
+                variables: [variable],
             }),
         ]);
 
-        const result = selection.currentSpectrumInfo!;
+        const result = selection.currentVariableInfo!;
 
         expect(result.displayComponentId).toBe(-1);
         expect(result.currentComponentInfo).toBe(result.componentOptions.get('-1'));
     });
 
-    test("aggregates component ranges from each actor node's spectrum collection", async () => {
-        const firstSpectrum = createSpectrum({
+    test("aggregates component ranges from each actor node's variable collection", async () => {
+        const firstVariable = createVariable({
             id: 'POINT::velocity::3',
             name: 'velocity',
             componentIds: [-1, 0, 1, 2],
@@ -180,7 +180,7 @@ describe('AggregateSpectrumInfo', () => {
             ]),
         });
 
-        const secondSpectrum = createSpectrum({
+        const secondVariable = createVariable({
             id: 'POINT::velocity::3',
             name: 'velocity',
             componentIds: [-1, 0, 1, 2],
@@ -194,27 +194,27 @@ describe('AggregateSpectrumInfo', () => {
 
         const selection = await createSelection([
             createActorNode({
-                spectrumId: firstSpectrum.id,
-                spectrumComponent: 1,
-                spectra: [firstSpectrum],
+                variableId: firstVariable.id,
+                variableComponent: 1,
+                variables: [firstVariable],
             }),
             createActorNode({
-                spectrumId: secondSpectrum.id,
-                spectrumComponent: 1,
-                spectra: [secondSpectrum],
+                variableId: secondVariable.id,
+                variableComponent: 1,
+                variables: [secondVariable],
             }),
         ]);
 
-        const component = selection.currentSpectrumInfo!.currentComponentInfo!;
+        const component = selection.currentVariableInfo!.currentComponentInfo!;
 
-        expect(component.displaySpectrumDefaultMin).toBe(-20);
-        expect(component.displaySpectrumDefaultMax).toBe(20);
-        expect(component.displaySpectrumMin).toBe(-15);
-        expect(component.displaySpectrumMax).toBe(15);
+        expect(component.displayVariableDefaultMin).toBe(-20);
+        expect(component.displayVariableDefaultMax).toBe(20);
+        expect(component.displayVariableMin).toBe(-15);
+        expect(component.displayVariableMax).toBe(15);
     });
 
     test('marks differing component ranges as undefined', async () => {
-        const firstSpectrum = createSpectrum({
+        const firstVariable = createVariable({
             id: 'POINT::velocity::3',
             name: 'velocity',
             componentIds: [-1, 0],
@@ -224,7 +224,7 @@ describe('AggregateSpectrumInfo', () => {
             ]),
         });
 
-        const secondSpectrum = createSpectrum({
+        const secondVariable = createVariable({
             id: 'POINT::velocity::3',
             name: 'velocity',
             componentIds: [-1, 0],
@@ -236,29 +236,29 @@ describe('AggregateSpectrumInfo', () => {
 
         const selection = await createSelection([
             createActorNode({
-                spectrumId: firstSpectrum.id,
-                spectrumComponent: 0,
-                spectra: [firstSpectrum],
+                variableId: firstVariable.id,
+                variableComponent: 0,
+                variables: [firstVariable],
             }),
             createActorNode({
-                spectrumId: secondSpectrum.id,
-                spectrumComponent: 0,
-                spectra: [secondSpectrum],
+                variableId: secondVariable.id,
+                variableComponent: 0,
+                variables: [secondVariable],
             }),
         ]);
 
-        const component = selection.currentSpectrumInfo!.currentComponentInfo!;
+        const component = selection.currentVariableInfo!.currentComponentInfo!;
 
-        expect(component.displaySpectrumDefaultMin).toBeUndefined();
-        expect(component.displaySpectrumDefaultMax).toBeUndefined();
-        expect(component.displaySpectrumMin).toBeUndefined();
-        expect(component.displaySpectrumMax).toBe(5);
+        expect(component.displayVariableDefaultMin).toBeUndefined();
+        expect(component.displayVariableDefaultMax).toBeUndefined();
+        expect(component.displayVariableMin).toBeUndefined();
+        expect(component.displayVariableMax).toBe(5);
     });
 
     test('warns when a displayed component has range data but no component option', async () => {
         const warningSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
 
-        const spectrum = createSpectrum({
+        const variable = createVariable({
             id: 'POINT::velocity::3',
             name: 'velocity',
             componentIds: [-1, 0, 1],
@@ -272,13 +272,13 @@ describe('AggregateSpectrumInfo', () => {
 
         const selection = await createSelection([
             createActorNode({
-                spectrumId: spectrum.id,
-                spectrumComponent: 999,
-                spectra: [spectrum],
+                variableId: variable.id,
+                variableComponent: 999,
+                variables: [variable],
             }),
         ]);
 
-        const result = selection.currentSpectrumInfo!;
+        const result = selection.currentVariableInfo!;
 
         expect(result.displayComponentId).toBe(999);
         expect(result.currentComponentInfo).toBeUndefined();
@@ -286,7 +286,7 @@ describe('AggregateSpectrumInfo', () => {
     });
 
     test('setDisplayComponentId selects a component by number', async () => {
-        const spectrum = createSpectrum({
+        const variable = createVariable({
             id: 'POINT::velocity::3',
             name: 'velocity',
             componentIds: [-1, 0, 1, 2],
@@ -294,13 +294,13 @@ describe('AggregateSpectrumInfo', () => {
 
         const selection = await createSelection([
             createActorNode({
-                spectrumId: spectrum.id,
-                spectrumComponent: 0,
-                spectra: [spectrum],
+                variableId: variable.id,
+                variableComponent: 0,
+                variables: [variable],
             }),
         ]);
 
-        const result = selection.currentSpectrumInfo!;
+        const result = selection.currentVariableInfo!;
         const selected = result.setDisplayComponentId(2);
 
         expect(selected).toBe(result.componentOptions.get('2'));
@@ -309,7 +309,7 @@ describe('AggregateSpectrumInfo', () => {
     });
 
     test('setDisplayComponentId accepts a string ID', async () => {
-        const spectrum = createSpectrum({
+        const variable = createVariable({
             id: 'POINT::velocity::3',
             name: 'velocity',
             componentIds: [-1, 0, 1, 2],
@@ -317,13 +317,13 @@ describe('AggregateSpectrumInfo', () => {
 
         const selection = await createSelection([
             createActorNode({
-                spectrumId: spectrum.id,
-                spectrumComponent: 0,
-                spectra: [spectrum],
+                variableId: variable.id,
+                variableComponent: 0,
+                variables: [variable],
             }),
         ]);
 
-        const result = selection.currentSpectrumInfo!;
+        const result = selection.currentVariableInfo!;
         const selected = result.setDisplayComponentId('1');
 
         expect(selected).toBe(result.componentOptions.get('1'));
@@ -331,7 +331,7 @@ describe('AggregateSpectrumInfo', () => {
     });
 
     test('setDisplayComponentId returns null for an unavailable component', async () => {
-        const spectrum = createSpectrum({
+        const variable = createVariable({
             id: 'POINT::velocity::3',
             name: 'velocity',
             componentIds: [-1, 0, 1],
@@ -339,13 +339,13 @@ describe('AggregateSpectrumInfo', () => {
 
         const selection = await createSelection([
             createActorNode({
-                spectrumId: spectrum.id,
-                spectrumComponent: 0,
-                spectra: [spectrum],
+                variableId: variable.id,
+                variableComponent: 0,
+                variables: [variable],
             }),
         ]);
 
-        const result = selection.currentSpectrumInfo!;
+        const result = selection.currentVariableInfo!;
         const selected = result.setDisplayComponentId(999);
 
         expect(selected).toBeNull();
@@ -354,7 +354,7 @@ describe('AggregateSpectrumInfo', () => {
     });
 
     test('setDisplayComponentId preserves null', async () => {
-        const spectrum = createSpectrum({
+        const variable = createVariable({
             id: 'POINT::velocity::3',
             name: 'velocity',
             componentIds: [-1, 0, 1],
@@ -362,13 +362,13 @@ describe('AggregateSpectrumInfo', () => {
 
         const selection = await createSelection([
             createActorNode({
-                spectrumId: spectrum.id,
-                spectrumComponent: 0,
-                spectra: [spectrum],
+                variableId: variable.id,
+                variableComponent: 0,
+                variables: [variable],
             }),
         ]);
 
-        const result = selection.currentSpectrumInfo!;
+        const result = selection.currentVariableInfo!;
 
         expect(result.setDisplayComponentId(null)).toBeNull();
         expect(result.currentComponentInfo).toBeNull();
@@ -376,7 +376,7 @@ describe('AggregateSpectrumInfo', () => {
     });
 
     test('setDisplayComponentId preserves undefined', async () => {
-        const spectrum = createSpectrum({
+        const variable = createVariable({
             id: 'POINT::velocity::3',
             name: 'velocity',
             componentIds: [-1, 0, 1],
@@ -384,21 +384,21 @@ describe('AggregateSpectrumInfo', () => {
 
         const selection = await createSelection([
             createActorNode({
-                spectrumId: spectrum.id,
-                spectrumComponent: 0,
-                spectra: [spectrum],
+                variableId: variable.id,
+                variableComponent: 0,
+                variables: [variable],
             }),
         ]);
 
-        const result = selection.currentSpectrumInfo!;
+        const result = selection.currentVariableInfo!;
 
         expect(result.setDisplayComponentId(undefined)).toBeUndefined();
         expect(result.currentComponentInfo).toBeUndefined();
         expect(result.displayComponentId).toBeUndefined();
     });
 
-    test('setDisplayComponentId invokes onSpectrumComponentChange', async () => {
-        const spectrum = createSpectrum({
+    test('setDisplayComponentId invokes onVariableComponentChange', async () => {
+        const variable = createVariable({
             id: 'POINT::velocity::3',
             name: 'velocity',
             componentIds: [-1, 0, 1],
@@ -406,16 +406,16 @@ describe('AggregateSpectrumInfo', () => {
 
         const selection = await createSelection([
             createActorNode({
-                spectrumId: spectrum.id,
-                spectrumComponent: 0,
-                spectra: [spectrum],
+                variableId: variable.id,
+                variableComponent: 0,
+                variables: [variable],
             }),
         ]);
 
-        const result = selection.currentSpectrumInfo!;
+        const result = selection.currentVariableInfo!;
         const handler = jest.fn();
 
-        selection.events.onSpectrumComponentChange = handler;
+        selection.events.onVariableComponentChange = handler;
 
         result.setDisplayComponentId(1);
 
@@ -423,8 +423,8 @@ describe('AggregateSpectrumInfo', () => {
         expect(handler).toHaveBeenCalledWith(result);
     });
 
-    test('throws when changing a component while the current spectrum is null', async () => {
-        const spectrum = createSpectrum({
+    test('throws when changing a component while the current variable is null', async () => {
+        const variable = createVariable({
             id: 'POINT::velocity::3',
             name: 'velocity',
             componentIds: [-1, 0, 1],
@@ -432,29 +432,29 @@ describe('AggregateSpectrumInfo', () => {
 
         const selection = await createSelection([
             createActorNode({
-                spectrumId: spectrum.id,
-                spectrumComponent: 0,
-                spectra: [spectrum],
+                variableId: variable.id,
+                variableComponent: 0,
+                variables: [variable],
             }),
         ]);
 
-        const result = selection.currentSpectrumInfo!;
+        const result = selection.currentVariableInfo!;
 
-        selection.setDisplaySpectrumId(null);
+        selection.setDisplayVariableId(null);
 
         expect(() => {
             result.setDisplayComponentId(1);
-        }).toThrow('component should not be changed when the current spectrum is null');
+        }).toThrow('component should not be changed when the current variable is null');
     });
 
-    test('throws when changing a component on a spectrum that is not current', async () => {
-        const velocity = createSpectrum({
+    test('throws when changing a component on a variable that is not current', async () => {
+        const velocity = createVariable({
             id: 'POINT::velocity::3',
             name: 'velocity',
             componentIds: [-1, 0, 1, 2],
         });
 
-        const acceleration = createSpectrum({
+        const acceleration = createVariable({
             id: 'POINT::acceleration::3',
             name: 'acceleration',
             componentIds: [-1, 0, 1, 2],
@@ -462,27 +462,27 @@ describe('AggregateSpectrumInfo', () => {
 
         const selection = await createSelection([
             createActorNode({
-                spectrumId: velocity.id,
-                spectrumComponent: 0,
-                spectra: [velocity, acceleration],
+                variableId: velocity.id,
+                variableComponent: 0,
+                variables: [velocity, acceleration],
             }),
         ]);
 
-        const nonCurrentSpectrum = selection.spectrumOptions.get(acceleration.id)!;
+        const nonCurrentVariable = selection.variableOptions.get(acceleration.id)!;
 
         expect(() => {
-            nonCurrentSpectrum.setDisplayComponentId(1);
-        }).toThrow('component should not be changed on a spectrum that is not current');
+            nonCurrentVariable.setDisplayComponentId(1);
+        }).toThrow('component should not be changed on a variable that is not current');
     });
 
-    test('allows component changes after a different spectrum becomes current', async () => {
-        const velocity = createSpectrum({
+    test('allows component changes after a different variable becomes current', async () => {
+        const velocity = createVariable({
             id: 'POINT::velocity::3',
             name: 'velocity',
             componentIds: [-1, 0, 1, 2],
         });
 
-        const acceleration = createSpectrum({
+        const acceleration = createVariable({
             id: 'POINT::acceleration::3',
             name: 'acceleration',
             componentIds: [-1, 0, 1, 2],
@@ -490,13 +490,13 @@ describe('AggregateSpectrumInfo', () => {
 
         const selection = await createSelection([
             createActorNode({
-                spectrumId: velocity.id,
-                spectrumComponent: 0,
-                spectra: [velocity, acceleration],
+                variableId: velocity.id,
+                variableComponent: 0,
+                variables: [velocity, acceleration],
             }),
         ]);
 
-        const accelerationInfo = selection.setDisplaySpectrumId(acceleration.id)!;
+        const accelerationInfo = selection.setDisplayVariableId(acceleration.id)!;
 
         expect(() => {
             accelerationInfo.setDisplayComponentId(2);
@@ -514,7 +514,7 @@ interface RangeInfo {
     customRange: number[];
 }
 
-interface CreateSpectrumOptions {
+interface CreateVariableOptions {
     id: string;
     name: string;
     componentIds: number[];
@@ -524,9 +524,9 @@ interface CreateSpectrumOptions {
 }
 
 interface CreateActorNodeOptions {
-    spectrumId: string | null;
-    spectrumComponent: number;
-    spectra: VisorSpectrumInfo[];
+    variableId: string | null;
+    variableComponent: number;
+    variables: VisorVariableInfo[];
 }
 
 async function createSelection(
@@ -535,14 +535,14 @@ async function createSelection(
     return AggregateSelectionInfo.getInstanceAsync(actorNodes);
 }
 
-function createSpectrum({
+function createVariable({
     id,
     name,
     componentIds,
     type = 'POINT',
     shape = 'Vector3',
     ranges,
-}: CreateSpectrumOptions): VisorSpectrumInfo {
+}: CreateVariableOptions): VisorVariableInfo {
     const componentOptions = createComponentOptions(componentIds);
 
     const rangeState = new Map<number, RangeInfo>();
@@ -602,14 +602,14 @@ function createSpectrum({
     };
 }
 
-function createSpectrumCollection(spectra: VisorSpectrumInfo[]): VisorSpectrumCollection {
-    const array = [...spectra];
-    const map = new Map(array.map((spectrum) => [spectrum.id, spectrum]));
+function createVariableCollection(variables: VisorVariableInfo[]): VisorVariableCollection {
+    const array = [...variables];
+    const map = new Map(array.map((variable) => [variable.id, variable]));
 
     return {
         array,
 
-        getSpectrum(id: string | null) {
+        getVariable(id: string | null) {
             if (id == null) {
                 return null;
             }
@@ -620,21 +620,21 @@ function createSpectrumCollection(spectra: VisorSpectrumInfo[]): VisorSpectrumCo
 }
 
 function createActorNode({
-    spectrumId,
-    spectrumComponent,
-    spectra,
+    variableId,
+    variableComponent,
+    variables,
 }: CreateActorNodeOptions): VisorSceneNodeExtended {
     return {
         name: 'mesh',
         opacity: 1,
-        spectrumId,
-        spectrumComponent,
+        variableId,
+        variableComponent,
         customDiffuseColorHex: '#ffffff',
-        spectrumCollection: createSpectrumCollection(spectra),
+        variableCollection: createVariableCollection(variables),
     } as unknown as VisorSceneNodeExtended;
 }
 
-function createComponentOptions(componentIds: number[]): VisorSpectrumComponentMetadata[] {
+function createComponentOptions(componentIds: number[]): VisorVariableComponentMetadata[] {
     return componentIds.map((id) => ({
         id,
         name: getComponentName(id),

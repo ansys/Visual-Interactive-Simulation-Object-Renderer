@@ -6,7 +6,7 @@ import {
     parseState,
     StateInput,
 } from './VisorStateCommon.tsx';
-import VisorSpectrumState from './VisorSpectrumState.tsx';
+import VisorVariableState from './VisorVariableState.tsx';
 import VisorCameraState from './VisorCameraState.tsx';
 import VisorCrossSectionState from './VisorCrossSectionState.tsx';
 
@@ -15,7 +15,7 @@ export default class VisorSceneState {
     private _camera: VisorCameraState = new VisorCameraState();
     private _crossSection: VisorCrossSectionState = new VisorCrossSectionState();
     private _datasetStates: Record<string, VisorDatasetState> = {};
-    private _spectrumStates: Record<string, VisorSpectrumState> = {};
+    private _variableStates: Record<string, VisorVariableState> = {};
     private _orthographicEnabled: boolean | undefined = undefined;
     private _crossSectionEnabled: boolean | undefined = undefined;
     private _edgesEnabled: boolean | undefined = undefined;
@@ -88,36 +88,36 @@ export default class VisorSceneState {
         return delete this._datasetStates[idStr];
     }
 
-    getSpectrumState(idStr: string): VisorSpectrumState | null {
+    getVariableState(idStr: string): VisorVariableState | null {
         ensureString(idStr, 'idStr');
-        return this._spectrumStates[idStr] ?? null;
+        return this._variableStates[idStr] ?? null;
     }
 
-    getSpectrumStates(): VisorSpectrumState[] {
-        return Object.values(this._spectrumStates);
+    getVariableStates(): VisorVariableState[] {
+        return Object.values(this._variableStates);
     }
 
-    removeSpectrum(idStr: string): boolean {
-        return delete this._spectrumStates[idStr];
+    removeVariable(idStr: string): boolean {
+        return delete this._variableStates[idStr];
     }
 
-    copySpectrum(
-        spectrumState: StateInput<VisorSpectrumState>,
+    copyVariable(
+        variableState: StateInput<VisorVariableState>,
         replace = false,
         key: string | number | null | undefined = null
-    ): VisorSpectrumState | null {
-        if (spectrumState == null) {
+    ): VisorVariableState | null {
+        if (variableState == null) {
             return null;
         }
 
-        const newState = new VisorSpectrumState(spectrumState, key);
-        const existing = this._spectrumStates[newState.id];
+        const newState = new VisorVariableState(variableState, key);
+        const existing = this._variableStates[newState.id];
 
         if (existing) {
             return existing.copy(newState, replace);
         }
 
-        this._spectrumStates[newState.id] = newState;
+        this._variableStates[newState.id] = newState;
         return newState;
     }
 
@@ -234,15 +234,15 @@ export default class VisorSceneState {
                 }
             }
 
-            const spectrumStates = data.spectrumStates;
-            if (spectrumStates) {
-                for (const [k, v] of Object.entries(spectrumStates)) {
-                    this.copySpectrum(v as JsonDict, replace, k);
+            const variableStates = data.variableStates;
+            if (variableStates) {
+                for (const [k, v] of Object.entries(variableStates)) {
+                    this.copyVariable(v as JsonDict, replace, k);
                 }
                 if (replace) {
-                    for (const k of Object.keys(this._spectrumStates)) {
-                        if (!spectrumStates[k]) {
-                            delete this._spectrumStates[k];
+                    for (const k of Object.keys(this._variableStates)) {
+                        if (!variableStates[k]) {
+                            delete this._variableStates[k];
                         }
                     }
                 }
@@ -256,10 +256,10 @@ export default class VisorSceneState {
     }
 
     toDict(): JsonDict {
-        const spectrumStates: JsonDict = {};
-        for (const [k, v] of Object.entries(this._spectrumStates)) {
+        const variableStates: JsonDict = {};
+        for (const [k, v] of Object.entries(this._variableStates)) {
             if (k === v.id) {
-                spectrumStates[k] = v.toDict();
+                variableStates[k] = v.toDict();
             }
         }
         const datasetStates: JsonDict = {};
@@ -276,7 +276,7 @@ export default class VisorSceneState {
             crossSectionEnabled: this.crossSectionEnabled,
             edgesEnabled: this.edgesEnabled,
             boundingBoxEnabled: this.boundingBoxEnabled,
-            spectrumStates,
+            variableStates,
             datasetStates,
         };
     }

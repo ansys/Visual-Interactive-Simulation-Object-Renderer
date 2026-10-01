@@ -1,315 +1,315 @@
 import { AggregateSelectionInfo } from '../aggregate/AggregateSelectionInfo.tsx';
-import { AggregateSpectrumComponentInfo } from '../aggregate/AggregateSpectrumComponentInfo.tsx';
-import type { AggregateSpectrumInfo } from '../aggregate/AggregateSpectrumInfo.tsx';
+import { AggregateVariableComponentInfo } from '../aggregate/AggregateVariableComponentInfo.tsx';
+import type { AggregateVariableInfo } from '../aggregate/AggregateVariableInfo.tsx';
 import type { VisorSceneNodeExtended } from '../state/VisorSceneGraph.tsx';
 import type {
-    VisorSpectrumCollection,
-    VisorSpectrumComponentMetadata,
-    VisorSpectrumInfo,
-} from '../state/VisorSpectrumManager.tsx';
+    VisorVariableCollection,
+    VisorVariableComponentMetadata,
+    VisorVariableInfo,
+} from '../state/VisorVariableManager.tsx';
 import type { FieldAssociation } from '../state/appstate/vtkInfo/VisorVtkDataArray.tsx';
 
-describe('AggregateSpectrumComponentInfo', () => {
+describe('AggregateVariableComponentInfo', () => {
     afterEach(() => {
         jest.restoreAllMocks();
     });
 
-    test('exposes its component ID, metadata, and parent spectrum', async () => {
-        const parentSpectrum = await createParentSpectrum();
-        const metadata = getComponentMetadata(parentSpectrum, 0);
+    test('exposes its component ID, metadata, and parent variable', async () => {
+        const parentVariable = await createParentVariable();
+        const metadata = getComponentMetadata(parentVariable, 0);
 
-        const result = await AggregateSpectrumComponentInfo.getInstanceAsync(
+        const result = await AggregateVariableComponentInfo.getInstanceAsync(
             [
                 createActorNode({
-                    spectrumId: parentSpectrum.id,
-                    spectrumComponent: 0,
-                    spectra: [
-                        createSpectrum({
-                            id: parentSpectrum.id,
+                    variableId: parentVariable.id,
+                    variableComponent: 0,
+                    variables: [
+                        createVariable({
+                            id: parentVariable.id,
                             componentIds: [-1, 0, 1, 2],
                         }),
                     ],
                 }),
             ],
-            parentSpectrum,
+            parentVariable,
             metadata
         );
 
-        expect(result).toBeInstanceOf(AggregateSpectrumComponentInfo);
+        expect(result).toBeInstanceOf(AggregateVariableComponentInfo);
         expect(result.id).toBe(0);
         expect(result.metadata).toBe(metadata);
-        expect(result.spectrumInfo).toBe(parentSpectrum);
+        expect(result.variableInfo).toBe(parentVariable);
     });
 
     test('returns null aggregate values when there are no actor nodes', async () => {
-        const parentSpectrum = await createParentSpectrum();
-        const metadata = getComponentMetadata(parentSpectrum, 0);
+        const parentVariable = await createParentVariable();
+        const metadata = getComponentMetadata(parentVariable, 0);
 
-        const result = await AggregateSpectrumComponentInfo.getInstanceAsync(
+        const result = await AggregateVariableComponentInfo.getInstanceAsync(
             [],
-            parentSpectrum,
+            parentVariable,
             metadata
         );
 
-        expect(result.displaySpectrumDefaultMin).toBeNull();
-        expect(result.displaySpectrumDefaultMax).toBeNull();
-        expect(result.displaySpectrumMin).toBeNull();
-        expect(result.displaySpectrumMax).toBeNull();
+        expect(result.displayVariableDefaultMin).toBeNull();
+        expect(result.displayVariableDefaultMax).toBeNull();
+        expect(result.displayVariableMin).toBeNull();
+        expect(result.displayVariableMax).toBeNull();
     });
 
     test('aggregates matching range values from all actor nodes', async () => {
-        const parentSpectrum = await createParentSpectrum();
-        const metadata = getComponentMetadata(parentSpectrum, 0);
+        const parentVariable = await createParentVariable();
+        const metadata = getComponentMetadata(parentVariable, 0);
 
-        const firstSpectrum = createSpectrum({
-            id: parentSpectrum.id,
+        const firstVariable = createVariable({
+            id: parentVariable.id,
             componentIds: [-1, 0, 1, 2],
             ranges: new Map([[0, createRange(-10, 10, -5, 5)]]),
         });
 
-        const secondSpectrum = createSpectrum({
-            id: parentSpectrum.id,
+        const secondVariable = createVariable({
+            id: parentVariable.id,
             componentIds: [-1, 0, 1, 2],
             ranges: new Map([[0, createRange(-10, 10, -5, 5)]]),
         });
 
-        const result = await AggregateSpectrumComponentInfo.getInstanceAsync(
+        const result = await AggregateVariableComponentInfo.getInstanceAsync(
             [
                 createActorNode({
-                    spectrumId: parentSpectrum.id,
-                    spectrumComponent: 0,
-                    spectra: [firstSpectrum],
+                    variableId: parentVariable.id,
+                    variableComponent: 0,
+                    variables: [firstVariable],
                 }),
                 createActorNode({
-                    spectrumId: parentSpectrum.id,
-                    spectrumComponent: 0,
-                    spectra: [secondSpectrum],
+                    variableId: parentVariable.id,
+                    variableComponent: 0,
+                    variables: [secondVariable],
                 }),
             ],
-            parentSpectrum,
+            parentVariable,
             metadata
         );
 
-        expect(result.displaySpectrumDefaultMin).toBe(-10);
-        expect(result.displaySpectrumDefaultMax).toBe(10);
-        expect(result.displaySpectrumMin).toBe(-5);
-        expect(result.displaySpectrumMax).toBe(5);
+        expect(result.displayVariableDefaultMin).toBe(-10);
+        expect(result.displayVariableDefaultMax).toBe(10);
+        expect(result.displayVariableMin).toBe(-5);
+        expect(result.displayVariableMax).toBe(5);
     });
 
     test('marks only differing range fields as undefined', async () => {
-        const parentSpectrum = await createParentSpectrum();
-        const metadata = getComponentMetadata(parentSpectrum, 0);
+        const parentVariable = await createParentVariable();
+        const metadata = getComponentMetadata(parentVariable, 0);
 
-        const firstSpectrum = createSpectrum({
-            id: parentSpectrum.id,
+        const firstVariable = createVariable({
+            id: parentVariable.id,
             componentIds: [-1, 0, 1, 2],
             ranges: new Map([[0, createRange(-10, 10, -5, 5)]]),
         });
 
-        const secondSpectrum = createSpectrum({
-            id: parentSpectrum.id,
+        const secondVariable = createVariable({
+            id: parentVariable.id,
             componentIds: [-1, 0, 1, 2],
             ranges: new Map([[0, createRange(-20, 10, -15, 5)]]),
         });
 
-        const result = await AggregateSpectrumComponentInfo.getInstanceAsync(
+        const result = await AggregateVariableComponentInfo.getInstanceAsync(
             [
                 createActorNode({
-                    spectrumId: parentSpectrum.id,
-                    spectrumComponent: 0,
-                    spectra: [firstSpectrum],
+                    variableId: parentVariable.id,
+                    variableComponent: 0,
+                    variables: [firstVariable],
                 }),
                 createActorNode({
-                    spectrumId: parentSpectrum.id,
-                    spectrumComponent: 0,
-                    spectra: [secondSpectrum],
+                    variableId: parentVariable.id,
+                    variableComponent: 0,
+                    variables: [secondVariable],
                 }),
             ],
-            parentSpectrum,
+            parentVariable,
             metadata
         );
 
-        expect(result.displaySpectrumDefaultMin).toBeUndefined();
-        expect(result.displaySpectrumDefaultMax).toBe(10);
-        expect(result.displaySpectrumMin).toBeUndefined();
-        expect(result.displaySpectrumMax).toBe(5);
+        expect(result.displayVariableDefaultMin).toBeUndefined();
+        expect(result.displayVariableDefaultMax).toBe(10);
+        expect(result.displayVariableMin).toBeUndefined();
+        expect(result.displayVariableMax).toBe(5);
     });
 
-    test('sets all range values to undefined when a node has no matching spectrum', async () => {
-        const parentSpectrum = await createParentSpectrum();
-        const metadata = getComponentMetadata(parentSpectrum, 0);
+    test('sets all range values to undefined when a node has no matching variable', async () => {
+        const parentVariable = await createParentVariable();
+        const metadata = getComponentMetadata(parentVariable, 0);
 
-        const matchingSpectrum = createSpectrum({
-            id: parentSpectrum.id,
+        const matchingVariable = createVariable({
+            id: parentVariable.id,
             componentIds: [-1, 0, 1, 2],
             ranges: new Map([[0, createRange(-10, 10, -5, 5)]]),
         });
 
-        const unrelatedSpectrum = createSpectrum({
+        const unrelatedVariable = createVariable({
             id: 'POINT::temperature::1',
             name: 'temperature',
             shape: 'Scalar',
             componentIds: [-1],
         });
 
-        const result = await AggregateSpectrumComponentInfo.getInstanceAsync(
+        const result = await AggregateVariableComponentInfo.getInstanceAsync(
             [
                 createActorNode({
-                    spectrumId: parentSpectrum.id,
-                    spectrumComponent: 0,
-                    spectra: [matchingSpectrum],
+                    variableId: parentVariable.id,
+                    variableComponent: 0,
+                    variables: [matchingVariable],
                 }),
                 createActorNode({
-                    spectrumId: unrelatedSpectrum.id,
-                    spectrumComponent: -1,
-                    spectra: [unrelatedSpectrum],
+                    variableId: unrelatedVariable.id,
+                    variableComponent: -1,
+                    variables: [unrelatedVariable],
                 }),
             ],
-            parentSpectrum,
+            parentVariable,
             metadata
         );
 
-        expect(result.displaySpectrumDefaultMin).toBeUndefined();
-        expect(result.displaySpectrumDefaultMax).toBeUndefined();
-        expect(result.displaySpectrumMin).toBeUndefined();
-        expect(result.displaySpectrumMax).toBeUndefined();
+        expect(result.displayVariableDefaultMin).toBeUndefined();
+        expect(result.displayVariableDefaultMax).toBeUndefined();
+        expect(result.displayVariableMin).toBeUndefined();
+        expect(result.displayVariableMax).toBeUndefined();
     });
 
     test('sets all range values to undefined when a component range is missing', async () => {
-        const parentSpectrum = await createParentSpectrum();
-        const metadata = getComponentMetadata(parentSpectrum, 0);
+        const parentVariable = await createParentVariable();
+        const metadata = getComponentMetadata(parentVariable, 0);
 
-        const spectrumWithRange = createSpectrum({
-            id: parentSpectrum.id,
+        const variableWithRange = createVariable({
+            id: parentVariable.id,
             componentIds: [-1, 0, 1, 2],
             ranges: new Map([[0, createRange(-10, 10, -5, 5)]]),
         });
 
-        const spectrumWithoutRange = createSpectrum({
-            id: parentSpectrum.id,
+        const variableWithoutRange = createVariable({
+            id: parentVariable.id,
             componentIds: [-1, 0, 1, 2],
             omittedRangeIds: [0],
         });
 
-        const result = await AggregateSpectrumComponentInfo.getInstanceAsync(
+        const result = await AggregateVariableComponentInfo.getInstanceAsync(
             [
                 createActorNode({
-                    spectrumId: parentSpectrum.id,
-                    spectrumComponent: 0,
-                    spectra: [spectrumWithRange],
+                    variableId: parentVariable.id,
+                    variableComponent: 0,
+                    variables: [variableWithRange],
                 }),
                 createActorNode({
-                    spectrumId: parentSpectrum.id,
-                    spectrumComponent: 0,
-                    spectra: [spectrumWithoutRange],
+                    variableId: parentVariable.id,
+                    variableComponent: 0,
+                    variables: [variableWithoutRange],
                 }),
             ],
-            parentSpectrum,
+            parentVariable,
             metadata
         );
 
-        expect(result.displaySpectrumDefaultMin).toBeUndefined();
-        expect(result.displaySpectrumDefaultMax).toBeUndefined();
-        expect(result.displaySpectrumMin).toBeUndefined();
-        expect(result.displaySpectrumMax).toBeUndefined();
+        expect(result.displayVariableDefaultMin).toBeUndefined();
+        expect(result.displayVariableDefaultMax).toBeUndefined();
+        expect(result.displayVariableMin).toBeUndefined();
+        expect(result.displayVariableMax).toBeUndefined();
     });
 
     test('stops aggregation after encountering a missing range', async () => {
-        const parentSpectrum = await createParentSpectrum();
-        const metadata = getComponentMetadata(parentSpectrum, 0);
+        const parentVariable = await createParentVariable();
+        const metadata = getComponentMetadata(parentVariable, 0);
 
-        const missingRangeSpectrum = createSpectrum({
-            id: parentSpectrum.id,
+        const missingRangeVariable = createVariable({
+            id: parentVariable.id,
             componentIds: [-1, 0, 1, 2],
             omittedRangeIds: [0],
         });
 
-        const laterSpectrum = createSpectrum({
-            id: parentSpectrum.id,
+        const laterVariable = createVariable({
+            id: parentVariable.id,
             componentIds: [-1, 0, 1, 2],
             ranges: new Map([[0, createRange(-100, 100, -50, 50)]]),
         });
 
-        const laterGetRangeInfoSpy = jest.spyOn(laterSpectrum, 'getRangeInfo');
+        const laterGetRangeInfoSpy = jest.spyOn(laterVariable, 'getRangeInfo');
 
-        const result = await AggregateSpectrumComponentInfo.getInstanceAsync(
+        const result = await AggregateVariableComponentInfo.getInstanceAsync(
             [
                 createActorNode({
-                    spectrumId: parentSpectrum.id,
-                    spectrumComponent: 0,
-                    spectra: [missingRangeSpectrum],
+                    variableId: parentVariable.id,
+                    variableComponent: 0,
+                    variables: [missingRangeVariable],
                 }),
                 createActorNode({
-                    spectrumId: parentSpectrum.id,
-                    spectrumComponent: 0,
-                    spectra: [laterSpectrum],
+                    variableId: parentVariable.id,
+                    variableComponent: 0,
+                    variables: [laterVariable],
                 }),
             ],
-            parentSpectrum,
+            parentVariable,
             metadata
         );
 
-        expect(result.displaySpectrumDefaultMin).toBeUndefined();
-        expect(result.displaySpectrumDefaultMax).toBeUndefined();
-        expect(result.displaySpectrumMin).toBeUndefined();
-        expect(result.displaySpectrumMax).toBeUndefined();
+        expect(result.displayVariableDefaultMin).toBeUndefined();
+        expect(result.displayVariableDefaultMax).toBeUndefined();
+        expect(result.displayVariableMin).toBeUndefined();
+        expect(result.displayVariableMax).toBeUndefined();
 
         expect(laterGetRangeInfoSpy).not.toHaveBeenCalled();
     });
 
-    describe('setDisplaySpectrumMin', () => {
+    describe('setDisplayVariableMin', () => {
         test('accepts a number', async () => {
             const result = await createComponentInfo();
 
-            const success = result.setDisplaySpectrumMin(12.5);
+            const success = result.setDisplayVariableMin(12.5);
 
             expect(success).toBe(true);
-            expect(result.displaySpectrumMin).toBe(12.5);
+            expect(result.displayVariableMin).toBe(12.5);
         });
 
         test('parses a numeric string', async () => {
             const result = await createComponentInfo();
 
-            const success = result.setDisplaySpectrumMin('12.5');
+            const success = result.setDisplayVariableMin('12.5');
 
             expect(success).toBe(true);
-            expect(result.displaySpectrumMin).toBe(12.5);
+            expect(result.displayVariableMin).toBe(12.5);
         });
 
         test('uses parseFloat behavior for partially numeric strings', async () => {
             const result = await createComponentInfo();
 
-            const success = result.setDisplaySpectrumMin('12.5px');
+            const success = result.setDisplayVariableMin('12.5px');
 
             expect(success).toBe(true);
-            expect(result.displaySpectrumMin).toBe(12.5);
+            expect(result.displayVariableMin).toBe(12.5);
         });
 
         test('converts a nonnumeric string to null', async () => {
             const result = await createComponentInfo();
 
-            const success = result.setDisplaySpectrumMin('not numeric');
+            const success = result.setDisplayVariableMin('not numeric');
 
             expect(success).toBe(false);
-            expect(result.displaySpectrumMin).toBeNull();
+            expect(result.displayVariableMin).toBeNull();
         });
 
         test('preserves null', async () => {
             const result = await createComponentInfo();
 
-            const success = result.setDisplaySpectrumMin(null);
+            const success = result.setDisplayVariableMin(null);
 
             expect(success).toBe(false);
-            expect(result.displaySpectrumMin).toBeNull();
+            expect(result.displayVariableMin).toBeNull();
         });
 
         test('preserves undefined', async () => {
             const result = await createComponentInfo();
 
-            const success = result.setDisplaySpectrumMin(undefined);
+            const success = result.setDisplayVariableMin(undefined);
 
             expect(success).toBe(false);
-            expect(result.displaySpectrumMin).toBeUndefined();
+            expect(result.displayVariableMin).toBeUndefined();
         });
 
         test('invokes onMinChange with the parsed value', async () => {
@@ -318,7 +318,7 @@ describe('AggregateSpectrumComponentInfo', () => {
 
             result.events.onMinChange = handler;
 
-            result.setDisplaySpectrumMin('25.5');
+            result.setDisplayVariableMin('25.5');
 
             expect(handler).toHaveBeenCalledTimes(1);
             expect(handler).toHaveBeenCalledWith(25.5);
@@ -330,66 +330,66 @@ describe('AggregateSpectrumComponentInfo', () => {
 
             result.events.onMinChange = handler;
 
-            result.setDisplaySpectrumMin('invalid');
+            result.setDisplayVariableMin('invalid');
 
             expect(handler).toHaveBeenCalledTimes(1);
             expect(handler).toHaveBeenCalledWith(null);
         });
     });
 
-    describe('setDisplaySpectrumMax', () => {
+    describe('setDisplayVariableMax', () => {
         test('accepts a number', async () => {
             const result = await createComponentInfo();
 
-            const success = result.setDisplaySpectrumMax(87.5);
+            const success = result.setDisplayVariableMax(87.5);
 
             expect(success).toBe(true);
-            expect(result.displaySpectrumMax).toBe(87.5);
+            expect(result.displayVariableMax).toBe(87.5);
         });
 
         test('parses a numeric string', async () => {
             const result = await createComponentInfo();
 
-            const success = result.setDisplaySpectrumMax('87.5');
+            const success = result.setDisplayVariableMax('87.5');
 
             expect(success).toBe(true);
-            expect(result.displaySpectrumMax).toBe(87.5);
+            expect(result.displayVariableMax).toBe(87.5);
         });
 
         test('uses parseFloat behavior for partially numeric strings', async () => {
             const result = await createComponentInfo();
 
-            const success = result.setDisplaySpectrumMax('87.5px');
+            const success = result.setDisplayVariableMax('87.5px');
 
             expect(success).toBe(true);
-            expect(result.displaySpectrumMax).toBe(87.5);
+            expect(result.displayVariableMax).toBe(87.5);
         });
 
         test('converts a nonnumeric string to null', async () => {
             const result = await createComponentInfo();
 
-            const success = result.setDisplaySpectrumMax('not numeric');
+            const success = result.setDisplayVariableMax('not numeric');
 
             expect(success).toBe(false);
-            expect(result.displaySpectrumMax).toBeNull();
+            expect(result.displayVariableMax).toBeNull();
         });
 
         test('preserves null', async () => {
             const result = await createComponentInfo();
 
-            const success = result.setDisplaySpectrumMax(null);
+            const success = result.setDisplayVariableMax(null);
 
             expect(success).toBe(false);
-            expect(result.displaySpectrumMax).toBeNull();
+            expect(result.displayVariableMax).toBeNull();
         });
 
         test('preserves undefined', async () => {
             const result = await createComponentInfo();
 
-            const success = result.setDisplaySpectrumMax(undefined);
+            const success = result.setDisplayVariableMax(undefined);
 
             expect(success).toBe(false);
-            expect(result.displaySpectrumMax).toBeUndefined();
+            expect(result.displayVariableMax).toBeUndefined();
         });
 
         test('invokes onMaxChange with the parsed value', async () => {
@@ -398,7 +398,7 @@ describe('AggregateSpectrumComponentInfo', () => {
 
             result.events.onMaxChange = handler;
 
-            result.setDisplaySpectrumMax('75.5');
+            result.setDisplayVariableMax('75.5');
 
             expect(handler).toHaveBeenCalledTimes(1);
             expect(handler).toHaveBeenCalledWith(75.5);
@@ -410,7 +410,7 @@ describe('AggregateSpectrumComponentInfo', () => {
 
             result.events.onMaxChange = handler;
 
-            result.setDisplaySpectrumMax('invalid');
+            result.setDisplayVariableMax('invalid');
 
             expect(handler).toHaveBeenCalledTimes(1);
             expect(handler).toHaveBeenCalledWith(null);
@@ -427,18 +427,18 @@ describe('AggregateSpectrumComponentInfo', () => {
     test('setters replace custom aggregate values without changing defaults', async () => {
         const result = await createComponentInfo();
 
-        expect(result.displaySpectrumDefaultMin).toBe(-10);
-        expect(result.displaySpectrumDefaultMax).toBe(10);
-        expect(result.displaySpectrumMin).toBe(-5);
-        expect(result.displaySpectrumMax).toBe(5);
+        expect(result.displayVariableDefaultMin).toBe(-10);
+        expect(result.displayVariableDefaultMax).toBe(10);
+        expect(result.displayVariableMin).toBe(-5);
+        expect(result.displayVariableMax).toBe(5);
 
-        result.setDisplaySpectrumMin(-2);
-        result.setDisplaySpectrumMax(2);
+        result.setDisplayVariableMin(-2);
+        result.setDisplayVariableMax(2);
 
-        expect(result.displaySpectrumMin).toBe(-2);
-        expect(result.displaySpectrumMax).toBe(2);
-        expect(result.displaySpectrumDefaultMin).toBe(-10);
-        expect(result.displaySpectrumDefaultMax).toBe(10);
+        expect(result.displayVariableMin).toBe(-2);
+        expect(result.displayVariableMax).toBe(2);
+        expect(result.displayVariableDefaultMin).toBe(-10);
+        expect(result.displayVariableDefaultMax).toBe(10);
     });
 });
 
@@ -447,7 +447,7 @@ interface RangeInfo {
     customRange: [number, number];
 }
 
-interface CreateSpectrumOptions {
+interface CreateVariableOptions {
     id: string;
     componentIds: number[];
     name?: string;
@@ -458,13 +458,13 @@ interface CreateSpectrumOptions {
 }
 
 interface CreateActorNodeOptions {
-    spectrumId: string | null;
-    spectrumComponent: number;
-    spectra: VisorSpectrumInfo[];
+    variableId: string | null;
+    variableComponent: number;
+    variables: VisorVariableInfo[];
 }
 
-async function createParentSpectrum(): Promise<AggregateSpectrumInfo> {
-    const spectrum = createSpectrum({
+async function createParentVariable(): Promise<AggregateVariableInfo> {
+    const variable = createVariable({
         id: 'POINT::velocity::3',
         name: 'velocity',
         shape: 'Vector3',
@@ -472,50 +472,50 @@ async function createParentSpectrum(): Promise<AggregateSpectrumInfo> {
     });
 
     const actorNode = createActorNode({
-        spectrumId: spectrum.id,
-        spectrumComponent: 0,
-        spectra: [spectrum],
+        variableId: variable.id,
+        variableComponent: 0,
+        variables: [variable],
     });
 
     const selection = await AggregateSelectionInfo.getInstanceAsync([actorNode]);
 
-    expect(selection.currentSpectrumInfo).not.toBeNull();
-    expect(selection.currentSpectrumInfo).not.toBeUndefined();
+    expect(selection.currentVariableInfo).not.toBeNull();
+    expect(selection.currentVariableInfo).not.toBeUndefined();
 
-    return selection.currentSpectrumInfo!;
+    return selection.currentVariableInfo!;
 }
 
-async function createComponentInfo(): Promise<AggregateSpectrumComponentInfo> {
-    const parentSpectrum = await createParentSpectrum();
+async function createComponentInfo(): Promise<AggregateVariableComponentInfo> {
+    const parentVariable = await createParentVariable();
 
-    const metadata = getComponentMetadata(parentSpectrum, 0);
+    const metadata = getComponentMetadata(parentVariable, 0);
 
-    const actorSpectrum = createSpectrum({
-        id: parentSpectrum.id,
+    const actorVariable = createVariable({
+        id: parentVariable.id,
         name: 'velocity',
         shape: 'Vector3',
         componentIds: [-1, 0, 1, 2],
         ranges: new Map([[0, createRange(-10, 10, -5, 5)]]),
     });
 
-    return AggregateSpectrumComponentInfo.getInstanceAsync(
+    return AggregateVariableComponentInfo.getInstanceAsync(
         [
             createActorNode({
-                spectrumId: parentSpectrum.id,
-                spectrumComponent: 0,
-                spectra: [actorSpectrum],
+                variableId: parentVariable.id,
+                variableComponent: 0,
+                variables: [actorVariable],
             }),
         ],
-        parentSpectrum,
+        parentVariable,
         metadata
     );
 }
 
 function getComponentMetadata(
-    spectrumInfo: AggregateSpectrumInfo,
+    variableInfo: AggregateVariableInfo,
     componentId: number
-): VisorSpectrumComponentMetadata {
-    const metadata = spectrumInfo.metadata.componentOptions.find((item) => item.id === componentId);
+): VisorVariableComponentMetadata {
+    const metadata = variableInfo.metadata.componentOptions.find((item) => item.id === componentId);
 
     if (metadata == null) {
         throw new Error(`component metadata not found: ${componentId}`);
@@ -524,7 +524,7 @@ function getComponentMetadata(
     return metadata;
 }
 
-function createSpectrum({
+function createVariable({
     id,
     componentIds,
     name = 'velocity',
@@ -532,7 +532,7 @@ function createSpectrum({
     shape = 'Vector3',
     ranges = new Map(),
     omittedRangeIds = [],
-}: CreateSpectrumOptions): VisorSpectrumInfo {
+}: CreateVariableOptions): VisorVariableInfo {
     const componentOptions = createComponentOptions(componentIds);
 
     const rangeState = new Map<number, RangeInfo>();
@@ -593,17 +593,17 @@ function createSpectrum({
     };
 }
 
-function createSpectrumCollection(spectra: VisorSpectrumInfo[]): VisorSpectrumCollection {
-    const array = [...spectra];
+function createVariableCollection(variables: VisorVariableInfo[]): VisorVariableCollection {
+    const array = [...variables];
 
-    const map = new Map<string, VisorSpectrumInfo>(
-        array.map((spectrum) => [spectrum.id, spectrum])
+    const map = new Map<string, VisorVariableInfo>(
+        array.map((variable) => [variable.id, variable])
     );
 
     return {
         array,
 
-        getSpectrum(id: string | null) {
+        getVariable(id: string | null) {
             if (id == null) {
                 return null;
             }
@@ -614,21 +614,21 @@ function createSpectrumCollection(spectra: VisorSpectrumInfo[]): VisorSpectrumCo
 }
 
 function createActorNode({
-    spectrumId,
-    spectrumComponent,
-    spectra,
+    variableId,
+    variableComponent,
+    variables,
 }: CreateActorNodeOptions): VisorSceneNodeExtended {
     return {
         name: 'mesh',
         opacity: 1,
-        spectrumId,
-        spectrumComponent,
+        variableId,
+        variableComponent,
         customDiffuseColorHex: '#ffffff',
-        spectrumCollection: createSpectrumCollection(spectra),
+        variableCollection: createVariableCollection(variables),
     } as unknown as VisorSceneNodeExtended;
 }
 
-function createComponentOptions(componentIds: number[]): VisorSpectrumComponentMetadata[] {
+function createComponentOptions(componentIds: number[]): VisorVariableComponentMetadata[] {
     return componentIds.map((id) => ({
         id,
         name: getComponentName(id),

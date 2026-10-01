@@ -15,7 +15,7 @@ import type { IRenderer } from '../renderer/IRenderer';
  *
  * Expected values here are hand-written literals. In particular the
  * colour-variable descriptor is written out rather than read back from the
- * spectrum, so the test cannot agree with the code by making the same mistake.
+ * variable, so the test cannot agree with the code by making the same mistake.
  */
 
 const ROOT_ID = 0;
@@ -213,9 +213,9 @@ describe('colour by variable', () => {
         await partA.setColorVariableAsync(VARIABLE_ID, 0);
 
         expect(renderer.sendPartColorVariableAsync).toHaveBeenCalledWith(PART_A_ID, {
-            spectrumId: 'POINT::pressure::1',
-            spectrumType: 'POINT',
-            spectrumName: 'pressure',
+            variableId: 'POINT::pressure::1',
+            variableType: 'POINT',
+            variableName: 'pressure',
             component: 0,
             min: 2,
             max: 8,
@@ -228,9 +228,9 @@ describe('colour by variable', () => {
         await partA.setColorVariableAsync(VARIABLE_ID, 0);
 
         expect(renderer.setColorVariableAsync).toHaveBeenCalledWith(PART_A_ID, {
-            spectrumId: 'POINT::pressure::1',
-            spectrumType: 'POINT',
-            spectrumName: 'pressure',
+            variableId: 'POINT::pressure::1',
+            variableType: 'POINT',
+            variableName: 'pressure',
             component: 0,
             min: 2,
             max: 8,

@@ -10,7 +10,7 @@ from ansys.visor.viewer.models.common.visor_variable_state import VisorVariableS
 from ansys.visor.viewer.models.persist.dataset.persisted_dataset_state import PersistedDatasetState
 
 #: Separator used by the client when it mints a variable identifier.  See
-#: ``VisorSpectrumManager.tryAddSpectrumInfo``, which builds the identifier as
+#: ``VisorVariableManager.tryAddVariableInfo``, which builds the identifier as
 #: ``` `${type}::${name}::${numComponents}` ```.
 _IDENTIFIER_SEPARATOR = "::"
 
@@ -85,7 +85,7 @@ class PersistedSceneState(BaseModel):
         """Fill absent identity fields on read, from the variable identifier.
 
         ``array_name``, ``type``, and ``num_components`` are required and stay
-        required: the model is shared with ``RuntimeSceneState.spectrum_states``,
+        required: the model is shared with ``RuntimeSceneState.variable_states``,
         so relaxing them would also relax the save-path coercion in
         ``VisorSaveStateResponse._coerce_app_state``.  Tolerance for older save
         files lives here, on the container, and applies to the ingest boundary only.

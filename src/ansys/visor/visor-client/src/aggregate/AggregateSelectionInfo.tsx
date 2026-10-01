@@ -1,27 +1,27 @@
 import { VisorSceneNodeExtended } from '../state/VisorSceneGraph.tsx';
-import { AggregateSpectrumInfo } from './AggregateSpectrumInfo.tsx';
+import { AggregateVariableInfo } from './AggregateVariableInfo.tsx';
 import { tryParseFloat } from '../utils/JsHelpers';
 
 /**
- * Event handlers emitted when aggregate spectrum selections change.
+ * Event handlers emitted when aggregate variable selections change.
  */
 class AggregateSelectionEvents {
     /**
-     * Called when the selected spectrum changes.
+     * Called when the selected variable changes.
      *
      * A value of `undefined` generally represents a mixed selection, while
-     * `null` represents no selected spectrum.
+     * `null` represents no selected variable.
      */
-    onSpectrumChange!: ((spectrumInfo: AggregateSpectrumInfo | null | undefined) => void) | null;
+    onVariableChange!: ((variableInfo: AggregateVariableInfo | null | undefined) => void) | null;
 
     /**
-     * Called when a component of the selected spectrum changes.
+     * Called when a component of the selected variable changes.
      *
      * A value of `undefined` generally represents a mixed selection, while
-     * `null` represents no selected spectrum.
+     * `null` represents no selected variable.
      */
-    onSpectrumComponentChange!:
-        ((spectrumInfo: AggregateSpectrumInfo | null | undefined) => void) | null;
+    onVariableComponentChange!:
+        ((variableInfo: AggregateVariableInfo | null | undefined) => void) | null;
 }
 
 /**
@@ -52,9 +52,9 @@ export class AggregateSelectionInfo {
     #displayOpacity: number | null | undefined = null;
 
     /**
-     * Spectrum identifier shared by the selected nodes.
+     * Variable identifier shared by the selected nodes.
      */
-    #displaySpectrumId: string | null | undefined = null;
+    #displayVariableId: string | null | undefined = null;
 
     /**
      * Custom diffuse color shared by the selected nodes, represented as a
@@ -63,21 +63,21 @@ export class AggregateSelectionInfo {
     #displayDiffuseColor: string | null | undefined = null;
 
     /**
-     * Available spectra collected from all selected nodes, keyed by spectrum ID.
+     * Available variables collected from all selected nodes, keyed by variable ID.
      */
-    #spectrumOptions: Map<string, AggregateSpectrumInfo> = new Map();
+    #variableOptions: Map<string, AggregateVariableInfo> = new Map();
 
     /**
-     * Aggregate information for the currently selected spectrum.
+     * Aggregate information for the currently selected variable.
      */
-    #currentSpectrumInfo: AggregateSpectrumInfo | null | undefined = null;
+    #currentVariableInfo: AggregateVariableInfo | null | undefined = null;
 
     /**
      * Event handlers associated with this aggregate selection.
      */
     #events: AggregateSelectionEvents = {
-        onSpectrumChange: null,
-        onSpectrumComponentChange: null,
+        onVariableChange: null,
+        onVariableComponentChange: null,
     };
 
     /**
@@ -87,8 +87,8 @@ export class AggregateSelectionInfo {
      * has the same value. Properties are set to `undefined` when the nodes have
      * differing values.
      *
-     * Spectrum options from all supplied nodes are also collected and converted
-     * into {@link AggregateSpectrumInfo} instances.
+     * Variable options from all supplied nodes are also collected and converted
+     * into {@link AggregateVariableInfo} instances.
      *
      * @param actorNodes - Scene nodes included in the aggregate selection.
      * @returns A promise resolving to the initialized aggregate selection.
@@ -102,47 +102,47 @@ export class AggregateSelectionInfo {
             const node = actorNodes[i];
             const thisName: string | null = node.name;
             const thisOpacity: number | null = node.opacity;
-            const thisSpectrumId: string | null = node.spectrumId;
+            const thisVariableId: string | null = node.variableId;
             const thisDiffuseColor: string | null = node.customDiffuseColorHex;
 
-            for (const spectrumInfo of node.spectrumCollection.array) {
-                const idStr = spectrumInfo.id.toString();
+            for (const variableInfo of node.variableCollection.array) {
+                const idStr = variableInfo.id.toString();
 
-                if (!obj.#spectrumOptions.has(idStr)) {
-                    const val = await AggregateSpectrumInfo.getInstanceAsync(
+                if (!obj.#variableOptions.has(idStr)) {
+                    const val = await AggregateVariableInfo.getInstanceAsync(
                         actorNodes,
                         obj,
-                        spectrumInfo
+                        variableInfo
                     );
-                    obj.#spectrumOptions.set(idStr, val);
+                    obj.#variableOptions.set(idStr, val);
                 }
             }
 
             if (i === 0) {
                 obj.#displayName = thisName;
                 obj.#displayOpacity = thisOpacity;
-                obj.#displaySpectrumId = thisSpectrumId;
+                obj.#displayVariableId = thisVariableId;
                 obj.#displayDiffuseColor = thisDiffuseColor;
             } else {
                 obj.#displayName !== thisName && (obj.#displayName = undefined);
 
                 obj.#displayOpacity !== thisOpacity && (obj.#displayOpacity = undefined);
 
-                obj.#displaySpectrumId !== thisSpectrumId && (obj.#displaySpectrumId = undefined);
+                obj.#displayVariableId !== thisVariableId && (obj.#displayVariableId = undefined);
 
                 obj.#displayDiffuseColor !== thisDiffuseColor &&
                     (obj.#displayDiffuseColor = undefined);
             }
         }
 
-        if (obj.#displaySpectrumId != null) {
-            obj.#currentSpectrumInfo = obj.#spectrumOptions.get(obj.#displaySpectrumId.toString());
+        if (obj.#displayVariableId != null) {
+            obj.#currentVariableInfo = obj.#variableOptions.get(obj.#displayVariableId.toString());
 
-            if (obj.#currentSpectrumInfo == null) {
-                console.warn(`invalid spectrumId: '${obj.#displaySpectrumId}'`);
+            if (obj.#currentVariableInfo == null) {
+                console.warn(`invalid variableId: '${obj.#displayVariableId}'`);
             }
         } else {
-            obj.#currentSpectrumInfo = obj.#displaySpectrumId;
+            obj.#currentVariableInfo = obj.#displayVariableId;
         }
 
         return obj;
@@ -177,32 +177,32 @@ export class AggregateSelectionInfo {
     }
 
     /**
-     * Gets the spectrum identifier shared by the selected nodes.
+     * Gets the variable identifier shared by the selected nodes.
      *
-     * @returns The shared spectrum ID, `null` when unset, or `undefined` when
+     * @returns The shared variable ID, `null` when unset, or `undefined` when
      * mixed.
      */
-    get displaySpectrumId(): string | null | undefined {
-        return this.#displaySpectrumId;
+    get displayVariableId(): string | null | undefined {
+        return this.#displayVariableId;
     }
 
     /**
-     * Gets information about the currently selected spectrum.
+     * Gets information about the currently selected variable.
      *
-     * @returns The current spectrum information, `null` when no valid spectrum
+     * @returns The current variable information, `null` when no valid variable
      * is selected, or `undefined` when the selection is mixed.
      */
-    get currentSpectrumInfo(): AggregateSpectrumInfo | null | undefined {
-        return this.#currentSpectrumInfo;
+    get currentVariableInfo(): AggregateVariableInfo | null | undefined {
+        return this.#currentVariableInfo;
     }
 
     /**
-     * Gets all available aggregate spectrum options.
+     * Gets all available aggregate variable options.
      *
-     * @returns A map of spectrum IDs to aggregate spectrum information.
+     * @returns A map of variable IDs to aggregate variable information.
      */
-    get spectrumOptions(): ReadonlyMap<string, AggregateSpectrumInfo> {
-        return this.#spectrumOptions;
+    get variableOptions(): ReadonlyMap<string, AggregateVariableInfo> {
+        return this.#variableOptions;
     }
 
     /**
@@ -238,36 +238,36 @@ export class AggregateSelectionInfo {
     };
 
     /**
-     * Selects a spectrum by its numeric or string identifier.
+     * Selects a variable by its numeric or string identifier.
      *
-     * When the identifier is not present in {@link spectrumOptions}, the
-     * current spectrum and display spectrum ID are set to `null`. Passing
+     * When the identifier is not present in {@link variableOptions}, the
+     * current variable and display variable ID are set to `null`. Passing
      * `null` or `undefined` preserves that value and clears or marks the
      * selection as mixed, respectively.
      *
-     * The `onSpectrumChange` handler is invoked after the selection is updated.
+     * The `onVariableChange` handler is invoked after the selection is updated.
      *
-     * @param id - The spectrum identifier to select, `null` to clear the
+     * @param id - The variable identifier to select, `null` to clear the
      * selection, or `undefined` to represent a mixed selection.
-     * @returns Information about the selected spectrum, `null` when no matching
-     * spectrum exists, or `undefined` for a mixed selection.
+     * @returns Information about the selected variable, `null` when no matching
+     * variable exists, or `undefined` for a mixed selection.
      */
-    setDisplaySpectrumId = (
+    setDisplayVariableId = (
         id: number | string | null | undefined
-    ): AggregateSpectrumInfo | null | undefined => {
+    ): AggregateVariableInfo | null | undefined => {
         if (id != null) {
-            this.#currentSpectrumInfo = this.#spectrumOptions.get(id.toString()) ?? null;
+            this.#currentVariableInfo = this.#variableOptions.get(id.toString()) ?? null;
 
-            this.#displaySpectrumId = this.#currentSpectrumInfo?.id ?? null;
+            this.#displayVariableId = this.#currentVariableInfo?.id ?? null;
         } else {
-            this.#currentSpectrumInfo = id;
-            this.#displaySpectrumId = id;
+            this.#currentVariableInfo = id;
+            this.#displayVariableId = id;
         }
 
-        if (this.#events.onSpectrumChange != null) {
-            this.#events.onSpectrumChange(this.#currentSpectrumInfo);
+        if (this.#events.onVariableChange != null) {
+            this.#events.onVariableChange(this.#currentVariableInfo);
         }
 
-        return this.#currentSpectrumInfo;
+        return this.#currentVariableInfo;
     };
 }
