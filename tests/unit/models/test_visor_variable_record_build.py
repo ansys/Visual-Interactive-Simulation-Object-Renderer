@@ -4,8 +4,8 @@ The registry is a hand-written fake; every expected value is a hand-written
 literal, never recomputed the way the code computes it.
 """
 from ansys.visor.viewer.core.visor_enums import VisorVtkVariableType
-from ansys.visor.viewer.vtk.variables.visor_part_variables import VisorPartVariables
 from ansys.visor.viewer.models.common.visor_variable_record import VisorVariableRecords
+from ansys.visor.viewer.vtk.variables.visor_part_variables import VisorPartVariables
 from ansys.visor.viewer.vtk.variables.visor_variables import VisorVariable
 
 POINT = VisorVtkVariableType.POINT
