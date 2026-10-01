@@ -1,29 +1,29 @@
 import { VisorSceneNodeExtended } from '../state/VisorSceneGraph.tsx';
-import { VisorSpectrumInfo } from '../state/VisorSpectrumManager.tsx';
-import { AggregateSpectrumComponentInfo } from './AggregateSpectrumComponentInfo.tsx';
+import { VisorVariableInfo } from '../state/VisorVariableManager.tsx';
+import { AggregateVariableComponentInfo } from './AggregateVariableComponentInfo.tsx';
 import { AggregateSelectionInfo } from './AggregateSelectionInfo.tsx';
 
 /**
- * Represents aggregate spectrum information for a collection of selected scene
+ * Represents aggregate variable information for a collection of selected scene
  * nodes.
  *
- * The class resolves the available spectrum components and determines whether
+ * The class resolves the available variable components and determines whether
  * the selected nodes share a common component to display.
  *
- * Instances must be created with {@link AggregateSpectrumInfo.getInstanceAsync}.
+ * Instances must be created with {@link AggregateVariableInfo.getInstanceAsync}.
  */
-export class AggregateSpectrumInfo {
+export class AggregateVariableInfo {
     /**
-     * Creates an uninitialized aggregate spectrum information object.
+     * Creates an uninitialized aggregate variable information object.
      *
      * @private
      */
     private constructor() {}
 
-    /** Metadata for the spectrum represented by this instance. */
-    #spectrumInfo!: VisorSpectrumInfo;
+    /** Metadata for the variable represented by this instance. */
+    #variableInfo!: VisorVariableInfo;
 
-    /** Selection state associated with this spectrum. */
+    /** Selection state associated with this variable. */
     #selectionInfo!: AggregateSelectionInfo;
 
     /**
@@ -39,42 +39,42 @@ export class AggregateSpectrumInfo {
      * Information for the currently displayed component.
      *
      * This follows the same nullability semantics as
-     * {@link AggregateSpectrumInfo.displayComponentId}.
+     * {@link AggregateVariableInfo.displayComponentId}.
      */
-    #currentComponentInfo: AggregateSpectrumComponentInfo | null | undefined = null;
+    #currentComponentInfo: AggregateVariableComponentInfo | null | undefined = null;
 
     /**
      * Available component information, indexed by the component ID converted to
      * a string.
      */
-    #componentOptions: Map<string, AggregateSpectrumComponentInfo> = new Map();
+    #componentOptions: Map<string, AggregateVariableComponentInfo> = new Map();
 
     /**
-     * Creates and initializes aggregate spectrum information for a collection
+     * Creates and initializes aggregate variable information for a collection
      * of scene nodes.
      *
      * Component metadata is resolved asynchronously. The selected nodes are then
-     * inspected to determine whether they share a common spectrum component.
+     * inspected to determine whether they share a common variable component.
      *
-     * When a node's configured component is unavailable for the spectrum, the
+     * When a node's configured component is unavailable for the variable, the
      * first component option is used as its fallback.
      *
      * @param actorNodes - Scene nodes included in the aggregate selection.
-     * @param selectionInfo - Selection state that owns this spectrum information.
-     * @param spectrumInfo - Metadata describing the spectrum and its components.
-     * @returns A fully initialized aggregate spectrum information instance.
+     * @param selectionInfo - Selection state that owns this variable information.
+     * @param variableInfo - Metadata describing the variable and its components.
+     * @returns A fully initialized aggregate variable information instance.
      */
     static async getInstanceAsync(
         actorNodes: VisorSceneNodeExtended[],
         selectionInfo: AggregateSelectionInfo,
-        spectrumInfo: VisorSpectrumInfo
-    ): Promise<AggregateSpectrumInfo> {
-        const obj = new AggregateSpectrumInfo();
+        variableInfo: VisorVariableInfo
+    ): Promise<AggregateVariableInfo> {
+        const obj = new AggregateVariableInfo();
         obj.#selectionInfo = selectionInfo;
-        obj.#spectrumInfo = spectrumInfo;
+        obj.#variableInfo = variableInfo;
 
-        for (const componentMetadata of spectrumInfo.componentOptions) {
-            const val = await AggregateSpectrumComponentInfo.getInstanceAsync(
+        for (const componentMetadata of variableInfo.componentOptions) {
+            const val = await AggregateVariableComponentInfo.getInstanceAsync(
                 actorNodes,
                 obj,
                 componentMetadata
@@ -84,13 +84,13 @@ export class AggregateSpectrumInfo {
 
         for (let i = 0; i < actorNodes.length; i++) {
             const node = actorNodes[i];
-            const spectrum = node.spectrumCollection.getSpectrum(spectrumInfo.id);
-            let thisComponentId: number | null = node.spectrumComponent;
+            const variable = node.variableCollection.getVariable(variableInfo.id);
+            let thisComponentId: number | null = node.variableComponent;
 
-            if (spectrum != null) {
-                if (spectrum.getRangeInfo(node.spectrumComponent) == null) {
+            if (variable != null) {
+                if (variable.getRangeInfo(node.variableComponent) == null) {
                     // Default to the first component option.
-                    thisComponentId = spectrum.componentOptions[0].id;
+                    thisComponentId = variable.componentOptions[0].id;
                 }
             }
 
@@ -118,21 +118,21 @@ export class AggregateSpectrumInfo {
     }
 
     /**
-     * Gets the spectrum's unique identifier.
+     * Gets the variable's unique identifier.
      *
-     * @returns The spectrum identifier.
+     * @returns The variable identifier.
      */
-    get id(): VisorSpectrumInfo['id'] {
-        return this.#spectrumInfo.id;
+    get id(): VisorVariableInfo['id'] {
+        return this.#variableInfo.id;
     }
 
     /**
-     * Gets the underlying spectrum metadata.
+     * Gets the underlying variable metadata.
      *
-     * @returns The spectrum metadata associated with this instance.
+     * @returns The variable metadata associated with this instance.
      */
-    get metadata(): VisorSpectrumInfo {
-        return this.#spectrumInfo;
+    get metadata(): VisorVariableInfo {
+        return this.#variableInfo;
     }
 
     /**
@@ -146,13 +146,13 @@ export class AggregateSpectrumInfo {
     }
 
     /**
-     * Gets all available spectrum components.
+     * Gets all available variable components.
      *
      * The map is keyed by each component ID converted to a string.
      *
      * @returns A map of component IDs to component information.
      */
-    get componentOptions(): Map<string, AggregateSpectrumComponentInfo> {
+    get componentOptions(): Map<string, AggregateVariableComponentInfo> {
         return this.#componentOptions;
     }
 
@@ -163,15 +163,15 @@ export class AggregateSpectrumInfo {
      * is selected, or `undefined` when the selected nodes do not share a common
      * component.
      */
-    get currentComponentInfo(): AggregateSpectrumComponentInfo | null | undefined {
+    get currentComponentInfo(): AggregateVariableComponentInfo | null | undefined {
         return this.#currentComponentInfo;
     }
 
     /**
-     * Changes the component displayed for the current spectrum.
+     * Changes the component displayed for the current variable.
      *
-     * The spectrum must be the current spectrum in the associated selection.
-     * After the value is updated, the selection's spectrum-component-change
+     * The variable must be the current variable in the associated selection.
+     * After the value is updated, the selection's variable-component-change
      * callback is invoked when one is registered.
      *
      * @param id - The component ID to display. Numeric and string IDs are
@@ -179,16 +179,16 @@ export class AggregateSpectrumInfo {
      * marks the component state accordingly.
      * @returns Information for the selected component, `null` when the ID does
      * not match an available component, or `undefined` when explicitly passed.
-     * @throws {Error} When there is no current spectrum.
-     * @throws {Error} When this instance is not the current spectrum.
+     * @throws {Error} When there is no current variable.
+     * @throws {Error} When this instance is not the current variable.
      */
     setDisplayComponentId = (
         id: number | string | null | undefined
-    ): AggregateSpectrumComponentInfo | null | undefined => {
-        if (this.#selectionInfo.currentSpectrumInfo == null) {
-            throw new Error('component should not be changed when the current spectrum is null');
-        } else if (this.#selectionInfo.currentSpectrumInfo !== this) {
-            throw new Error('component should not be changed on a spectrum that is not current');
+    ): AggregateVariableComponentInfo | null | undefined => {
+        if (this.#selectionInfo.currentVariableInfo == null) {
+            throw new Error('component should not be changed when the current variable is null');
+        } else if (this.#selectionInfo.currentVariableInfo !== this) {
+            throw new Error('component should not be changed on a variable that is not current');
         }
 
         if (id != null) {
@@ -201,8 +201,8 @@ export class AggregateSpectrumInfo {
 
         const events = this.#selectionInfo.events;
 
-        if (events.onSpectrumComponentChange != null) {
-            events.onSpectrumComponentChange(this.#selectionInfo.currentSpectrumInfo);
+        if (events.onVariableComponentChange != null) {
+            events.onVariableComponentChange(this.#selectionInfo.currentVariableInfo);
         }
 
         return this.#currentComponentInfo;

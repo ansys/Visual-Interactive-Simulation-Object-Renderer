@@ -7,7 +7,7 @@ import VisorAppState from './VisorAppState.tsx';
  * (`ansys.visor.viewer.models.runtime.visor_scene_details`). Bumped whenever
  * the scene-details wire shape changes incompatibly. See proposal §2.
  */
-export const SCENE_DETAILS_SCHEMA_VERSION = 2;
+export const SCENE_DETAILS_SCHEMA_VERSION = 3;
 
 /**
  * Thrown when the payload's `schemaVersion` does not match the client's

@@ -226,7 +226,7 @@ class VisorLocalRenderer(IRenderer):
     def apply_color_variable(
         self,
         node_id: int,
-        spectrum_id: str,
+        variable_id: str,
         array_type: str,
         array_name: str,
         component: int,
@@ -240,7 +240,7 @@ class VisorLocalRenderer(IRenderer):
         already be a :class:`VisorVtkVariableType`; it is parsed at the
         trigger boundary, never here, and the pipeline compares it by
         identity, so any other value is a logged no-op there.
-        *spectrum_id* is not forwarded -- it is stored opaquely by the
+        *variable_id* is not forwarded -- it is stored opaquely by the
         registry and is not needed to configure the mapper.  An unknown
         *node_id* is a logged no-op, never a raise.
         """
@@ -270,7 +270,7 @@ class VisorLocalRenderer(IRenderer):
     def refresh_color_variable_range(
         self,
         node_id: int,
-        spectrum_id: str,
+        variable_id: str,
         array_type: str,
         array_name: str,
         component: int,

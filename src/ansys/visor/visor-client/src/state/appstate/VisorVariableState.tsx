@@ -9,7 +9,7 @@ import {
 } from './VisorStateCommon.tsx';
 import type { FieldAssociation } from './vtkInfo/VisorVtkDataArray.tsx';
 
-export default class VisorSpectrumState {
+export default class VisorVariableState {
     private _id: string = '';
     private _arrayName: string = '';
     private _type: FieldAssociation | undefined = undefined;
@@ -18,7 +18,7 @@ export default class VisorSpectrumState {
     private _ranges: (number[] | undefined)[] = [];
 
     constructor(
-        state: StateInput<VisorSpectrumState> = null,
+        state: StateInput<VisorVariableState> = null,
         key: string | number | null | undefined = null
     ) {
         this.copy(state, false, key);
@@ -99,14 +99,14 @@ export default class VisorSpectrumState {
     }
 
     copy(
-        state: StateInput<VisorSpectrumState> = null,
+        state: StateInput<VisorVariableState> = null,
         replace = false,
         key: string | number | null | undefined = null
     ): this {
         if (state != null) {
             let data: JsonDict;
 
-            if (state instanceof VisorSpectrumState) {
+            if (state instanceof VisorVariableState) {
                 data = state.toDict();
             } else {
                 data = parseState(state)!;
@@ -115,7 +115,7 @@ export default class VisorSpectrumState {
             const thisId = (data.id ?? this._id)?.toString();
 
             if ((key = key?.toString()) != null && key !== thisId) {
-                throw new Error(`Spectrum state with id '${thisId}' does not equal key '${key}'`);
+                throw new Error(`Variable state with id '${thisId}' does not equal key '${key}'`);
             }
 
             this.setId(thisId);

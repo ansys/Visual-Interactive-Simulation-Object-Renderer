@@ -11,7 +11,7 @@ from ansys.visor.viewer.models.runtime.vtk.runtime_vtk_info import RuntimeVTKInf
 from ansys.visor.viewer.models.runtime.vtk.scene_graph_node_info import SceneGraphNodeInfo
 
 # Bumped whenever the scene-details wire shape changes incompatibly.
-SCENE_DETAILS_SCHEMA_VERSION: int = 2
+SCENE_DETAILS_SCHEMA_VERSION: int = 3
 
 
 class VisorSceneDetails(BaseModel):

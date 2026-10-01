@@ -1,9 +1,9 @@
 import { AggregateSelectionInfo } from '../aggregate/AggregateSelectionInfo.tsx';
 import type { VisorSceneNodeExtended } from '../state/VisorSceneGraph.tsx';
 import type {
-    VisorSpectrumComponentMetadata,
-    VisorSpectrumInfo,
-} from '../state/VisorSpectrumManager.tsx';
+    VisorVariableComponentMetadata,
+    VisorVariableInfo,
+} from '../state/VisorVariableManager.tsx';
 
 describe('AggregateSelectionInfo', () => {
     afterEach(() => {
@@ -15,31 +15,31 @@ describe('AggregateSelectionInfo', () => {
 
         expect(result.displayName).toBeNull();
         expect(result.displayOpacity).toBeNull();
-        expect(result.displaySpectrumId).toBeNull();
+        expect(result.displayVariableId).toBeNull();
         expect(result.displayDiffuseColor).toBeNull();
-        expect(result.currentSpectrumInfo).toBeNull();
-        expect(result.spectrumOptions.size).toBe(0);
+        expect(result.currentVariableInfo).toBeNull();
+        expect(result.variableOptions.size).toBe(0);
     });
 
     test('aggregates matching values from all actor nodes', async () => {
-        const spectrum = createSpectrum(10, [1]);
+        const variable = createVariable(10, [1]);
 
         const actorNodes = [
             createActorNode({
                 name: 'mesh',
                 opacity: 0.5,
-                spectrumId: '10',
-                spectrumComponent: 1,
+                variableId: '10',
+                variableComponent: 1,
                 customDiffuseColorHex: '#123456',
-                spectra: [spectrum],
+                variables: [variable],
             }),
             createActorNode({
                 name: 'mesh',
                 opacity: 0.5,
-                spectrumId: '10',
-                spectrumComponent: 1,
+                variableId: '10',
+                variableComponent: 1,
                 customDiffuseColorHex: '#123456',
-                spectra: [spectrum],
+                variables: [variable],
             }),
         ];
 
@@ -47,84 +47,84 @@ describe('AggregateSelectionInfo', () => {
 
         expect(result.displayName).toBe('mesh');
         expect(result.displayOpacity).toBe(0.5);
-        expect(result.displaySpectrumId).toBe('10');
+        expect(result.displayVariableId).toBe('10');
         expect(result.displayDiffuseColor).toBe('#123456');
 
-        expect(result.spectrumOptions.size).toBe(1);
-        expect(result.spectrumOptions.has('10')).toBe(true);
-        expect(result.currentSpectrumInfo).toBe(result.spectrumOptions.get('10'));
-        expect(result.currentSpectrumInfo?.id).toBe('10');
+        expect(result.variableOptions.size).toBe(1);
+        expect(result.variableOptions.has('10')).toBe(true);
+        expect(result.currentVariableInfo).toBe(result.variableOptions.get('10'));
+        expect(result.currentVariableInfo?.id).toBe('10');
     });
 
-    test('stores each spectrum only once when several nodes expose it', async () => {
-        const spectrum = createSpectrum(10, [1]);
+    test('stores each variable only once when several nodes expose it', async () => {
+        const variable = createVariable(10, [1]);
 
         const actorNodes = [
             createActorNode({
-                spectra: [spectrum],
-                spectrumId: '10',
-                spectrumComponent: 1,
+                variables: [variable],
+                variableId: '10',
+                variableComponent: 1,
             }),
             createActorNode({
-                spectra: [spectrum],
-                spectrumId: '10',
-                spectrumComponent: 1,
+                variables: [variable],
+                variableId: '10',
+                variableComponent: 1,
             }),
             createActorNode({
-                spectra: [spectrum],
-                spectrumId: '10',
-                spectrumComponent: 1,
+                variables: [variable],
+                variableId: '10',
+                variableComponent: 1,
             }),
         ];
 
         const result = await AggregateSelectionInfo.getInstanceAsync(actorNodes);
 
-        expect(result.spectrumOptions.size).toBe(1);
-        expect([...result.spectrumOptions.keys()]).toEqual(['10']);
+        expect(result.variableOptions.size).toBe(1);
+        expect([...result.variableOptions.keys()]).toEqual(['10']);
     });
 
-    test('collects different spectrum options from the actor nodes', async () => {
-        const spectrum10 = createSpectrum(10, [1]);
-        const spectrum20 = createSpectrum(20, [1]);
+    test('collects different variable options from the actor nodes', async () => {
+        const variable10 = createVariable(10, [1]);
+        const variable20 = createVariable(20, [1]);
 
         const actorNodes = [
             createActorNode({
-                spectra: [spectrum10],
-                spectrumId: '10',
-                spectrumComponent: 1,
+                variables: [variable10],
+                variableId: '10',
+                variableComponent: 1,
             }),
             createActorNode({
-                spectra: [spectrum20],
-                spectrumId: '10',
-                spectrumComponent: 1,
+                variables: [variable20],
+                variableId: '10',
+                variableComponent: 1,
             }),
         ];
 
         const result = await AggregateSelectionInfo.getInstanceAsync(actorNodes);
 
-        expect([...result.spectrumOptions.keys()]).toEqual(['10', '20']);
+        expect([...result.variableOptions.keys()]).toEqual(['10', '20']);
     });
 
     test('uses undefined for values that differ between actor nodes', async () => {
-        const spectrum10 = createSpectrum(10, [1]);
-        const spectrum20 = createSpectrum(20, [1]);
+        const variable10 = createVariable(10, [1]);
+        const variable20 = createVariable(20, [1]);
 
         const actorNodes = [
             createActorNode({
                 name: 'mesh A',
                 opacity: 0.25,
-                spectrumId: '10',
-                spectrumComponent: 1,
+                variableId: '10',
+                variableComponent: 1,
                 customDiffuseColorHex: '#111111',
-                spectra: [spectrum10, spectrum20],
+                variables: [variable10, variable20],
             }),
             createActorNode({
                 name: 'mesh B',
                 opacity: 0.75,
-                spectrumId: '20',
-                spectrumComponent: 1,
+                variableId: '20',
+                variableComponent: 1,
                 customDiffuseColorHex: '#222222',
-                spectra: [spectrum10, spectrum20],
+                variables: [variable10, variable20],
             }),
         ];
 
@@ -132,30 +132,30 @@ describe('AggregateSelectionInfo', () => {
 
         expect(result.displayName).toBeUndefined();
         expect(result.displayOpacity).toBeUndefined();
-        expect(result.displaySpectrumId).toBeUndefined();
+        expect(result.displayVariableId).toBeUndefined();
         expect(result.displayDiffuseColor).toBeUndefined();
-        expect(result.currentSpectrumInfo).toBeUndefined();
+        expect(result.currentVariableInfo).toBeUndefined();
     });
 
     test('preserves values that match while marking only differing values undefined', async () => {
-        const spectrum = createSpectrum(10, [1]);
+        const variable = createVariable(10, [1]);
 
         const actorNodes = [
             createActorNode({
                 name: 'same name',
                 opacity: 0.25,
-                spectrumId: '10',
-                spectrumComponent: 1,
+                variableId: '10',
+                variableComponent: 1,
                 customDiffuseColorHex: '#123456',
-                spectra: [spectrum],
+                variables: [variable],
             }),
             createActorNode({
                 name: 'same name',
                 opacity: 0.75,
-                spectrumId: '10',
-                spectrumComponent: 1,
+                variableId: '10',
+                variableComponent: 1,
                 customDiffuseColorHex: '#123456',
-                spectra: [spectrum],
+                variables: [variable],
             }),
         ];
 
@@ -163,24 +163,24 @@ describe('AggregateSelectionInfo', () => {
 
         expect(result.displayName).toBe('same name');
         expect(result.displayOpacity).toBeUndefined();
-        expect(result.displaySpectrumId).toBe('10');
+        expect(result.displayVariableId).toBe('10');
         expect(result.displayDiffuseColor).toBe('#123456');
     });
 
-    test('warns when the common spectrum ID is not an available option', async () => {
+    test('warns when the common variable ID is not an available option', async () => {
         const warningSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
 
         const actorNode = createActorNode({
-            spectrumId: '999',
-            spectrumComponent: 1,
-            spectra: [createSpectrum(10, [1])],
+            variableId: '999',
+            variableComponent: 1,
+            variables: [createVariable(10, [1])],
         });
 
         const result = await AggregateSelectionInfo.getInstanceAsync([actorNode]);
 
-        expect(result.displaySpectrumId).toBe('999');
-        expect(result.currentSpectrumInfo).toBeUndefined();
-        expect(warningSpy).toHaveBeenCalledWith("invalid spectrumId: '999'");
+        expect(result.displayVariableId).toBe('999');
+        expect(result.currentVariableInfo).toBeUndefined();
+        expect(warningSpy).toHaveBeenCalledWith("invalid variableId: '999'");
     });
 
     test('setDisplayName updates the displayed name', async () => {
@@ -226,116 +226,116 @@ describe('AggregateSelectionInfo', () => {
         expect(result.displayOpacity).toBeNull();
     });
 
-    test('setDisplaySpectrumId selects an available spectrum', async () => {
-        const spectrum10 = createSpectrum(10, [1]);
-        const spectrum20 = createSpectrum(20, [1]);
+    test('setDisplayVariableId selects an available variable', async () => {
+        const variable10 = createVariable(10, [1]);
+        const variable20 = createVariable(20, [1]);
 
         const result = await AggregateSelectionInfo.getInstanceAsync([
             createActorNode({
-                spectrumId: '10',
-                spectrumComponent: 1,
-                spectra: [spectrum10, spectrum20],
+                variableId: '10',
+                variableComponent: 1,
+                variables: [variable10, variable20],
             }),
         ]);
 
-        const selected = result.setDisplaySpectrumId(20);
+        const selected = result.setDisplayVariableId(20);
 
-        expect(selected).toBe(result.spectrumOptions.get('20'));
-        expect(result.currentSpectrumInfo).toBe(result.spectrumOptions.get('20'));
-        expect(result.displaySpectrumId).toBe('20');
+        expect(selected).toBe(result.variableOptions.get('20'));
+        expect(result.currentVariableInfo).toBe(result.variableOptions.get('20'));
+        expect(result.displayVariableId).toBe('20');
     });
 
-    test('setDisplaySpectrumId accepts a string ID', async () => {
-        const spectrum = createSpectrum(10, [1]);
+    test('setDisplayVariableId accepts a string ID', async () => {
+        const variable = createVariable(10, [1]);
 
         const result = await AggregateSelectionInfo.getInstanceAsync([
             createActorNode({
-                spectrumId: null,
-                spectrumComponent: 1,
-                spectra: [spectrum],
+                variableId: null,
+                variableComponent: 1,
+                variables: [variable],
             }),
         ]);
 
-        const selected = result.setDisplaySpectrumId('10');
+        const selected = result.setDisplayVariableId('10');
 
-        expect(selected).toBe(result.spectrumOptions.get('10'));
-        expect(result.displaySpectrumId).toBe('10');
+        expect(selected).toBe(result.variableOptions.get('10'));
+        expect(result.displayVariableId).toBe('10');
     });
 
-    test('setDisplaySpectrumId returns null for an unavailable spectrum', async () => {
-        const spectrum = createSpectrum(10, [1]);
+    test('setDisplayVariableId returns null for an unavailable variable', async () => {
+        const variable = createVariable(10, [1]);
 
         const result = await AggregateSelectionInfo.getInstanceAsync([
             createActorNode({
-                spectrumId: '10',
-                spectrumComponent: 1,
-                spectra: [spectrum],
+                variableId: '10',
+                variableComponent: 1,
+                variables: [variable],
             }),
         ]);
 
-        const selected = result.setDisplaySpectrumId('999');
+        const selected = result.setDisplayVariableId('999');
 
         expect(selected).toBeNull();
-        expect(result.currentSpectrumInfo).toBeNull();
-        expect(result.displaySpectrumId).toBeNull();
+        expect(result.currentVariableInfo).toBeNull();
+        expect(result.displayVariableId).toBeNull();
     });
 
-    test('setDisplaySpectrumId preserves null and undefined', async () => {
-        const spectrum = createSpectrum(10, [1]);
+    test('setDisplayVariableId preserves null and undefined', async () => {
+        const variable = createVariable(10, [1]);
 
         const result = await AggregateSelectionInfo.getInstanceAsync([
             createActorNode({
-                spectrumId: '10',
-                spectrumComponent: 1,
-                spectra: [spectrum],
+                variableId: '10',
+                variableComponent: 1,
+                variables: [variable],
             }),
         ]);
 
-        expect(result.setDisplaySpectrumId(null)).toBeNull();
-        expect(result.currentSpectrumInfo).toBeNull();
-        expect(result.displaySpectrumId).toBeNull();
+        expect(result.setDisplayVariableId(null)).toBeNull();
+        expect(result.currentVariableInfo).toBeNull();
+        expect(result.displayVariableId).toBeNull();
 
-        expect(result.setDisplaySpectrumId(undefined)).toBeUndefined();
-        expect(result.currentSpectrumInfo).toBeUndefined();
-        expect(result.displaySpectrumId).toBeUndefined();
+        expect(result.setDisplayVariableId(undefined)).toBeUndefined();
+        expect(result.currentVariableInfo).toBeUndefined();
+        expect(result.displayVariableId).toBeUndefined();
     });
 
-    test('setDisplaySpectrumId invokes onSpectrumChange', async () => {
-        const spectrum10 = createSpectrum(10, [1]);
-        const spectrum20 = createSpectrum(20, [1]);
+    test('setDisplayVariableId invokes onVariableChange', async () => {
+        const variable10 = createVariable(10, [1]);
+        const variable20 = createVariable(20, [1]);
 
         const result = await AggregateSelectionInfo.getInstanceAsync([
             createActorNode({
-                spectrumId: '10',
-                spectrumComponent: 1,
-                spectra: [spectrum10, spectrum20],
+                variableId: '10',
+                variableComponent: 1,
+                variables: [variable10, variable20],
             }),
         ]);
 
         const handler = jest.fn();
-        result.events.onSpectrumChange = handler;
+        result.events.onVariableChange = handler;
 
-        const selected = result.setDisplaySpectrumId(20);
+        const selected = result.setDisplayVariableId(20);
 
         expect(handler).toHaveBeenCalledTimes(1);
         expect(handler).toHaveBeenCalledWith(selected);
     });
 
-    test('setDisplaySpectrumId invokes the event with null for an invalid ID', async () => {
-        const spectrum = createSpectrum(10, [1]);
+    test('setDisplayVariableId invokes the event with null for an invalid ID', async () => {
+        const variable = createVariable(10, [1]);
 
         const result = await AggregateSelectionInfo.getInstanceAsync([
             createActorNode({
-                spectrumId: '10',
-                spectrumComponent: 1,
-                spectra: [spectrum],
+                variableId: '10',
+                variableComponent: 1,
+                variables: [variable],
             }),
         ]);
 
         const handler = jest.fn();
-        result.events.onSpectrumChange = handler;
+        result.events.onVariableChange = handler;
 
-        result.setDisplaySpectrumId(999);
+        result.setDisplayVariableId(999);
 
         expect(handler).toHaveBeenCalledWith(null);
     });
@@ -343,15 +343,15 @@ describe('AggregateSelectionInfo', () => {
     test('events initially contain null handlers', async () => {
         const result = await AggregateSelectionInfo.getInstanceAsync([]);
 
-        expect(result.events.onSpectrumChange).toBeNull();
-        expect(result.events.onSpectrumComponentChange).toBeNull();
+        expect(result.events.onVariableChange).toBeNull();
+        expect(result.events.onVariableComponentChange).toBeNull();
     });
 });
 
-interface SpectrumFixture {
-    metadata: VisorSpectrumInfo;
+interface VariableFixture {
+    metadata: VisorVariableInfo;
     runtime: {
-        componentOptions: VisorSpectrumComponentMetadata[];
+        componentOptions: VisorVariableComponentMetadata[];
         getRangeInfo: jest.Mock;
     };
 }
@@ -359,27 +359,27 @@ interface SpectrumFixture {
 interface ActorNodeOptions {
     name?: string | null;
     opacity?: number | null;
-    spectrumId?: string | null;
-    spectrumComponent?: number;
+    variableId?: string | null;
+    variableComponent?: number;
     customDiffuseColorHex?: string | null;
-    spectra?: SpectrumFixture[];
+    variables?: VariableFixture[];
 }
 
-function createSpectrum(id: number, componentIds: number[]): SpectrumFixture {
+function createVariable(id: number, componentIds: number[]): VariableFixture {
     const componentOptions = componentIds.map((componentId) => ({
         id: componentId,
         name: `Component ${componentId}`,
-    })) as VisorSpectrumComponentMetadata[];
+    })) as VisorVariableComponentMetadata[];
 
     const validIds = new Set(componentIds);
     const idString = id.toString();
 
-    const metadata: VisorSpectrumInfo = {
+    const metadata: VisorVariableInfo = {
         id: idString,
         type: 'POINT',
-        name: `spectrum-${idString}`,
+        name: `variable-${idString}`,
         shape: componentIds.length === 1 ? 'Scalar' : `Vector${componentIds.length}`,
-        fullName: `POINT - spectrum-${idString}`,
+        fullName: `POINT - variable-${idString}`,
         numComponents: componentIds.length,
         componentOptions,
         getRangeInfo: (componentId) => {
@@ -416,24 +416,24 @@ function createSpectrum(id: number, componentIds: number[]): SpectrumFixture {
 function createActorNode({
     name = 'mesh',
     opacity = 1,
-    spectrumId = null,
-    spectrumComponent = 0,
+    variableId = null,
+    variableComponent = 0,
     customDiffuseColorHex = '#ffffff',
-    spectra = [],
+    variables = [],
 }: ActorNodeOptions = {}): VisorSceneNodeExtended {
     return {
         name,
         opacity,
-        spectrumId,
-        spectrumComponent,
+        variableId,
+        variableComponent,
         customDiffuseColorHex,
 
-        spectrumCollection: {
-            array: spectra.map((spectrum) => spectrum.metadata),
+        variableCollection: {
+            array: variables.map((variable) => variable.metadata),
 
-            getSpectrum: jest.fn((id: number | string) => {
-                const match = spectra.find(
-                    (spectrum) => spectrum.metadata.id.toString() === id.toString()
+            getVariable: jest.fn((id: number | string) => {
+                const match = variables.find(
+                    (variable) => variable.metadata.id.toString() === id.toString()
                 );
 
                 return match?.runtime ?? null;

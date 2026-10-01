@@ -66,7 +66,7 @@ def test_runtime_to_persisted_basic(monkeypatch):
         "scene": type("Scene", (), {
             "unit": "m",
             "camera": "cam",
-            "spectrum_states": {"var": 1},
+            "variable_states": {"var": 1},
             "dataset_states": {1: {"state": 123}},
             "cross_section": "cs",
             "orthographic_enabled": True,
@@ -107,7 +107,7 @@ def test_runtime_to_persisted_skips_missing_dataset(monkeypatch):
         "scene": type("Scene", (), {
             "unit": "m",
             "camera": "cam",
-            "spectrum_states": {},
+            "variable_states": {},
             "dataset_states": {123: {"data": 1}},
             "cross_section": None,
             "orthographic_enabled": False,
