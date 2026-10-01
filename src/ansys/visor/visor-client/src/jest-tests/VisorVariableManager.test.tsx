@@ -368,4 +368,3 @@ function heldVariable(overrides: Record<string, unknown> = {}): VisorVariableInf
 
     return manager.globalVariableCollection.array[0];
 }
-
