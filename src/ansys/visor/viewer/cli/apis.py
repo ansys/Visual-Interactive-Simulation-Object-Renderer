@@ -61,7 +61,7 @@ class ServerAPI:
         resp = requests.get(f"{self.base}/info")
         print(resp.json())
 
-    def initialize(self, host, port, rendering_mode, standalone, dark_mode, start):
+    def initialize(self, host, port, rendering_mode, standalone, dark_mode, start=False):
         """Initialize the server with viewer configuration.
 
         Parameters
