@@ -1,10 +1,7 @@
 import json
 import subprocess
 import sys
-from unittest.mock import MagicMock, mock_open, patch
-
-import pytest
-import requests
+from unittest.mock import mock_open, patch
 
 from ansys.visor.viewer.cli.apis import InstanceAPI, LogsAPI, ServerAPI
 from ansys.visor.viewer.core.visor_enums import RenderingMode
