@@ -79,6 +79,12 @@ class ServerAPI:
             Whether to enable dark mode in the viewer UI.
         start : bool
             Whether to start the viewer instance immediately after initialization.
+
+        Raises
+        ------
+        requests.HTTPError
+            If the ``/initialize`` request or, when ``start`` is ``True``,
+            the ``/start`` request returns an HTTP error status.
         """
         data = {"host": host, "port": port, "rendering_mode": rendering_mode, "standalone": standalone,
                 "dark_mode": dark_mode}
@@ -89,6 +95,7 @@ class ServerAPI:
             resp = requests.post(f"{self.base}/start", json={})
             print(resp)
             print(resp.json())
+            resp.raise_for_status()
 
 
     def list(self):
@@ -290,6 +297,12 @@ class LogsAPI:
         ----------
         force : bool, optional
             When ``True``, skip the confirmation prompt.  Defaults to ``False``.
+
+        Returns
+        -------
+        bool
+            ``False`` if removing the log directory failed, ``True`` otherwise
+            (including when the directory does not exist or the user aborts).
 
         Notes
         -----

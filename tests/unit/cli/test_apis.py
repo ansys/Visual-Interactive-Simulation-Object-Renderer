@@ -1,7 +1,10 @@
 import json
 import subprocess
 import sys
-from unittest.mock import mock_open, patch
+from unittest.mock import MagicMock, mock_open, patch
+
+import pytest
+import requests
 
 from ansys.visor.viewer.cli.apis import InstanceAPI, LogsAPI, ServerAPI
 from ansys.visor.viewer.core.visor_enums import RenderingMode
@@ -59,6 +62,20 @@ def test_serverapi_initialize_with_start_also_starts_instance():
             "standalone": True, "dark_mode": False,
         })
         mock_post.assert_any_call(f"{api.base}/start", json={})
+
+def test_serverapi_initialize_with_start_raises_on_start_failure():
+    """Verify that an HTTP error from /start is propagated."""
+    api = ServerAPI("host", 1234)
+    init_resp = MagicMock()
+    init_resp.json.return_value = {"result": "ok"}
+    start_resp = MagicMock()
+    start_resp.json.return_value = {"detail": "failed"}
+    start_resp.raise_for_status.side_effect = requests.HTTPError("500")
+    with patch("requests.post", side_effect=[init_resp, start_resp]), patch("builtins.print"):
+        with pytest.raises(requests.HTTPError):
+            api.initialize("h", 1, RenderingMode.LOCAL, True, dark_mode=False, start=True)
+    init_resp.raise_for_status.assert_called_once()
+    start_resp.raise_for_status.assert_called_once()
 
 def test_serverapi_list_prints_urls():
     """Verify that available instance URLs are printed."""
@@ -250,7 +267,15 @@ def test_logsapi_clear_logs_reports_failure(tmp_path):
     with patch("builtins.input", return_value="y"), \
          patch("builtins.print") as mock_print, \
          patch("shutil.rmtree", side_effect=OSError("boom")):
-        api.clear_logs()
+        assert api.clear_logs() is False
+        mock_print.assert_any_call(f"Failed to remove log directory {tmp_path}: boom")
+
+def test_logsapi_clear_logs_force_reports_failure(tmp_path):
+    """Verify that a forced removal failure returns False."""
+    api = LogsAPI(str(tmp_path))
+    with patch("builtins.print") as mock_print, \
+         patch("shutil.rmtree", side_effect=OSError("boom")):
+        assert api.clear_logs(force=True) is False
         mock_print.assert_any_call(f"Failed to remove log directory {tmp_path}: boom")
 
 def test_logsapi_clear_logs_force_skips_confirmation(tmp_path):
