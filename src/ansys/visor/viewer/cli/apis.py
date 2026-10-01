@@ -85,6 +85,7 @@ class ServerAPI:
                 "dark_mode": dark_mode}
         resp = requests.post(f"{self.base}/initialize", json=data)
         print(resp.json())
+        resp.raise_for_status()
         if start:
             resp = requests.post(f"{self.base}/start", json={})
             print(resp)
