@@ -2,7 +2,6 @@ import socket
 from unittest.mock import MagicMock, patch
 
 import pytest
-import requests
 
 import ansys.visor.viewer.cli.visor_cli as visor_cli
 from ansys.visor.viewer.core.visor_enums import RenderingMode
