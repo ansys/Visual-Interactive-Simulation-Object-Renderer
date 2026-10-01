@@ -211,6 +211,23 @@ describe('CameraGestureTracker', () => {
         expect(onSettled).toHaveBeenCalledWith('programmatic');
     });
 
+    // ---- the orientation widget's mark --------------------------------------
+
+    test('a camera event followed by the widget mark within 300 ms reports gesture', () => {
+        // The widget's mark can arrive after the camera events it belongs
+        // to, so this exercises the retroactive branch of noteWidgetGesture.
+        // The mark-first order is covered by the wheel test above, via the
+        // same #markImpulse code path.
+        tracker.noteCameraEvent();
+        jest.advanceTimersByTime(299);
+
+        tracker.noteWidgetGesture();
+        jest.advanceTimersByTime(300);
+
+        expect(onSettled).toHaveBeenCalledTimes(1);
+        expect(onSettled).toHaveBeenCalledWith('gesture');
+    });
+
     // ---- listener management and teardown ----------------------------------
 
     test('the remover returned by addSettledListener stops reports', () => {
