@@ -481,17 +481,12 @@ async function mountOnDeliveredRecord(
     const { frontend, triggerSender } = makeFrontend();
     const part = frontend.sceneGraph.descendantActorNodesOrSelfDictionary[PART_A_ID];
     frontend.setTreeViewUtil(makeTreeViewUtilDouble([part]));
-    await frontend.setAppStateAsync(
-        { scene: { variableStates: { [variableId]: record } } },
-        false
-    );
+    await frontend.setAppStateAsync({ scene: { variableStates: { [variableId]: record } } }, false);
     await part.setColorVariableAsync(variableId, component);
 
     let container: HTMLElement = null!;
     await act(async () => {
-        container = render(
-            <Panel_TopRight visorState={frontend} onLoad={() => {}} />
-        ).container;
+        container = render(<Panel_TopRight visorState={frontend} onLoad={() => {}} />).container;
     });
     await frontend.panelTopRightUtilPromise;
     return { frontend, container, triggerSender };
