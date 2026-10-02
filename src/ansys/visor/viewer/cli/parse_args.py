@@ -65,6 +65,12 @@ def parse_args():
         default=None,
         help="Dark mode (True or False, default: from settings or server default)"
     )
+    init_parser.add_argument(
+        "--start",
+        default=False,
+        action="store_true",
+        help="Start the instance after initialization (default: False)"
+    )
 
     # list API
     server_sub.add_parser("list", help="List Visor instances")
@@ -118,18 +124,34 @@ def parse_args():
     # Logs subcommands
     ######################
     logs_parser = subparsers.add_parser("logs", help="Log file operations")
-    logs_parser.add_argument("log_name", nargs="?", help="Name of the log file (without .log)")
-    logs_parser.add_argument("-f", "--follow",
-                             action="store_true",
-                             help="Follow the log file (like tail -f)"
-                             )
     logs_parser.add_argument("--log-dir",
                              default=None,
                              help="Directory containing log files (default: from settings)"
                              )
-    logs_parser.add_argument(
+    logs_sub = logs_parser.add_subparsers(dest="action", required=True)
+
+    # list API
+    logs_sub.add_parser("list", help="List available logs")
+
+    # show API
+    tail_parser = logs_sub.add_parser("tail", help="Tail the log file")
+    tail_parser.add_argument("log_name",
+                             nargs="?",
+                             help="Name of the log file (without .log)",
+                             default="visor")
+    tail_parser.add_argument("-f", "--follow",
+                             action="store_true",
+                             help="Follow the log file (like tail -f)"
+                             )
+    tail_parser.add_argument(
         "-n", "--lines", type=int, default=10,
         help="Number of lines to show from the end of the log file (default: 10)"
     )
+
+    # clear API
+    clear_parser = logs_sub.add_parser("clear", help="Delete the log directory and its contents")
+    clear_parser.add_argument("-f", "--force",
+                              action="store_true",
+                              help="Delete the log directory without prompting for confirmation")
 
     return parser.parse_args()
