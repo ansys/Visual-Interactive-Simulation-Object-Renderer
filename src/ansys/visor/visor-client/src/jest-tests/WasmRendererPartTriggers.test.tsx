@@ -61,6 +61,8 @@ function makeAnnotation(): WasmRendererAnnotation {
 
 function makeFakeWasmObjects() {
     const lut = {
+        // A non-zero id marks this as a LUT the mapper already owns.
+        id: 301,
         SetHueRange: jest.fn(async () => undefined),
         SetVectorModeToMagnitude: jest.fn(async () => undefined),
     };
@@ -332,27 +334,60 @@ describe('WasmRenderer per-part applies still mutate their wasm objects', () => 
         expect(property.SetDiffuseColor).toHaveBeenCalledWith(1, 0, 0);
     });
 
-    test('setColorVariableAsync still configures the mapper and the default table', async () => {
+    const POINT_PRESSURE = {
+        variableId: 'POINT::pressure::1',
+        variableType: 'POINT' as const,
+        variableName: 'pressure',
+        component: 0,
+        min: 2,
+        max: 8,
+    };
+
+    test('setColorVariableAsync still configures the mapper and the lookup table', async () => {
         const { renderer, mapper, lut } = await makeRenderer(makeSender());
 
-        await renderer.setColorVariableAsync(NODE_ID, {
-            variableId: 'POINT::pressure::1',
-            variableType: 'POINT',
-            variableName: 'pressure',
-            component: 0,
-            min: 2,
-            max: 8,
-        });
+        await renderer.setColorVariableAsync(NODE_ID, POINT_PRESSURE);
 
         expect(mapper.SetScalarModeToUsePointFieldData).toHaveBeenCalled();
         expect(mapper.SetScalarRange).toHaveBeenCalledWith(2, 8);
         expect(mapper.SetColorModeToMapScalars).toHaveBeenCalled();
         expect(mapper.ColorByArrayComponent).toHaveBeenCalledWith('pressure', 0);
         expect(mapper.SetScalarVisibility).toHaveBeenCalledWith(1);
-        expect(mapper.CreateDefaultLookupTable).toHaveBeenCalled();
         expect(lut.SetHueRange).toHaveBeenCalledWith(0.667, 0.0);
         expect(lut.SetVectorModeToMagnitude).toHaveBeenCalled();
     });
+
+    test('setColorVariableAsync reuses the mapper LUT when one already exists', async () => {
+        // Recreating the default table would discard LUT state that already
+        // exists, so an existing table must be configured in place.
+        const { renderer, mapper, lut } = await makeRenderer(makeSender());
+
+        await renderer.setColorVariableAsync(NODE_ID, POINT_PRESSURE);
+
+        expect(mapper.CreateDefaultLookupTable).not.toHaveBeenCalled();
+        expect(mapper.GetLookupTable).toHaveBeenCalledTimes(1);
+        expect(lut.SetHueRange).toHaveBeenCalledWith(0.667, 0.0);
+        expect(lut.SetVectorModeToMagnitude).toHaveBeenCalled();
+    });
+
+    test.each([
+        ['null', null],
+        ['a LUT with no id', { id: 0 }],
+    ])(
+        'setColorVariableAsync creates and configures the default LUT when the mapper returns %s',
+        async (_label, missingLut) => {
+            const { renderer, mapper, lut } = await makeRenderer(makeSender());
+            mapper.GetLookupTable.mockResolvedValueOnce(missingLut as unknown as typeof lut);
+
+            await renderer.setColorVariableAsync(NODE_ID, POINT_PRESSURE);
+
+            expect(mapper.CreateDefaultLookupTable).toHaveBeenCalledTimes(1);
+            expect(mapper.GetLookupTable).toHaveBeenCalledTimes(2);
+            // The table fetched after creation is the one configured.
+            expect(lut.SetHueRange).toHaveBeenCalledWith(0.667, 0.0);
+            expect(lut.SetVectorModeToMagnitude).toHaveBeenCalled();
+        }
+    );
 
     test('clearColorVariableAsync still turns scalar visibility off', async () => {
         const { renderer, mapper } = await makeRenderer(makeSender());
