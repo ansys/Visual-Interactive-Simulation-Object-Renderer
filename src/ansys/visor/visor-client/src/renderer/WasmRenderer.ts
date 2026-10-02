@@ -386,8 +386,11 @@ export class WasmRenderer implements IRenderer {
         await wasmMapper.ColorByArrayComponent(descriptor.variableName, descriptor.component);
         await wasmMapper.SetScalarVisibility(1);
         // Force creation of LUT if not already done. (Alternatively, after 9.5.20250802.dev0, you can call mapper.SetLookupTable(null))
-        await wasmMapper.CreateDefaultLookupTable();
-        const lut = await wasmMapper.GetLookupTable();
+        let lut = await wasmMapper.GetLookupTable();
+        if (lut == null || !lut.id) {
+            await wasmMapper.CreateDefaultLookupTable();
+            const lut = await wasmMapper.GetLookupTable();
+        }
         await lut.SetHueRange(0.667, 0.0);
         await lut.SetVectorModeToMagnitude();
     }
