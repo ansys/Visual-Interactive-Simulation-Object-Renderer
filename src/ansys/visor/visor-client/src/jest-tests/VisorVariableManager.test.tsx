@@ -1,4 +1,4 @@
-import VisorVtkDataArray from '../state/appstate/vtkInfo/VisorVtkDataArray.tsx';
+import VisorVariableState from '../state/appstate/VisorVariableState.tsx';
 import { getVariableManager, VisorVariableInfo } from '../state/VisorVariableManager.tsx';
 
 describe('getVariableManager', () => {
@@ -7,7 +7,7 @@ describe('getVariableManager', () => {
             const manager = getVariableManager();
 
             expect(Object.isFrozen(manager)).toBe(true);
-            expect(typeof manager.addDataArrayMetadata).toBe('function');
+            expect(typeof manager.setRecords).toBe('function');
             expect(typeof manager.finishAddingDataArrayMetadata).toBe('function');
         });
 
@@ -43,7 +43,19 @@ describe('getVariableManager', () => {
             const firstManager = getVariableManager();
             const secondManager = getVariableManager();
 
-            firstManager.addDataArrayMetadata([createDataArray()]);
+            firstManager.setRecords([
+                new VisorVariableState({
+                    id: 'POINT::temperature::1',
+                    arrayName: 'temperature',
+                    type: 'POINT',
+                    numComponents: 1,
+                    partIds: [1],
+                    defaultMagnitudeRange: [0, 10],
+                    defaultRanges: [[0, 10]],
+                    magnitudeRange: [0, 10],
+                    ranges: [[0, 10]],
+                }),
+            ]);
             firstManager.finishAddingDataArrayMetadata();
             secondManager.finishAddingDataArrayMetadata();
 
@@ -52,31 +64,17 @@ describe('getVariableManager', () => {
         });
     });
 
-    describe('addDataArrayMetadata', () => {
-        test('returns an empty frozen collection for an empty array', () => {
-            const manager = getVariableManager();
-
-            const collection = manager.addDataArrayMetadata([]);
-
-            expect(collection.array).toEqual([]);
-            expect(Object.isFrozen(collection)).toBe(true);
-            expect(Object.isFrozen(collection.array)).toBe(true);
-        });
-
+    describe('setRecords', () => {
         test('creates scalar variable metadata', () => {
-            const manager = getVariableManager();
-
-            const collection = manager.addDataArrayMetadata([
-                createDataArray({
-                    type: 'POINT',
-                    name: 'temperature',
-                    numComponents: 1,
-                    magnitudeRange: [-20, 100],
-                    ranges: [[-20, 100]],
-                }),
-            ]);
-
-            const variable = collection.array[0];
+            const variable = heldVariable({
+                id: 'POINT::temperature::1',
+                arrayName: 'temperature',
+                numComponents: 1,
+                defaultMagnitudeRange: [-20, 100],
+                defaultRanges: [[-20, 100]],
+                magnitudeRange: [-20, 100],
+                ranges: [[-20, 100]],
+            });
 
             expect(variable.id).toBe('POINT::temperature::1');
             expect(variable.type).toBe('POINT');
@@ -93,15 +91,16 @@ describe('getVariableManager', () => {
         });
 
         test('creates Vector2 component options', () => {
-            const variable = addSingleVariable(
-                createDataArray({
-                    numComponents: 2,
-                    ranges: [
-                        [-1, 1],
-                        [-2, 2],
-                    ],
-                })
-            );
+            const ranges = [
+                [-1, 1],
+                [-2, 2],
+            ];
+            const variable = heldVariable({
+                id: 'POINT::displacement::2',
+                numComponents: 2,
+                defaultRanges: ranges,
+                ranges,
+            });
 
             expect(variable.shape).toBe('Vector2');
             expect(variable.componentOptions).toEqual([
@@ -112,16 +111,7 @@ describe('getVariableManager', () => {
         });
 
         test('creates Vector3 component options', () => {
-            const variable = addSingleVariable(
-                createDataArray({
-                    numComponents: 3,
-                    ranges: [
-                        [-1, 1],
-                        [-2, 2],
-                        [-3, 3],
-                    ],
-                })
-            );
+            const variable = heldVariable();
 
             expect(variable.shape).toBe('Vector3');
             expect(variable.componentOptions).toEqual([
@@ -133,17 +123,18 @@ describe('getVariableManager', () => {
         });
 
         test('creates Vector4 component options', () => {
-            const variable = addSingleVariable(
-                createDataArray({
-                    numComponents: 4,
-                    ranges: [
-                        [-1, 1],
-                        [-2, 2],
-                        [-3, 3],
-                        [-4, 4],
-                    ],
-                })
-            );
+            const ranges = [
+                [-1, 1],
+                [-2, 2],
+                [-3, 3],
+                [-4, 4],
+            ];
+            const variable = heldVariable({
+                id: 'POINT::displacement::4',
+                numComponents: 4,
+                defaultRanges: ranges,
+                ranges,
+            });
 
             expect(variable.shape).toBe('Vector4');
             expect(variable.componentOptions).toEqual([
@@ -156,12 +147,14 @@ describe('getVariableManager', () => {
         });
 
         test('creates nine-component tensor labels', () => {
-            const variable = addSingleVariable(
-                createDataArray({
-                    numComponents: 9,
-                    ranges: Array.from({ length: 9 }, (_, i) => [-i, i]),
-                })
-            );
+            const ranges = Array.from({ length: 9 }, (_, i) => [-i, i]);
+            const variable = heldVariable({
+                id: 'POINT::stress::9',
+                arrayName: 'stress',
+                numComponents: 9,
+                defaultRanges: ranges,
+                ranges,
+            });
 
             expect(variable.componentOptions).toEqual([
                 { id: -1, name: 'Magnitude' },
@@ -179,102 +172,61 @@ describe('getVariableManager', () => {
 
         test('throws for an unsupported component count', () => {
             const manager = getVariableManager();
+            const ranges = [
+                [0, 1],
+                [0, 1],
+                [0, 1],
+                [0, 1],
+                [0, 1],
+            ];
 
             expect(() => {
-                manager.addDataArrayMetadata([
-                    createDataArray({
+                manager.setRecords([
+                    record({
+                        id: 'POINT::displacement::5',
                         numComponents: 5,
-                        ranges: [
-                            [0, 1],
-                            [0, 1],
-                            [0, 1],
-                            [0, 1],
-                            [0, 1],
-                        ],
+                        defaultRanges: ranges,
+                        ranges,
                     }),
                 ]);
-            }).toThrow('Do we support label info for data arrays with 5 component(s)?');
+            }).toThrow('Do we support label info for variables with 5 component(s)?');
         });
 
         test('returns variables in input order', () => {
             const manager = getVariableManager();
 
-            const collection = manager.addDataArrayMetadata([
-                createDataArray({
-                    name: 'first',
-                }),
-                createDataArray({
-                    name: 'second',
-                }),
+            manager.setRecords([
+                record({ id: 'POINT::first::3', arrayName: 'first' }),
+                record({ id: 'POINT::second::3', arrayName: 'second' }),
             ]);
+            manager.finishAddingDataArrayMetadata();
 
-            expect(collection.array.map((item) => item.name)).toEqual(['first', 'second']);
+            expect(manager.globalVariableCollection.array.map((item) => item.name)).toEqual([
+                'first',
+                'second',
+            ]);
         });
 
-        test('creates separate variables for different names', () => {
+        test('reuses the same variable object for the same ID', () => {
             const manager = getVariableManager();
+            manager.finishAddingDataArrayMetadata();
 
-            const collection = manager.addDataArrayMetadata([
-                createDataArray({
-                    name: 'temperature',
-                }),
-                createDataArray({
-                    name: 'pressure',
-                }),
-            ]);
+            manager.setRecords([record()]);
+            const first = manager.globalVariableCollection.getVariable('POINT::displacement::3');
+            manager.setRecords([record({ magnitudeRange: [1, 9] })]);
 
-            expect(collection.array).toHaveLength(2);
-            expect(collection.array[0]).not.toBe(collection.array[1]);
-        });
-
-        test('creates separate variables for different types', () => {
-            const manager = getVariableManager();
-
-            const collection = manager.addDataArrayMetadata([
-                createDataArray({
-                    type: 'POINT',
-                }),
-                createDataArray({
-                    type: 'CELL',
-                }),
-            ]);
-
-            expect(collection.array).toHaveLength(2);
-            expect(collection.array[0].id).toBe('POINT::displacement::3');
-            expect(collection.array[1].id).toBe('CELL::displacement::3');
-        });
-
-        test('creates separate variables for different component counts', () => {
-            const manager = getVariableManager();
-
-            const collection = manager.addDataArrayMetadata([
-                createDataArray({
-                    numComponents: 2,
-                    ranges: [
-                        [-1, 1],
-                        [-2, 2],
-                    ],
-                }),
-                createDataArray({
-                    numComponents: 3,
-                    ranges: [
-                        [-1, 1],
-                        [-2, 2],
-                        [-3, 3],
-                    ],
-                }),
-            ]);
-
-            expect(collection.array).toHaveLength(2);
-            expect(collection.array[0].id).toBe('POINT::displacement::2');
-            expect(collection.array[1].id).toBe('POINT::displacement::3');
+            expect(first).not.toBeNull();
+            expect(manager.globalVariableCollection.getVariable('POINT::displacement::3')).toBe(
+                first
+            );
         });
     });
 
     describe('local variable collections', () => {
         test('looks up a variable by ID', () => {
             const manager = getVariableManager();
-            const collection = manager.addDataArrayMetadata([createDataArray()]);
+            const collection = manager.getPartVariableCollection(1);
+            manager.setRecords([record()]);
 
             const variable = collection.array[0];
 
@@ -283,65 +235,23 @@ describe('getVariableManager', () => {
 
         test('returns null for null and unknown IDs', () => {
             const manager = getVariableManager();
-            const collection = manager.addDataArrayMetadata([createDataArray()]);
+            const collection = manager.getPartVariableCollection(1);
+            manager.setRecords([record()]);
 
             expect(collection.getVariable(null)).toBeNull();
             expect(collection.getVariable('unknown')).toBeNull();
         });
 
-        test('returns a frozen collection and array', () => {
-            const manager = getVariableManager();
-            const collection = manager.addDataArrayMetadata([createDataArray()]);
-
-            expect(Object.isFrozen(collection)).toBe(true);
-            expect(Object.isFrozen(collection.array)).toBe(true);
-        });
-
         test('variable metadata objects are frozen', () => {
-            const variable = addSingleVariable(createDataArray());
+            const variable = heldVariable();
 
             expect(Object.isFrozen(variable)).toBe(true);
         });
     });
 
     describe('range information', () => {
-        test('returns the magnitude range for component -1', () => {
-            const variable = addSingleVariable(
-                createDataArray({
-                    magnitudeRange: [0, 10],
-                })
-            );
-
-            expect(variable.getRangeInfo(-1)).toEqual({
-                defaultRange: [0, 10],
-                customRange: [0, 10],
-            });
-        });
-
-        test('returns the range for an individual component', () => {
-            const variable = addSingleVariable(
-                createDataArray({
-                    ranges: [
-                        [-1, 1],
-                        [-2, 2],
-                        [-3, 3],
-                    ],
-                })
-            );
-
-            expect(variable.getRangeInfo(0)).toEqual({
-                defaultRange: [-1, 1],
-                customRange: [-1, 1],
-            });
-
-            expect(variable.getRangeInfo(2)).toEqual({
-                defaultRange: [-3, 3],
-                customRange: [-3, 3],
-            });
-        });
-
         test('returns null for null, undefined, and out-of-range components', () => {
-            const variable = addSingleVariable(createDataArray());
+            const variable = heldVariable();
 
             expect(variable.getRangeInfo(null)).toBeNull();
             expect(variable.getRangeInfo(undefined)).toBeNull();
@@ -351,11 +261,7 @@ describe('getVariableManager', () => {
         });
 
         test('returns cloned range arrays', () => {
-            const variable = addSingleVariable(
-                createDataArray({
-                    magnitudeRange: [0, 10],
-                })
-            );
+            const variable = heldVariable();
 
             const first = variable.getRangeInfo(-1)!;
             first.defaultRange[0] = -999;
@@ -370,15 +276,7 @@ describe('getVariableManager', () => {
         });
 
         test('setCustomRange changes only the custom range', () => {
-            const variable = addSingleVariable(
-                createDataArray({
-                    ranges: [
-                        [-1, 1],
-                        [-2, 2],
-                        [-3, 3],
-                    ],
-                })
-            );
+            const variable = heldVariable();
 
             variable.setCustomRange(1, -20, 20);
 
@@ -389,11 +287,7 @@ describe('getVariableManager', () => {
         });
 
         test('setCustomRange can change the magnitude range', () => {
-            const variable = addSingleVariable(
-                createDataArray({
-                    magnitudeRange: [0, 10],
-                })
-            );
+            const variable = heldVariable();
 
             variable.setCustomRange(-1, 2, 8);
 
@@ -404,7 +298,7 @@ describe('getVariableManager', () => {
         });
 
         test('setCustomRange ignores invalid component IDs', () => {
-            const variable = addSingleVariable(createDataArray());
+            const variable = heldVariable();
 
             variable.setCustomRange(-2, -100, 100);
             variable.setCustomRange(100, -100, 100);
@@ -416,168 +310,11 @@ describe('getVariableManager', () => {
         });
     });
 
-    describe('duplicate variable aggregation', () => {
-        test('reuses the same variable object for the same ID', () => {
-            const manager = getVariableManager();
-
-            const firstCollection = manager.addDataArrayMetadata([createDataArray()]);
-
-            const secondCollection = manager.addDataArrayMetadata([createDataArray()]);
-
-            expect(secondCollection.array[0]).toBe(firstCollection.array[0]);
-        });
-
-        test('expands default ranges using duplicate metadata', () => {
-            const manager = getVariableManager();
-
-            const firstVariable = manager.addDataArrayMetadata([
-                createDataArray({
-                    magnitudeRange: [0, 10],
-                    ranges: [
-                        [-1, 1],
-                        [-2, 2],
-                        [-3, 3],
-                    ],
-                }),
-            ]).array[0];
-
-            manager.addDataArrayMetadata([
-                createDataArray({
-                    magnitudeRange: [-5, 20],
-                    ranges: [
-                        [-10, 0.5],
-                        [-1, 15],
-                        [-30, 30],
-                    ],
-                }),
-            ]);
-
-            expect(firstVariable.getRangeInfo(-1)).toEqual({
-                defaultRange: [-5, 20],
-                customRange: [-5, 20],
-            });
-
-            expect(firstVariable.getRangeInfo(0)).toEqual({
-                defaultRange: [-10, 1],
-                customRange: [-10, 1],
-            });
-
-            expect(firstVariable.getRangeInfo(1)).toEqual({
-                defaultRange: [-2, 15],
-                customRange: [-2, 15],
-            });
-
-            expect(firstVariable.getRangeInfo(2)).toEqual({
-                defaultRange: [-30, 30],
-                customRange: [-30, 30],
-            });
-        });
-
-        test('resets custom ranges to the expanded defaults when duplicate metadata is added', () => {
-            const manager = getVariableManager();
-
-            const variable = manager.addDataArrayMetadata([
-                createDataArray({
-                    magnitudeRange: [0, 10],
-                }),
-            ]).array[0];
-
-            variable.setCustomRange(-1, 2, 8);
-
-            expect(variable.getRangeInfo(-1)?.customRange).toEqual([2, 8]);
-
-            manager.addDataArrayMetadata([
-                createDataArray({
-                    magnitudeRange: [-5, 20],
-                }),
-            ]);
-
-            expect(variable.getRangeInfo(-1)).toEqual({
-                defaultRange: [-5, 20],
-                customRange: [-5, 20],
-            });
-        });
-
-        test('keeps existing bounds when duplicate ranges are narrower', () => {
-            const manager = getVariableManager();
-
-            const variable = manager.addDataArrayMetadata([
-                createDataArray({
-                    magnitudeRange: [-10, 20],
-                }),
-            ]).array[0];
-
-            manager.addDataArrayMetadata([
-                createDataArray({
-                    magnitudeRange: [-5, 10],
-                }),
-            ]);
-
-            expect(variable.getRangeInfo(-1)).toEqual({
-                defaultRange: [-10, 20],
-                customRange: [-10, 20],
-            });
-        });
-    });
-
     describe('global variable collection', () => {
-        test('contains variables added before finishing', () => {
-            const manager = getVariableManager();
-
-            manager.addDataArrayMetadata([
-                createDataArray({
-                    name: 'temperature',
-                }),
-                createDataArray({
-                    name: 'pressure',
-                }),
-            ]);
-
-            manager.finishAddingDataArrayMetadata();
-
-            const global = manager.globalVariableCollection;
-
-            expect(global.array).toHaveLength(2);
-            expect(global.array.map((item) => item.name)).toEqual(['temperature', 'pressure']);
-        });
-
-        test('contains only one entry for duplicate variable IDs', () => {
-            const manager = getVariableManager();
-
-            manager.addDataArrayMetadata([
-                createDataArray({
-                    name: 'temperature',
-                }),
-            ]);
-
-            manager.addDataArrayMetadata([
-                createDataArray({
-                    name: 'temperature',
-                }),
-            ]);
-
-            manager.finishAddingDataArrayMetadata();
-
-            expect(manager.globalVariableCollection.array).toHaveLength(1);
-        });
-
-        test('returns the same variable object as a local collection', () => {
-            const manager = getVariableManager();
-
-            const local = manager.addDataArrayMetadata([createDataArray()]);
-
-            manager.finishAddingDataArrayMetadata();
-
-            const id = local.array[0].id;
-            const global = manager.globalVariableCollection;
-
-            expect(global.getVariable(id)).toBe(local.array[0]);
-        });
-
         test('returns null for null and unknown global IDs', () => {
             const manager = getVariableManager();
 
-            manager.addDataArrayMetadata([createDataArray()]);
+            manager.setRecords([record()]);
             manager.finishAddingDataArrayMetadata();
 
             expect(manager.globalVariableCollection.getVariable(null)).toBeNull();
@@ -595,39 +332,39 @@ describe('getVariableManager', () => {
     });
 });
 
-interface DataArrayOptions {
-    indexForType?: number;
-    type?: string;
-    name?: string;
-    numComponents?: number;
-    magnitudeRange?: number[];
-    ranges?: number[][];
-}
-
-function createDataArray({
-    indexForType = 0,
-    type = 'POINT',
-    name = 'displacement',
-    numComponents = 3,
-    magnitudeRange = [0, 10],
-    ranges = [
-        [-1, 1],
-        [-2, 2],
-        [-3, 3],
-    ],
-}: DataArrayOptions = {}): VisorVtkDataArray {
-    return new VisorVtkDataArray({
-        indexForType,
-        type,
-        name,
-        numComponents,
-        magnitudeRange,
-        ranges,
+/**
+ * A complete record, by default `POINT::displacement::3` on part 1 with
+ * magnitude [0, 10] and components [-1, 1], [-2, 2], [-3, 3], custom equal to
+ * default.
+ */
+function record(overrides: Record<string, unknown> = {}): VisorVariableState {
+    return new VisorVariableState({
+        id: 'POINT::displacement::3',
+        arrayName: 'displacement',
+        type: 'POINT',
+        numComponents: 3,
+        partIds: [1],
+        defaultMagnitudeRange: [0, 10],
+        defaultRanges: [
+            [-1, 1],
+            [-2, 2],
+            [-3, 3],
+        ],
+        magnitudeRange: [0, 10],
+        ranges: [
+            [-1, 1],
+            [-2, 2],
+            [-3, 3],
+        ],
+        ...overrides,
     });
 }
 
-function addSingleVariable(dataArray: VisorVtkDataArray): VisorVariableInfo {
+/** The one variable a fresh manager holds after delivering a single record. */
+function heldVariable(overrides: Record<string, unknown> = {}): VisorVariableInfo {
     const manager = getVariableManager();
+    manager.setRecords([record(overrides)]);
+    manager.finishAddingDataArrayMetadata();
 
-    return manager.addDataArrayMetadata([dataArray]).array[0];
+    return manager.globalVariableCollection.array[0];
 }
