@@ -17,6 +17,10 @@ from ansys.visor.viewer.models.runtime.requests.widget_state_payloads import (
     SetBoundingBoxVisibilityPayload,
     SetCrossSectionVisibilityPayload,
     SetEdgesVisiblePayload,
+    SetPanelTopLeftPanelCollapsedPayload,
+    SetPanelTopRightLegendCollapsedPayload,
+    SetPanelTopRightPanelCollapsedPayload,
+    SetPanelTopRightTabIndexPayload,
     SetProjectionPayload,
     SyncCrossSectionPlanePayload,
 )
@@ -75,6 +79,14 @@ class SceneMutationApi(Protocol):
     def sync_cross_section_plane(
         self, origin: List[float], normal: List[float]
     ) -> None: ...
+
+    def set_panel_top_left_panel_collapsed(self, collapsed: bool) -> None: ...
+
+    def set_panel_top_right_panel_collapsed(self, collapsed: bool) -> None: ...
+
+    def set_panel_top_right_legend_collapsed(self, collapsed: bool) -> None: ...
+
+    def set_panel_top_right_tab_index(self, tab_index: int) -> None: ...
 
 
 # ----------------------------------------------------------------------
@@ -209,6 +221,10 @@ class LocalApp:
         set_bounding_box_visibility: shows or hides the bounding-box outline
         set_projection: sets parallel or perspective projection on the camera record
         sync_cross_section_plane: records a settled cross-section plane reported by the frontend
+        set_panel_top_left_panel_collapsed: records whether the top-left panel is collapsed
+        set_panel_top_right_panel_collapsed: records whether the top-right panel is collapsed
+        set_panel_top_right_legend_collapsed: records whether the top-right legend is collapsed
+        set_panel_top_right_tab_index: records which top-right tab is active
         set_only_cookie: sets a cookie on the server (note: Trame server only allows a single cookie header)
     Protected Methods:
         _cleanup(): Cleans up the active actor in the visualization pipeline.
@@ -504,6 +520,10 @@ class LocalApp:
     # ``set_projection`` lives here too: it is delivered the same way, but
     # it writes the camera record's projection field rather than a toggle
     # of its own.
+    #
+    # The last four carry UI panel layout, not widget state: no renderer
+    # depends on them, so each coordinator just writes one store field.
+    # Echoes are idempotent for the same reason as the toggles'.
     # ------------------------------------------------------------------
 
     @trigger("set_cross_section_visibility")
@@ -566,6 +586,47 @@ class LocalApp:
         if api is None:
             return
         api.sync_cross_section_plane(payload.origin, payload.normal)
+
+    @trigger("set_panel_top_left_panel_collapsed")
+    @parse_payload(SetPanelTopLeftPanelCollapsedPayload)
+    def set_panel_top_left_panel_collapsed(self, payload) -> None:
+        """Frontend -> Backend: the top-left panel reports its collapsed state."""
+        api = self._mutation_api("set_panel_top_left_panel_collapsed", payload)
+        if api is None:
+            return
+        api.set_panel_top_left_panel_collapsed(payload.collapsed)
+
+    @trigger("set_panel_top_right_panel_collapsed")
+    @parse_payload(SetPanelTopRightPanelCollapsedPayload)
+    def set_panel_top_right_panel_collapsed(self, payload) -> None:
+        """Frontend -> Backend: the top-right panel reports its collapsed state."""
+        api = self._mutation_api("set_panel_top_right_panel_collapsed", payload)
+        if api is None:
+            return
+        api.set_panel_top_right_panel_collapsed(payload.collapsed)
+
+    @trigger("set_panel_top_right_legend_collapsed")
+    @parse_payload(SetPanelTopRightLegendCollapsedPayload)
+    def set_panel_top_right_legend_collapsed(self, payload) -> None:
+        """Frontend -> Backend: the top-right legend reports its collapsed state."""
+        api = self._mutation_api("set_panel_top_right_legend_collapsed", payload)
+        if api is None:
+            return
+        api.set_panel_top_right_legend_collapsed(payload.collapsed)
+
+    @trigger("set_panel_top_right_tab_index")
+    @parse_payload(SetPanelTopRightTabIndexPayload)
+    def set_panel_top_right_tab_index(self, payload) -> None:
+        """Frontend -> Backend: the top-right panel reports its active tab.
+
+        The index is forwarded verbatim and is never range-checked here; the
+        client's ``selectTab`` is the guard, so a future third tab is a UI
+        change rather than a validation failure at this boundary.
+        """
+        api = self._mutation_api("set_panel_top_right_tab_index", payload)
+        if api is None:
+            return
+        api.set_panel_top_right_tab_index(payload.tab_index)
 
     def set_only_cookie(self, key: str, value: str):
         """

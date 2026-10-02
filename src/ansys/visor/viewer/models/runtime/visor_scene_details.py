@@ -4,6 +4,7 @@ from typing import Dict
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from ansys.visor.viewer.models.common.visor_ui_state import VisorUIState
 from ansys.visor.viewer.models.runtime.dataset.runtime_dataset_state import RuntimeDatasetState
 from ansys.visor.viewer.models.runtime.scene.runtime_app_state import RuntimeAppState
 from ansys.visor.viewer.models.runtime.vtk.renderer_annotation import RendererAnnotation
@@ -26,7 +27,7 @@ class VisorSceneDetails(BaseModel):
     @classmethod
     def from_components(
             cls,
-            dark_mode: bool,
+            ui: VisorUIState,
             unit: str | None,
             dataset_states: Dict[int, RuntimeDatasetState],
             scene_graph_state: SceneGraphNodeInfo | None = None,
@@ -36,13 +37,18 @@ class VisorSceneDetails(BaseModel):
             edges_enabled: bool | None = None,
             bounding_box_enabled: bool | None = None,
     ) -> "VisorSceneDetails":
-        """Construct an instance from components."""
+        """Construct an instance from components.
+
+        The UI record is forwarded whole to
+        :meth:`RuntimeAppState.from_components`; this class does not build one
+        and does not read any field of it.
+        """
         vtk_info = RuntimeVTKInfo(
             scene_graph=scene_graph_state,
             renderer_annotation=renderer_annotation,
         )
         app_state = RuntimeAppState.from_components(
-            dark_mode=dark_mode,
+            ui=ui,
             unit=unit,
             dataset_states=dataset_states,
             orthographic_enabled=orthographic_enabled,

@@ -57,12 +57,16 @@ export const Panel_TopLeft: FC<{
             'theme-hover-background-3',
         ]) as HTMLButtonElement;
         let isPanelCollapsed = false;
+        let sendEnabled = false;
         collapseButton.onclick = (e) => {
             reactComponentContainer.style.width = `${reactComponentContainer.offsetWidth}px`;
             treeViewContainer.style.display = 'none';
             collapseButton.remove();
             collapseButtonContainer.appendChild(expandButton);
             isPanelCollapsed = true;
+            if (sendEnabled) {
+                void visorState.sendPanelTopLeftPanelCollapsedAsync(isPanelCollapsed);
+            }
         };
         expandButton.onclick = (e) => {
             reactComponentContainer.style.removeProperty('width');
@@ -70,6 +74,9 @@ export const Panel_TopLeft: FC<{
             expandButton.remove();
             collapseButtonContainer.appendChild(collapseButton);
             isPanelCollapsed = false;
+            if (sendEnabled) {
+                void visorState.sendPanelTopLeftPanelCollapsedAsync(isPanelCollapsed);
+            }
         };
         expandButton.click();
         visorState.setTreeViewUtil(treeViewUtil.current);
@@ -86,6 +93,10 @@ export const Panel_TopLeft: FC<{
             }
         );
         visorState.setPanelTopLeftUtil(util);
+        // Must stay on the line after the util handoff: it suppresses the mount click above and is
+        // open before any delivered apply awaiting the util promise can click; scaffolding,
+        // removed when delivery is separated from mutation.
+        sendEnabled = true;
         onLoad(util);
     }, []);
     return (
