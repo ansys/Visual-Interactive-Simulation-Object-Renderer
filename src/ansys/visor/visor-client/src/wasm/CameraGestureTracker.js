@@ -25,6 +25,11 @@
  *   the camera event can arrive before the tracker has noticed the input.
  *   To cover that, a wheel event or a z/r keydown arriving while a report is
  *   pending marks that report `gesture` as well.
+ *
+ * - The orientation widget is not a DOM input at all: its face click reaches
+ *   the camera inside wasm. It is marked explicitly, through
+ *   `noteWidgetGesture`, from the observer `WasmRenderer` registers on the
+ *   widget's `EndInteractionEvent`.
  */
 
 /**
@@ -188,6 +193,22 @@ export default class CameraGestureTracker {
             clearTimeout(this.#settleTimer);
         }
         this.#settleTimer = setTimeout(this.#reportSettled, CAMERA_SETTLE_MS);
+    };
+
+    /**
+     * The orientation widget's end-of-interaction mark, called via
+     * `VtkScene.noteWidgetGesture` from the `EndInteractionEvent` observer in
+     * `WasmRenderer`. A face click involves no button, wheel or z/r key, so
+     * without this mark the move settles as `programmatic`.
+     *
+     * Delegates to `#markImpulse` to reuse the same window and retroactive
+     * stickiness as a wheel notch or z/r press, so a mark landing before or
+     * after the camera events it belongs to is still caught.
+     *
+     * @return {void}
+     */
+    noteWidgetGesture = () => {
+        this.#markImpulse();
     };
 
     /**
