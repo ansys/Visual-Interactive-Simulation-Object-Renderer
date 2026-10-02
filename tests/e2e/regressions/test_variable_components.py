@@ -130,7 +130,7 @@ class TestTensorComponentColoring:
 @pytest.mark.regression
 class TestTensorVariableDropdown:
     """
-    Verify that the variable/spectrum dropdown in the UI contains
+    Verify that the variable dropdown in the UI contains
     all 9 tensor components plus Magnitude (10 total) when a dataset with
     a 9-component variable is loaded.
     """

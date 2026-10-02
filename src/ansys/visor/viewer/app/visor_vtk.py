@@ -459,9 +459,6 @@ class VisorVTK(Visor):
             if dataset is not None:
                 dataset.mark_clean()
 
-        if self._scene.dataset_count > 0:
-            self._scene.finalize_scene(skip_reset_camera=True)
-
     """ Protected Methods (async start and stop for FastAPI) """
     @require_server_off
     @validate_input_metadata_types

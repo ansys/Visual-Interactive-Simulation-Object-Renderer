@@ -66,7 +66,7 @@ def test_default_fields():
     state = RuntimeSceneState()
 
     assert state.dataset_states == {}
-    assert state.spectrum_states == {}
+    assert state.variable_states == {}
     assert state.unit is None
 
 
@@ -98,17 +98,17 @@ def test_dataset_states_accept_valid_mapping():
 
 
 # ------------------------------------------------------------------
-# spectrum_states
+# variable_states
 # ------------------------------------------------------------------
 
-def test_spectrum_states_default_and_assignment():
-    """spectrum_states should accept valid mapping."""
+def test_variable_states_default_and_assignment():
+    """variable_states should accept valid mapping."""
 
     data = {
         "a": MagicMock(spec=VisorVariableState),
     }
 
-    state = RuntimeSceneState(spectrum_states=data)
+    state = RuntimeSceneState(variable_states=data)
 
-    assert "a" in state.spectrum_states
-    assert isinstance(state.spectrum_states["a"], VisorVariableState)
+    assert "a" in state.variable_states
+    assert isinstance(state.variable_states["a"], VisorVariableState)

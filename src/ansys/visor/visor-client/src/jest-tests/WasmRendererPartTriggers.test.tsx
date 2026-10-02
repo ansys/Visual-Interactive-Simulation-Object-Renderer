@@ -219,9 +219,9 @@ describe('WasmRenderer per-part sends: trigger name and payload', () => {
         const { renderer } = await makeRenderer(sender);
 
         await renderer.sendPartColorVariableAsync(7, {
-            spectrumId: 'POINT::pressure::1',
-            spectrumType: 'POINT',
-            spectrumName: 'pressure',
+            variableId: 'POINT::pressure::1',
+            variableType: 'POINT',
+            variableName: 'pressure',
             component: 0,
             min: 2,
             max: 8,
@@ -243,9 +243,9 @@ describe('WasmRenderer per-part sends: trigger name and payload', () => {
         const { renderer } = await makeRenderer(sender);
 
         await renderer.sendPartColorVariableAsync(7, {
-            spectrumId: 'CELL::temperature::3',
-            spectrumType: 'CELL',
-            spectrumName: 'temperature',
+            variableId: 'CELL::temperature::3',
+            variableType: 'CELL',
+            variableName: 'temperature',
             component: -1,
             min: -1.5,
             max: 4.5,
@@ -270,9 +270,9 @@ describe('WasmRenderer per-part sends: trigger name and payload', () => {
         const { renderer } = await makeRenderer(sender);
 
         await renderer.sendPartColorVariableAsync(7, {
-            spectrumId: 'not::a::parseable::id::at::all',
-            spectrumType: 'POINT',
-            spectrumName: 'pressure',
+            variableId: 'not::a::parseable::id::at::all',
+            variableType: 'POINT',
+            variableName: 'pressure',
             component: 0,
             min: 0,
             max: 1,
@@ -336,9 +336,9 @@ describe('WasmRenderer per-part applies still mutate their wasm objects', () => 
         const { renderer, mapper, lut } = await makeRenderer(makeSender());
 
         await renderer.setColorVariableAsync(NODE_ID, {
-            spectrumId: 'POINT::pressure::1',
-            spectrumType: 'POINT',
-            spectrumName: 'pressure',
+            variableId: 'POINT::pressure::1',
+            variableType: 'POINT',
+            variableName: 'pressure',
             component: 0,
             min: 2,
             max: 8,
@@ -373,9 +373,9 @@ describe('WasmRenderer sends when no sender is injected', () => {
         await expect(renderer.sendPartSelectedAsync(7, true)).resolves.toBeUndefined();
         await expect(
             renderer.sendPartColorVariableAsync(7, {
-                spectrumId: 'POINT::pressure::1',
-                spectrumType: 'POINT',
-                spectrumName: 'pressure',
+                variableId: 'POINT::pressure::1',
+                variableType: 'POINT',
+                variableName: 'pressure',
                 component: 0,
                 min: 2,
                 max: 8,

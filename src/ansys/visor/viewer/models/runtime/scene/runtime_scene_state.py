@@ -28,7 +28,7 @@ class RuntimeSceneState(BaseModel):
     edges_enabled: bool | None = Field(default=None, alias="edgesEnabled")
     bounding_box_enabled: bool | None = Field(default=None, alias="boundingBoxEnabled")
     dataset_states: Dict[int, "RuntimeDatasetState"] = Field(default_factory=dict, alias="datasetStates")
-    spectrum_states: Dict[str, "VisorVariableState"] = Field(default_factory=dict, alias="spectrumStates")
+    variable_states: Dict[str, "VisorVariableState"] = Field(default_factory=dict, alias="variableStates")
 
     @field_validator("dataset_states", mode="before")
     @classmethod

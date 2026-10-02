@@ -118,7 +118,7 @@ def test_save_path_rejects_a_variable_state_missing_the_identity_fields():
     """The save path must keep raising on a client that stops emitting the fields.
 
     ``VisorVariableState`` is shared between ``PersistedSceneState.variable_states``
-    and ``RuntimeSceneState.spectrum_states``, so making the three identity
+    and ``RuntimeSceneState.variable_states``, so making the three identity
     fields optional on the model would have relaxed this coercion too.  The
     tolerance for old save files lives on the persisted container instead, and
     this pins the fact that it did not leak here: reads tolerate absence,
@@ -128,7 +128,7 @@ def test_save_path_rejects_a_variable_state_missing_the_identity_fields():
         "requestId": 1,
         "appState": {
             "scene": {
-                "spectrumStates": {
+                "variableStates": {
                     "POINT::pressure::1": {
                         "id": "POINT::pressure::1",
                         "magnitudeRange": [0.0, 1.0],
@@ -153,7 +153,7 @@ def test_save_path_accepts_a_variable_state_carrying_the_identity_fields():
         "requestId": 1,
         "appState": {
             "scene": {
-                "spectrumStates": {
+                "variableStates": {
                     "POINT::pressure::1": {
                         "id": "POINT::pressure::1",
                         "arrayName": "pressure",
@@ -169,7 +169,7 @@ def test_save_path_accepts_a_variable_state_carrying_the_identity_fields():
 
     resp = VisorSaveStateResponse.model_validate(payload)
 
-    stored = resp.app_state.scene.spectrum_states["POINT::pressure::1"]
+    stored = resp.app_state.scene.variable_states["POINT::pressure::1"]
     assert stored.array_name == "pressure"
     assert stored.num_components == 1
 

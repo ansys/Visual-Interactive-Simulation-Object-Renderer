@@ -32,7 +32,7 @@ Use the following fields on the **Part properties** tab:
 
 - **Color variable**
 
-  - Apply a data array (color variable) to map values to a color spectrum on the selected part.
+  - Apply a data array (color variable) to map values to a color variable on the selected part.
   - On this page, the terms *data array*, *color variable*, and *variable* have the same meaning.
   - Open **Color by variable** to view available variables.
     The list is the union of variables across selected parts.
@@ -79,7 +79,7 @@ Use the following fields on the **Legend settings** tab:
 
 - **Max (color variable maximum)**
 
-  - Set the upper bound of the visible color spectrum for the current color variable.
+  - Set the upper bound of the visible color variable for the current color variable.
   - After you enter a value, press the **Enter** key or click **Apply**.
   - Click **Reset** to restore the dataset's original maximum.
   - This value applies globally to the color variable, not only to one part.
@@ -87,7 +87,7 @@ Use the following fields on the **Legend settings** tab:
 
 - **Min (color variable minimum)**
 
-  - Set the lower bound of the visible color spectrum for the current color variable.
+  - Set the lower bound of the visible color variable for the current color variable.
   - After you enter a value, press the **Enter** key or click **Apply**.
   - Click **Reset** to restore the dataset's original minimum.
   - This value applies globally to the color variable, not only to one part.

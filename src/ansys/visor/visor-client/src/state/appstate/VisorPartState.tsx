@@ -17,8 +17,8 @@ export default class VisorPartState {
     private _visible: boolean | undefined = undefined;
     private _diffuseRgb: Readonly<number[]> | number[] | undefined = undefined;
     private _selected: boolean | undefined = undefined;
-    private _spectrumId: string | null | undefined = undefined;
-    private _spectrumComponent: number | undefined = undefined;
+    private _variableId: string | null | undefined = undefined;
+    private _variableComponent: number | undefined = undefined;
 
     constructor(
         state: StateInput<VisorPartState> = null,
@@ -123,33 +123,33 @@ export default class VisorPartState {
         }
     }
 
-    get spectrumId(): string | null | undefined {
-        return this._spectrumId;
+    get variableId(): string | null | undefined {
+        return this._variableId;
     }
 
-    setSpectrumId(val: string | null | undefined, replace = false): void {
+    setVariableId(val: string | null | undefined, replace = false): void {
         if (val === undefined) {
             if (replace) {
-                this._spectrumId = val;
+                this._variableId = val;
             }
         } else {
             ensureStringOrNull(val, 'val');
-            this._spectrumId = val;
+            this._variableId = val;
         }
     }
 
-    get spectrumComponent(): number | undefined {
-        return this._spectrumComponent;
+    get variableComponent(): number | undefined {
+        return this._variableComponent;
     }
 
-    setSpectrumComponent(val: number | undefined, replace = false): void {
+    setVariableComponent(val: number | undefined, replace = false): void {
         if (val === undefined) {
             if (replace) {
-                this._spectrumComponent = val;
+                this._variableComponent = val;
             }
         } else {
             ensureNumber(val, 'val');
-            this._spectrumComponent = val;
+            this._variableComponent = val;
         }
     }
 
@@ -197,14 +197,14 @@ export default class VisorPartState {
                 replace
             );
             this.setSelected(data.selected === undefined ? this._selected : data.selected, replace);
-            this.setSpectrumId(
-                data.spectrumId === undefined ? this._spectrumId : data.spectrumId,
+            this.setVariableId(
+                data.variableId === undefined ? this._variableId : data.variableId,
                 replace
             );
-            this.setSpectrumComponent(
-                data.spectrumComponent === undefined
-                    ? this._spectrumComponent
-                    : data.spectrumComponent,
+            this.setVariableComponent(
+                data.variableComponent === undefined
+                    ? this._variableComponent
+                    : data.variableComponent,
                 replace
             );
         }
@@ -224,8 +224,8 @@ export default class VisorPartState {
             visible: this.visible,
             diffuseRgb: this.diffuseRgb,
             selected: this.selected,
-            spectrumId: this.spectrumId,
-            spectrumComponent: this.spectrumComponent,
+            variableId: this.variableId,
+            variableComponent: this.variableComponent,
         };
     }
 }

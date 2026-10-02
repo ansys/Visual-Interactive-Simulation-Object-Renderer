@@ -2,8 +2,8 @@ import { FC, useEffect } from 'react';
 import { VisorFrontend } from '../../VisorFrontend.tsx';
 import { AwcIcons } from '../AwcIcons';
 import { VisorSceneNodeExtended } from '../../state/VisorSceneGraph.tsx';
-import { AggregateSpectrumComponentInfo } from '../../aggregate/AggregateSpectrumComponentInfo.tsx';
-import { AggregateSpectrumInfo } from '../../aggregate/AggregateSpectrumInfo.tsx';
+import { AggregateVariableComponentInfo } from '../../aggregate/AggregateVariableComponentInfo.tsx';
+import { AggregateVariableInfo } from '../../aggregate/AggregateVariableInfo.tsx';
 import { Panel_TopRight_Util } from './Panel_TopRight_Util.tsx';
 import { AggregateSelectionInfo } from '../../aggregate/AggregateSelectionInfo.tsx';
 import {
@@ -487,31 +487,31 @@ export const Panel_TopRight: FC<{
                 const aggregateSelectionInfo =
                     await AggregateSelectionInfo.getInstanceAsync(actorNodes);
 
-                aggregateSelectionInfo.events.onSpectrumComponentChange = async (spectrumInfo) => {
-                    await spectrumComponentChangeHandler(spectrumInfo);
-                    await applySpectrumAsync(spectrumInfo?.currentComponentInfo);
+                aggregateSelectionInfo.events.onVariableComponentChange = async (variableInfo) => {
+                    await variableComponentChangeHandler(variableInfo);
+                    await applyVariableAsync(variableInfo?.currentComponentInfo);
                 };
 
-                aggregateSelectionInfo.events.onSpectrumChange = async (spectrumInfo) => {
-                    await spectrumChangeHandler(spectrumInfo);
-                    await applySpectrumAsync(spectrumInfo?.currentComponentInfo);
+                aggregateSelectionInfo.events.onVariableChange = async (variableInfo) => {
+                    await variableChangeHandler(variableInfo);
+                    await applyVariableAsync(variableInfo?.currentComponentInfo);
                 };
 
-                await spectrumChangeHandler(aggregateSelectionInfo.currentSpectrumInfo);
-                await spectrumComponentChangeHandler(aggregateSelectionInfo.currentSpectrumInfo);
+                await variableChangeHandler(aggregateSelectionInfo.currentVariableInfo);
+                await variableComponentChangeHandler(aggregateSelectionInfo.currentVariableInfo);
 
-                async function spectrumComponentChangeHandler(
-                    spectrumInfo: AggregateSpectrumInfo | null | undefined
+                async function variableComponentChangeHandler(
+                    variableInfo: AggregateVariableInfo | null | undefined
                 ) {
-                    const componentInfo = spectrumInfo?.currentComponentInfo;
-                    if (spectrumInfo == null || componentInfo == null) {
+                    const componentInfo = variableInfo?.currentComponentInfo;
+                    if (variableInfo == null || componentInfo == null) {
                         legendPanelNoRangeElem.style.removeProperty('display');
                         legendPanelRangeContainer.style.display = 'none';
                         legendOverlayElem.style.display = 'none';
                         legendOverlayElem_alt.style.display = 'none';
-                        if (spectrumInfo === null) {
+                        if (variableInfo === null) {
                             legendPanelNoRangeElem.innerHTML = `No data array is selected.`;
-                        } else if (spectrumInfo === undefined) {
+                        } else if (variableInfo === undefined) {
                             const msg = `Selected parts must all have the same data array and component`;
                             legendPanelNoRangeElem.innerHTML = `${msg} in order to edit min/max values.`;
                         } else if (componentInfo === null) {
@@ -522,21 +522,21 @@ export const Panel_TopRight: FC<{
                         }
                     } else {
                         componentInfo.events.onMinChange = () => {
-                            updateMinLabel(componentInfo.displaySpectrumMin);
-                            updateLegend(spectrumInfo);
+                            updateMinLabel(componentInfo.displayVariableMin);
+                            updateLegend(variableInfo);
                         };
                         componentInfo.events.onMaxChange = () => {
-                            updateMaxLabel(componentInfo.displaySpectrumMax);
-                            updateLegend(spectrumInfo);
+                            updateMaxLabel(componentInfo.displayVariableMax);
+                            updateLegend(variableInfo);
                         };
-                        updateMinLabel(componentInfo.displaySpectrumMin);
-                        updateMaxLabel(componentInfo.displaySpectrumMax);
-                        updateLegend(spectrumInfo);
+                        updateMinLabel(componentInfo.displayVariableMin);
+                        updateMaxLabel(componentInfo.displayVariableMax);
+                        updateLegend(variableInfo);
                     }
                 }
 
-                function updateLegend(spectrumInfo: AggregateSpectrumInfo) {
-                    const componentInfo = spectrumInfo.currentComponentInfo;
+                function updateLegend(variableInfo: AggregateVariableInfo) {
+                    const componentInfo = variableInfo.currentComponentInfo;
                     if (componentInfo == null) {
                         throw new Error('componentInfo should not be null here');
                     }
@@ -544,24 +544,24 @@ export const Panel_TopRight: FC<{
                     legendPanelRangeContainer.style.removeProperty('display');
                     legendOverlayElem.style.removeProperty('display');
                     legendOverlayElem_alt.style.removeProperty('display');
-                    const spectrumMetadata = spectrumInfo.metadata;
+                    const variableMetadata = variableInfo.metadata;
                     const overlayTitle = `
                         <div class="">
                         <table class="shrink right list pad-h-5 pad-v-10">
                         <tr>
                         <th>Array Type:</th>
-                        <td>${escapeHtml(spectrumMetadata.type)}</td>
+                        <td>${escapeHtml(variableMetadata.type)}</td>
                         </tr>
                         <tr>
                         <th>Array Name:</th>
-                        <td>${escapeHtml(spectrumMetadata.name)}</td>
+                        <td>${escapeHtml(variableMetadata.name)}</td>
                         </tr>
                         <tr>
                         <th>Array Shape:</th>
-                        <td>${escapeHtml(spectrumMetadata.shape)}</td>
+                        <td>${escapeHtml(variableMetadata.shape)}</td>
                         </tr>
                         ${
-                            spectrumMetadata.numComponents > 1
+                            variableMetadata.numComponents > 1
                                 ? `
                         <tr>
                         <th>Component:</th>
@@ -576,8 +576,8 @@ export const Panel_TopRight: FC<{
                     legendOverlayTitleContainer.innerHTML = overlayTitle;
                     legendOverlayTitleContainer_alt.innerHTML = overlayTitle;
                     {
-                        const min = componentInfo.displaySpectrumMin;
-                        const max = componentInfo.displaySpectrumMax;
+                        const min = componentInfo.displayVariableMin;
+                        const max = componentInfo.displayVariableMax;
                         const minRounded =
                             typeof min === 'number'
                                 ? fixValue(min)
@@ -602,47 +602,47 @@ export const Panel_TopRight: FC<{
                     }
                 }
 
-                async function spectrumChangeHandler(
-                    spectrumInfo: AggregateSpectrumInfo | null | undefined
+                async function variableChangeHandler(
+                    variableInfo: AggregateVariableInfo | null | undefined
                 ) {
-                    await spectrumComponentChangeHandler(spectrumInfo);
+                    await variableComponentChangeHandler(variableInfo);
                     componentSelectElem.options.length = 0;
-                    if (spectrumInfo != null) {
+                    if (variableInfo != null) {
                         constantRgbInputContainer.style.display = 'none';
                         propertyPanelComponentContainer.style.removeProperty('display');
                         propertyPanelNoComponentContainer.style.display = 'none';
-                        if (spectrumInfo.displayComponentId === undefined) {
+                        if (variableInfo.displayComponentId === undefined) {
                             const optionElem = document.createElement('option');
                             optionElem.value = '';
                             optionElem.text = '';
                             componentSelectElem.options.add(optionElem);
                         }
-                        for (const item of spectrumInfo.componentOptions.values()) {
+                        for (const item of variableInfo.componentOptions.values()) {
                             const option = document.createElement('option');
                             option.value = item.id.toString();
                             option.text = item.metadata.name;
-                            option.selected = item.id === spectrumInfo.displayComponentId;
+                            option.selected = item.id === variableInfo.displayComponentId;
                             componentSelectElem.options.add(option);
                         }
                         componentSelectElem.disabled = componentSelectElem.options.length === 1;
                         const originalOptionCount = componentSelectElem.options.length;
                         componentSelectElem.onchange = async () => {
-                            if (spectrumInfo.displayComponentId === undefined) {
+                            if (variableInfo.displayComponentId === undefined) {
                                 if (originalOptionCount === componentSelectElem.options.length) {
                                     if (componentSelectElem.selectedIndex !== 0) {
                                         componentSelectElem.options[0].remove();
                                     }
                                 }
                             }
-                            spectrumInfo.setDisplayComponentId(componentSelectElem.value);
+                            variableInfo.setDisplayComponentId(componentSelectElem.value);
                         };
                     } else {
                         propertyPanelComponentContainer.style.display = 'none';
-                        if (spectrumInfo === null) {
+                        if (variableInfo === null) {
                             constantRgbInputContainer.style.removeProperty('display');
                             propertyPanelNoComponentContainer.style.display = 'none';
-                            await clearSpectrumAsync();
-                        } else if (spectrumInfo === undefined) {
+                            await clearVariableAsync();
+                        } else if (variableInfo === undefined) {
                             constantRgbInputContainer.style.display = 'none';
                             propertyPanelNoComponentContainer.style.removeProperty('display');
                             const msg = `Selected parts must all have the same data array in order to`;
@@ -715,21 +715,21 @@ export const Panel_TopRight: FC<{
                 };
                 legendPanelApplyRangeButton.onclick = async () => {
                     const componentInfo =
-                        aggregateSelectionInfo.currentSpectrumInfo?.currentComponentInfo;
+                        aggregateSelectionInfo.currentVariableInfo?.currentComponentInfo;
                     if (componentInfo == null) {
                         throw new Error(
                             `min/max should not be edited if the current component info is null or undefined`
                         );
-                    } else if (componentInfo.setDisplaySpectrumMin(legendPanelMinInput.value)) {
-                        if (componentInfo.setDisplaySpectrumMax(legendPanelMaxInput.value)) {
+                    } else if (componentInfo.setDisplayVariableMin(legendPanelMinInput.value)) {
+                        if (componentInfo.setDisplayVariableMax(legendPanelMaxInput.value)) {
                             const {
                                 id: componentId,
-                                spectrumInfo: { id: spectrumId },
-                                displaySpectrumMin: min,
-                                displaySpectrumMax: max,
+                                variableInfo: { id: variableId },
+                                displayVariableMin: min,
+                                displayVariableMax: max,
                             } = componentInfo;
-                            await visorState.setSpectrumRangeAsync(
-                                spectrumId,
+                            await visorState.setVariableRangeAsync(
+                                variableId,
                                 componentId,
                                 min!,
                                 max!
@@ -741,24 +741,24 @@ export const Panel_TopRight: FC<{
                 legendPanelMinResetButton.onclick = async (e) => {
                     e.preventDefault();
                     const componentInfo =
-                        aggregateSelectionInfo.currentSpectrumInfo?.currentComponentInfo;
+                        aggregateSelectionInfo.currentVariableInfo?.currentComponentInfo;
                     if (componentInfo == null) {
                         throw new Error(
                             `min/max should not be edited if the current component info is null or undefined`
                         );
                     }
-                    updateMinLabel(componentInfo.displaySpectrumDefaultMin);
+                    updateMinLabel(componentInfo.displayVariableDefaultMin);
                 };
                 legendPanelMaxResetButton.onclick = async (e) => {
                     e.preventDefault();
                     const componentInfo =
-                        aggregateSelectionInfo.currentSpectrumInfo?.currentComponentInfo;
+                        aggregateSelectionInfo.currentVariableInfo?.currentComponentInfo;
                     if (componentInfo == null) {
                         throw new Error(
                             `min/max should not be edited if the current component info is null or undefined`
                         );
                     }
-                    updateMaxLabel(componentInfo.displaySpectrumDefaultMax);
+                    updateMaxLabel(componentInfo.displayVariableDefaultMax);
                 };
                 diffuseColorResetButton.onclick = async (e) => {
                     e.preventDefault();
@@ -800,7 +800,7 @@ export const Panel_TopRight: FC<{
                     await visorState.render();
                 }
 
-                async function clearSpectrumAsync() {
+                async function clearVariableAsync() {
                     const promises = [];
                     for (const node of actorNodes) {
                         const promise = node.clearColorVariableAsync();
@@ -810,8 +810,8 @@ export const Panel_TopRight: FC<{
                     await visorState.render();
                 }
 
-                async function applySpectrumAsync(
-                    componentInfo?: AggregateSpectrumComponentInfo | null,
+                async function applyVariableAsync(
+                    componentInfo?: AggregateVariableComponentInfo | null,
                     defaultMin?: boolean,
                     defaultMax?: boolean,
                     typing?: boolean
@@ -820,23 +820,23 @@ export const Panel_TopRight: FC<{
                         return;
                     }
                     const {
-                        spectrumInfo,
-                        displaySpectrumDefaultMin,
-                        displaySpectrumDefaultMax,
-                        displaySpectrumMin,
-                        displaySpectrumMax,
+                        variableInfo,
+                        displayVariableDefaultMin,
+                        displayVariableDefaultMax,
+                        displayVariableMin,
+                        displayVariableMax,
                     } = componentInfo;
                     const min =
-                        defaultMin === true ? displaySpectrumDefaultMin : displaySpectrumMin;
+                        defaultMin === true ? displayVariableDefaultMin : displayVariableMin;
                     const max =
-                        defaultMax === true ? displaySpectrumDefaultMax : displaySpectrumMax;
+                        defaultMax === true ? displayVariableDefaultMax : displayVariableMax;
                     updateMinLabel(min, typing);
                     updateMaxLabel(max, typing);
-                    updateLegend(spectrumInfo);
+                    updateLegend(variableInfo);
                     const promises = [];
                     for (const node of actorNodes) {
                         const promise = node.setColorVariableAsync(
-                            spectrumInfo.id,
+                            variableInfo.id,
                             componentInfo.id
                         );
                         promises.push(promise);
@@ -856,7 +856,7 @@ export const Panel_TopRight: FC<{
                                 return optionElem;
                             })()
                         );
-                        if (aggregateSelectionInfo.displaySpectrumId === undefined) {
+                        if (aggregateSelectionInfo.displayVariableId === undefined) {
                             arr.unshift(
                                 (() => {
                                     const optionElem = document.createElement('option');
@@ -869,7 +869,7 @@ export const Panel_TopRight: FC<{
                         return arr;
                     })()
                 );
-                aggregateSelectionInfo.spectrumOptions.forEach((item) => {
+                aggregateSelectionInfo.variableOptions.forEach((item) => {
                     const { id, metadata } = item;
                     const { type, name, fullName, numComponents } = metadata;
                     const optionElem = document.createElement('option');
@@ -877,19 +877,19 @@ export const Panel_TopRight: FC<{
                     optionElem.value = id.toString();
                     optionElem.dataset.name = name;
                     optionElem.dataset.type = type;
-                    optionElem.selected = id === aggregateSelectionInfo.displaySpectrumId;
+                    optionElem.selected = id === aggregateSelectionInfo.displayVariableId;
                     variableSelectElem.options.add(optionElem);
                 });
                 const originalOptionCount = variableSelectElem.options.length;
                 variableSelectElem.onchange = async () => {
-                    if (aggregateSelectionInfo.displaySpectrumId === undefined) {
+                    if (aggregateSelectionInfo.displayVariableId === undefined) {
                         if (originalOptionCount === variableSelectElem.options.length) {
                             if (variableSelectElem.selectedIndex !== 0) {
                                 variableSelectElem.options[0].remove();
                             }
                         }
                     }
-                    aggregateSelectionInfo.setDisplaySpectrumId(variableSelectElem.value);
+                    aggregateSelectionInfo.setDisplayVariableId(variableSelectElem.value);
                 };
             } else {
                 propertyPanelBodyElem.style.display = 'none';

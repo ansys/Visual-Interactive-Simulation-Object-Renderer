@@ -300,33 +300,33 @@ def test_set_part_selected_mutates_record_and_rejects_unknown_part(registry):
 
 
 def test_set_part_color_variable_sets_id_and_component_together(registry):
-    """Verify set_part_color_variable sets spectrum_id and spectrum_component in one call."""
+    """Verify set_part_color_variable sets variable_id and variable_component in one call."""
     seed = RuntimePartProperties(id=10)
-    assert seed.spectrum_id is None
-    assert seed.spectrum_component is None
+    assert seed.variable_id is None
+    assert seed.variable_component is None
     ds_a = make_part_dataset(dataset_id=1, part_ids=[10], part_states={10: seed})
     registry.datasets = {1: ds_a}
 
     assert registry.set_part_color_variable(10, "POINT::pressure::1", 2) is True
 
     result = registry.get_part_state(10)
-    assert result.spectrum_id == "POINT::pressure::1"
-    assert result.spectrum_component == 2
+    assert result.variable_id == "POINT::pressure::1"
+    assert result.variable_component == 2
 
     assert registry.set_part_color_variable(999999, "POINT::x::1", 0) is False
 
 
 def test_clear_part_color_variable_clears_id_and_component_together(registry):
-    """Verify clear_part_color_variable clears spectrum_id and spectrum_component in one call."""
-    seed = RuntimePartProperties(id=10, spectrum_id="POINT::pressure::1", spectrum_component=2)
+    """Verify clear_part_color_variable clears variable_id and variable_component in one call."""
+    seed = RuntimePartProperties(id=10, variable_id="POINT::pressure::1", variable_component=2)
     ds_a = make_part_dataset(dataset_id=1, part_ids=[10], part_states={10: seed})
     registry.datasets = {1: ds_a}
 
     assert registry.clear_part_color_variable(10) is True
 
     result = registry.get_part_state(10)
-    assert result.spectrum_id is None
-    assert result.spectrum_component is None
+    assert result.variable_id is None
+    assert result.variable_component is None
 
     assert registry.clear_part_color_variable(999999) is False
 

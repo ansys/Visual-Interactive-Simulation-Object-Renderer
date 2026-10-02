@@ -46,7 +46,7 @@ class VisorStateMapper:
         # Scene - camera
         camera = scene_state.camera
         # Scene - variables: Pass through as-is since they are already keyed by stable variable identifier
-        variable_states = scene_state.spectrum_states
+        variable_states = scene_state.variable_states
         # Scene - datasets
         runtime_dataset_states = scene_state.dataset_states
         persisted_dataset_states = {}

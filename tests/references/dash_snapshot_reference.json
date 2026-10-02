@@ -4,7 +4,7 @@
   },
   "scene": {
     "unit": "m",
-    "spectrumStates": {
+    "variableStates": {
       "POINT::Normals::3": {
         "id": "POINT::Normals::3",
         "magnitudeRange": [
@@ -79,8 +79,8 @@
             "opacity": 0.1111111111111111,
             "visible": true,
             "selected": false,
-            "spectrumId": "",
-            "spectrumComponent": -1
+            "variableId": "",
+            "variableComponent": -1
           },
           "level_1_block_0_part_1": {
             "id": "7704132612406141",
@@ -89,8 +89,8 @@
             "opacity": 0.1111111111111111,
             "visible": true,
             "selected": false,
-            "spectrumId": "",
-            "spectrumComponent": -1
+            "variableId": "",
+            "variableComponent": -1
           },
           "level_1_block_0_part_2": {
             "id": "6038438258649815",
@@ -99,8 +99,8 @@
             "opacity": 0.1111111111111111,
             "visible": true,
             "selected": false,
-            "spectrumId": "",
-            "spectrumComponent": -1
+            "variableId": "",
+            "variableComponent": -1
           },
           "level_1_block_1_part_0": {
             "id": "5212416988329659",
@@ -109,8 +109,8 @@
             "opacity": 0.2222222222222222,
             "visible": true,
             "selected": false,
-            "spectrumId": "",
-            "spectrumComponent": -1
+            "variableId": "",
+            "variableComponent": -1
           },
           "level_1_block_1_part_1": {
             "id": "3795994468691737",
@@ -119,8 +119,8 @@
             "opacity": 0.2222222222222222,
             "visible": true,
             "selected": false,
-            "spectrumId": "",
-            "spectrumComponent": -1
+            "variableId": "",
+            "variableComponent": -1
           },
           "level_1_block_1_part_2": {
             "id": "2633610373980222",
@@ -129,8 +129,8 @@
             "opacity": 0.2222222222222222,
             "visible": true,
             "selected": false,
-            "spectrumId": "",
-            "spectrumComponent": -1
+            "variableId": "",
+            "variableComponent": -1
           },
           "level_1_block_2_part_0": {
             "id": "1366333556315428",
@@ -139,8 +139,8 @@
             "opacity": 0.3333333333333333,
             "visible": true,
             "selected": false,
-            "spectrumId": "",
-            "spectrumComponent": -1
+            "variableId": "",
+            "variableComponent": -1
           },
           "level_1_block_2_part_1": {
             "id": "1809875816089870",
@@ -149,8 +149,8 @@
             "opacity": 0.3333333333333333,
             "visible": true,
             "selected": false,
-            "spectrumId": "",
-            "spectrumComponent": -1
+            "variableId": "",
+            "variableComponent": -1
           },
           "level_1_block_2_part_2": {
             "id": "4221596239203654",
@@ -159,8 +159,8 @@
             "opacity": 0.3333333333333333,
             "visible": true,
             "selected": false,
-            "spectrumId": "",
-            "spectrumComponent": -1
+            "variableId": "",
+            "variableComponent": -1
           }
         }
       }

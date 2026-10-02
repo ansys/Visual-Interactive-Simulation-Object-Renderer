@@ -1,10 +1,10 @@
-import { getSpectrumManager, VisorSpectrumCollection } from './state/VisorSpectrumManager.tsx';
+import { getVariableManager, VisorVariableCollection } from './state/VisorVariableManager.tsx';
 import { CreateVisorSceneGraph, VisorSceneNodeExtended } from './state/VisorSceneGraph.tsx';
 import { getPromiseResolver } from './utils/JsHelpers';
 import VisorAppState from './state/appstate/VisorAppState.tsx';
 import VisorDatasetState from './state/appstate/VisorDatasetState.tsx';
 import VisorPartState from './state/appstate/VisorPartState.tsx';
-import VisorSpectrumState from './state/appstate/VisorSpectrumState.tsx';
+import VisorVariableState from './state/appstate/VisorVariableState.tsx';
 import { TreeViewUtil } from './treeview/TreeView.tsx';
 import { StateInput } from './state/appstate/VisorStateCommon.tsx';
 import VisorVtkSceneNode from './state/appstate/vtkInfo/VisorVtkSceneNode.tsx';
@@ -24,9 +24,9 @@ export class VisorFrontend {
         sceneGraphNode: VisorVtkSceneNode,
         triggerSender: TrameTriggerSender
     ) {
-        const spectrumManager = getSpectrumManager();
-        const sceneGraph = CreateVisorSceneGraph(sceneGraphNode, spectrumManager, renderer);
-        spectrumManager.finishAddingDataArrayMetadata();
+        const variableManager = getVariableManager();
+        const sceneGraph = CreateVisorSceneGraph(sceneGraphNode, variableManager, renderer);
+        variableManager.finishAddingDataArrayMetadata();
         renderer.attachSceneGraph(sceneGraph);
 
         let treeViewUtilSet: boolean = false;
@@ -67,7 +67,7 @@ export class VisorFrontend {
         const bp: string = ((window as any).__visorArgs?.basePath ?? '').replace(/\/$/, '');
 
         const self = this;
-        this.globalSpectrumCollection = spectrumManager.globalSpectrumCollection;
+        this.globalVariableCollection = variableManager.globalVariableCollection;
         this.#unit = '';
         this.darkMode = darkMode;
         this.render = async () => {
@@ -100,16 +100,16 @@ export class VisorFrontend {
             remover?.();
         };
         this.defaultActorColor = [];
-        this.setSpectrumRangeAsync = async (spectrumId, component, min, max) => {
-            const spectrum = spectrumManager.globalSpectrumCollection.getSpectrum(spectrumId);
-            if (spectrum == null) {
+        this.setVariableRangeAsync = async (variableId, component, min, max) => {
+            const variable = variableManager.globalVariableCollection.getVariable(variableId);
+            if (variable == null) {
                 return;
             }
-            spectrum.setCustomRange(component, min, max);
+            variable.setCustomRange(component, min, max);
             for (const actorNode of sceneGraph.descendantActorNodesOrSelfArray) {
                 if (
-                    actorNode.spectrumId === spectrumId &&
-                    actorNode.spectrumComponent == component
+                    actorNode.variableId === variableId &&
+                    actorNode.variableComponent == component
                 ) {
                     await actorNode.setScalarRangeAsync(min, max);
                 }
@@ -276,34 +276,34 @@ export class VisorFrontend {
                     partState.setDiffuseRgb(partNode.diffuseRgb);
                     partState.setOpacity(partNode.opacity);
                     partState.setSelected(partNode.selected);
-                    partState.setSpectrumId(partNode.spectrumId);
-                    partState.setSpectrumComponent(partNode.spectrumComponent);
+                    partState.setVariableId(partNode.variableId);
+                    partState.setVariableComponent(partNode.variableComponent);
                     datasetState.copyPart(partState);
                 }
                 sceneState.copyDataset(datasetState);
             }
-            const spectrumInfos = spectrumManager.globalSpectrumCollection;
-            for (const spectrumInfo of spectrumInfos.array) {
-                const spectrumState = new VisorSpectrumState();
-                spectrumState.setId(spectrumInfo.id.toString());
-                spectrumState.setArrayName(spectrumInfo.name);
-                spectrumState.setType(spectrumInfo.type);
-                spectrumState.setNumComponents(spectrumInfo.numComponents);
-                const magnitudeRange = spectrumInfo.getRangeInfo(-1);
+            const variableInfos = variableManager.globalVariableCollection;
+            for (const variableInfo of variableInfos.array) {
+                const variableState = new VisorVariableState();
+                variableState.setId(variableInfo.id.toString());
+                variableState.setArrayName(variableInfo.name);
+                variableState.setType(variableInfo.type);
+                variableState.setNumComponents(variableInfo.numComponents);
+                const magnitudeRange = variableInfo.getRangeInfo(-1);
                 if (magnitudeRange == null) {
                     throw new Error(`range at component ${-1} not found`);
                 }
-                spectrumState.setMagnitudeRange(magnitudeRange.customRange);
+                variableState.setMagnitudeRange(magnitudeRange.customRange);
                 const ranges: number[][] = [];
-                for (let i = 0; i < spectrumInfo.numComponents; i++) {
-                    const range = spectrumInfo.getRangeInfo(i);
+                for (let i = 0; i < variableInfo.numComponents; i++) {
+                    const range = variableInfo.getRangeInfo(i);
                     if (range == null) {
                         throw new Error(`range at component ${i} not found`);
                     }
                     ranges.push(range.customRange);
                 }
-                spectrumState.setRanges(ranges);
-                sceneState.copySpectrum(spectrumState);
+                variableState.setRanges(ranges);
+                sceneState.copyVariable(variableState);
             }
             return appState;
         };
@@ -482,14 +482,14 @@ export class VisorFrontend {
                             promises.push(promise);
                         }
                         if (
-                            part_state.spectrumId !== undefined &&
-                            part_state.spectrumComponent !== undefined
+                            part_state.variableId !== undefined &&
+                            part_state.variableComponent !== undefined
                         ) {
                             let promise;
-                            if (part_state.spectrumId !== null) {
+                            if (part_state.variableId !== null) {
                                 promise = node.setColorVariableAsync(
-                                    part_state.spectrumId,
-                                    part_state.spectrumComponent
+                                    part_state.variableId,
+                                    part_state.variableComponent
                                 );
                             } else {
                                 promise = node.clearColorVariableAsync();
@@ -499,20 +499,20 @@ export class VisorFrontend {
                     }
                 }
             }
-            // wait for all the parts to be updated before updating the spectrum ranges
+            // wait for all the parts to be updated before updating the variable ranges
             await Promise.all(promises);
             promises.length = 0;
-            for (const spectrum_state of sceneState.getSpectrumStates()) {
-                const idStr = spectrum_state.id;
-                if (spectrum_state.magnitudeRange !== undefined) {
-                    const range = spectrum_state.magnitudeRange;
-                    const promise = self.setSpectrumRangeAsync(idStr, -1, range[0], range[1]);
+            for (const variable_state of sceneState.getVariableStates()) {
+                const idStr = variable_state.id;
+                if (variable_state.magnitudeRange !== undefined) {
+                    const range = variable_state.magnitudeRange;
+                    const promise = self.setVariableRangeAsync(idStr, -1, range[0], range[1]);
                     promises.push(promise);
                 }
-                for (let i = 0; i < spectrum_state.ranges.length; i++) {
-                    const range = spectrum_state.ranges[i];
+                for (let i = 0; i < variable_state.ranges.length; i++) {
+                    const range = variable_state.ranges[i];
                     if (range !== undefined) {
-                        const promise = self.setSpectrumRangeAsync(idStr, i, range[0], range[1]);
+                        const promise = self.setVariableRangeAsync(idStr, i, range[0], range[1]);
                         promises.push(promise);
                     }
                 }
@@ -559,9 +559,9 @@ export class VisorFrontend {
     getCameraStateAsync: () => Promise<VisorCameraState>;
     toggleFullScreenAsync: () => Promise<void>;
     addCameraChangedListener: (callback: (cameraState: VisorCameraState) => void) => () => void;
-    globalSpectrumCollection: VisorSpectrumCollection;
-    setSpectrumRangeAsync: (
-        spectrumId: string,
+    globalVariableCollection: VisorVariableCollection;
+    setVariableRangeAsync: (
+        variableId: string,
         component: number,
         min: number,
         max: number
