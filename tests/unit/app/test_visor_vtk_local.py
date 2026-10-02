@@ -412,7 +412,19 @@ def _make_state_with_datasets(snapshot_path: str | None, name="model", unit="m")
 
 
 def test_load_state_restores_datasets_when_registry_empty(tmp_path, iface):
-    """Verify that datasets are restored when no datasets are currently loaded."""
+    """Verify that datasets are restored when no datasets are currently loaded.
+
+    ``finalize_scene`` is asserted *not* called: it belongs to ``apply_state``,
+    which is mocked here, so a call arriving at this level could only have come
+    from the load path.  That is the pin against returning it to
+    ``_load_datasets_from_state``; its placement *within* ``apply_state`` is
+    pinned by
+    tests/unit/vtk/scene/test_base.py::test_apply_state_flushes_before_the_bridge_call.
+
+    ``side_effect`` is a one-element list rather than a return value so that
+    the number of ``dataset_count`` reads stays pinned: ``load_state`` reads it
+    once, and a second read raises StopIteration.
+    """
     snapshot = tmp_path / "model_snapshot.vtkhdf"
     snapshot.touch()
     state = _make_state_with_datasets(str(snapshot), name="model")
@@ -421,7 +433,7 @@ def test_load_state_restores_datasets_when_registry_empty(tmp_path, iface):
     iface._file_io.read_state = MagicMock(return_value=state)
     iface._file_io.read_snapshot = MagicMock(return_value=mock_data)
     iface._file_io.build_metadata_for_load_state = MagicMock(return_value=MagicMock(spec=ExtendedMetadata))
-    type(iface._scene).dataset_count = PropertyMock(side_effect=[0, 1])
+    type(iface._scene).dataset_count = PropertyMock(side_effect=[0])
     loaded_ds = MagicMock()
     iface._scene.add_dataset = MagicMock(return_value=42)
     iface._scene.datasets = {42: loaded_ds}
@@ -433,7 +445,7 @@ def test_load_state_restores_datasets_when_registry_empty(tmp_path, iface):
     iface._file_io.read_snapshot.assert_called_once_with(str(snapshot))
     iface._scene.add_dataset.assert_called_once_with(mock_data, iface._file_io.build_metadata_for_load_state.return_value)
     loaded_ds.mark_clean.assert_called_once()
-    iface._scene.finalize_scene.assert_called_once()
+    iface._scene.finalize_scene.assert_not_called()
     iface._scene.apply_state.assert_called_once_with(state)
 
 
@@ -456,19 +468,28 @@ def test_load_state_skips_dataset_restore_when_registry_not_empty(tmp_path, ifac
 
 
 def test_load_state_skips_missing_snapshot(tmp_path, iface):
-    """Verify that missing dataset snapshots are ignored during state loading."""
+    """Verify that missing dataset snapshots are ignored during state loading.
+
+    This test pins the missing-snapshot skip and nothing else.  It previously
+    also asserted ``finalize_scene`` was not called; that assertion no longer
+    pins anything, because ``finalize_scene`` is not reachable from
+    ``load_state`` at all -- it lives in ``apply_state``, which is mocked here
+    -- so it passed for a reason unrelated to the missing snapshot.  It has
+    been removed rather than kept green.  The load path is pinned by
+    ``test_load_state_restores_datasets_when_registry_empty`` and the placement
+    by
+    tests/unit/vtk/scene/test_base.py::test_apply_state_flushes_before_the_bridge_call.
+    """
     state = _make_state_with_datasets("/nonexistent/snap.vtkhdf", name="model")
 
     iface._file_io.read_state = MagicMock(return_value=state)
     iface._file_io.read_snapshot = MagicMock()
     type(iface._scene).dataset_count = PropertyMock(return_value=0)
     iface._scene.apply_state = MagicMock()
-    iface._scene.finalize_scene = MagicMock()
 
     iface.load_state(str(tmp_path))
 
     iface._file_io.read_snapshot.assert_not_called()
-    iface._scene.finalize_scene.assert_not_called()
     iface._scene.apply_state.assert_called_once_with(state)
 
 
@@ -507,7 +528,7 @@ def test_load_state_passes_correct_metadata_to_add_dataset(tmp_path, iface):
     iface._file_io.read_snapshot = MagicMock(return_value=mock_data)
     iface._file_io.build_metadata_for_load_state = MagicMock(return_value=built_meta)
     iface._scene.add_dataset = MagicMock(return_value=1)
-    type(iface._scene).dataset_count = PropertyMock(side_effect=[0, 1])
+    type(iface._scene).dataset_count = PropertyMock(side_effect=[0])
     iface._scene.datasets = {1: MagicMock()}
     iface._scene.apply_state = MagicMock()
     iface._scene.finalize_scene = MagicMock()
