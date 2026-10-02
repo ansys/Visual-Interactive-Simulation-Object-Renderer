@@ -1,5 +1,5 @@
 import json
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from pydantic import ValidationError
@@ -115,14 +115,9 @@ def test_model_dump_contains_fields(monkeypatch):
 
 
 def test_save_path_rejects_a_variable_state_missing_the_identity_fields():
-    """The save path must keep raising on a client that stops emitting the fields.
-
-    ``VisorVariableState`` is shared between ``PersistedSceneState.variable_states``
-    and ``RuntimeSceneState.variable_states``, so making the three identity
-    fields optional on the model would have relaxed this coercion too.  The
-    tolerance for old save files lives on the persisted container instead, and
-    this pins the fact that it did not leak here: reads tolerate absence,
-    writes do not.
+    """ The server owns the variable records, so the browser's ``variableStates`` is
+    discarded before validation.  An entry missing the identity fields (an old
+    client) therefore parses, and nothing of it reaches the model.
     """
     payload = {
         "requestId": 1,
@@ -139,16 +134,13 @@ def test_save_path_rejects_a_variable_state_missing_the_identity_fields():
         },
     }
 
-    with pytest.raises(ValidationError) as excinfo:
-        VisorSaveStateResponse.model_validate(payload)
+    resp = VisorSaveStateResponse.model_validate(payload)
 
-    # Reported under the wire alias, which is the spelling validation ran by.
-    reported = {error["loc"][-1] for error in excinfo.value.errors()}
-    assert {"arrayName", "type", "numComponents"} <= reported
+    assert resp.app_state.scene.variable_states == {}
 
 
 def test_save_path_accepts_a_variable_state_carrying_the_identity_fields():
-    """The same payload with the three fields present validates, so the guard is specific."""
+    """ The server owns the variable records, so the browser's ``variableStates`` is discarded before validation."""
     payload = {
         "requestId": 1,
         "appState": {
@@ -169,7 +161,35 @@ def test_save_path_accepts_a_variable_state_carrying_the_identity_fields():
 
     resp = VisorSaveStateResponse.model_validate(payload)
 
-    stored = resp.app_state.scene.variable_states["POINT::pressure::1"]
-    assert stored.array_name == "pressure"
-    assert stored.num_components == 1
+    assert resp.app_state.scene.variable_states == {}
+
+
+def test_save_response_discards_browser_variable_states_from_a_json_string_app_state():
+    """#21: the discard also runs when appState arrives as a JSON string, and logs one DEBUG line.
+
+    The entry lacks the record's default fields (partIds, defaultMagnitudeRange,
+    defaultRanges), so without the discard it would fail validation against the record.
+    """
+    app_state = json.dumps({
+        "scene": {
+            "unit": "mm",
+            "variableStates": {
+                "POINT::pressure::1": {
+                    "id": "POINT::pressure::1",
+                    "arrayName": "pressure",
+                    "type": "POINT",
+                    "numComponents": 1,
+                    "magnitudeRange": [0.0, 1.0],
+                    "ranges": [[0.0, 1.0]],
+                }
+            },
+        }
+    })
+
+    with patch("ansys.visor.viewer.models.runtime.requests.visor_save_state_response.logger") as mock_logger:
+        resp = VisorSaveStateResponse.model_validate({"requestId": 7, "appState": app_state})
+
+    assert resp.app_state.scene.variable_states == {}
+    assert resp.app_state.scene.unit == "mm"
+    mock_logger.debug.assert_called_once_with("browser variableStates discarded")
 

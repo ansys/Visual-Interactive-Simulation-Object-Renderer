@@ -347,7 +347,7 @@ class TestFileHandleReleased:
         state = PersistedViewerStateV1.from_components(
             ui_state=VisorUIState(), unit="m", orthographic_enabled=None,
             cross_section_enabled=None, edges_enabled=None, bounding_box_enabled=None,
-            datasets={}
+            datasets={}, variable_states={}
         )
         deleted = file_io.delete_stale_snapshots(str(tmp_path), state)
 

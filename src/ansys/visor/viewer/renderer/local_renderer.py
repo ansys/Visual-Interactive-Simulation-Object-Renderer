@@ -270,6 +270,30 @@ class VisorLocalRenderer(IRenderer):
             return
         pipe.clear_color_variable()
 
+    def serialize_part_state(self, node_id: int) -> None:
+        """See :meth:`IRenderer.serialize_part_state`.
+
+        Names the mapper's id alone, derived with ``GetId`` on the object as
+        :meth:`serialize_camera_state` derives the camera's.  An id of ``0``
+        is one the store has never held (the ROOT sentinel); naming it
+        degrades to an error-logged no-op in VTK, so it is skipped here with
+        a debug line and the next full serialization carries the mapper.
+        """
+        pipe = self._pipelines.get(node_id)
+        if pipe is None:
+            logger.debug(
+                "serialize_part_state: no pipeline for node %s; skipping.", node_id
+            )
+            return
+        mapper_id = self._object_manager.GetId(pipe.mapper)
+        if mapper_id == 0:
+            logger.debug(
+                "serialize_part_state: mapper of node %s is not registered yet; skipping.",
+                node_id,
+            )
+            return
+        self._object_manager.UpdateStateFromObject(mapper_id)
+
     def refresh_color_variable_range(
         self,
         node_id: int,

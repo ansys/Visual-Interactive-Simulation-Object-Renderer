@@ -465,7 +465,7 @@ class TestDeleteStaleSnapshots:
         return PersistedViewerStateV1.from_components(
             ui_state=VisorUIState(), unit="m", orthographic_enabled=None,
             cross_section_enabled=None, edges_enabled=None, bounding_box_enabled=None,
-            datasets=dataset_states
+            datasets=dataset_states, variable_states={}
         )
 
     def test_deletes_vtkhdf_not_in_state(self, file_io, tmp_path):
