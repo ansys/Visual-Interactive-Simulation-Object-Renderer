@@ -40,6 +40,7 @@ class VisorCrossSectionWidget:
 
     Properties:
         plane: Returns the VTK plane object.
+        plane_representation: Returns the VTK plane representation (the draggable handle).
         algorithm_filter: Returns the VTK algorithm filter.
         plane_wasm_id: Returns the WebAssembly ID for the plane object.
         plane_widget_wasm_id: Returns the WebAssembly ID for the plane widget.
@@ -120,6 +121,11 @@ class VisorCrossSectionWidget:
     def plane(self) -> vtkPlane:
         """Returns the widget VTK plane object."""
         return self._plane
+
+    @property
+    def plane_representation(self) -> vtkImplicitPlaneRepresentation:
+        """The draggable handle's representation."""
+        return self._plane_representation
 
     @property
     def algorithm_filter(self):

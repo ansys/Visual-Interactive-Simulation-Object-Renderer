@@ -23,6 +23,9 @@ if TYPE_CHECKING:
     from vtkmodules.vtkCommonDataModel import vtkDataObject
 
     from ansys.visor.viewer.models.common.visor_camera_state import VisorCameraState
+    from ansys.visor.viewer.models.common.visor_cross_section_state import (
+        VisorCrossSectionState,
+    )
     from ansys.visor.viewer.models.runtime.vtk.renderer_annotation import RendererAnnotation
     from ansys.visor.viewer.vtk.scene_graph import VisorSceneGraphPartNode
 
@@ -252,6 +255,24 @@ class IRenderer(ABC):
         """
         Sync the cross-section plane origin and normal from the frontend back
         to server-side VTK objects.
+        """
+
+    @abstractmethod
+    def get_cross_section_plane(self) -> "VisorCrossSectionState | None":
+        """
+        Return the cross-section plane record, or ``None`` if nothing has
+        written one yet.
+        """
+
+    @abstractmethod
+    def serialize_cross_section_state(self) -> None:
+        """Make the state served to the client current for the plane.
+
+        Names its ids explicitly and never relies on a render following.
+
+        **Serialize only; do not notify.**
+
+        No-op on a renderer that serves the client no VTK object state.
         """
 
     @abstractmethod

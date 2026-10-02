@@ -8,10 +8,11 @@ be unit-tested without a VTK environment.  Methods whose return type is
 annotated return the simplest valid empty value for that type; all others are
 ``pass``.  No VTK imports, no local view, no side effects.
 
-One exception to "no state": the camera record, ``_last_camera_state``.  The
-record half of the :class:`IRenderer` camera contract is not optional on any
-implementation -- only the projection half is, and here it is a no-op because
-there is no pipeline camera to project onto.
+One exception to "no state": the camera record, ``_last_camera_state``, and
+the cross-section plane record, ``_last_cross_section_state``.  The record
+half of the :class:`IRenderer` camera and plane contracts is not optional on
+any implementation -- only the projection half is, and here it is a no-op
+because there is no pipeline camera and no widget to project onto.
 """
 
 from __future__ import annotations
@@ -19,6 +20,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Optional
 
 from ansys.visor.viewer.core.visor_logging import VisorDefaultLogger
+from ansys.visor.viewer.models.common.visor_cross_section_state import VisorCrossSectionState
 from ansys.visor.viewer.renderer.base import IRenderer
 
 if TYPE_CHECKING:
@@ -34,10 +36,12 @@ class NullRenderer(IRenderer):
     """Null-object implementation of :class:`IRenderer` for use in tests."""
 
     _last_camera_state: Optional["VisorCameraState"]
+    _last_cross_section_state: Optional["VisorCrossSectionState"]
 
     def __init__(self) -> None:
-        """Initialize the camera record."""
+        """Initialize the camera and cross-section records."""
         self._last_camera_state = None
+        self._last_cross_section_state = None
 
     # ------------------------------------------------------------------
     # Wire contract
@@ -159,7 +163,28 @@ class NullRenderer(IRenderer):
     def sync_cross_section_plane(
         self, origin: list[float], normal: list[float]
     ) -> None:
-        pass
+        """See :meth:`IRenderer.sync_cross_section_plane`.
+
+        Record only: there are no VTK widget objects to project onto.  The
+        record takes a copy of each list, as :class:`VisorLocalRenderer` does.
+        """
+        self._last_cross_section_state = VisorCrossSectionState(
+            origin=list(origin), normal=list(normal)
+        )
+
+    def get_cross_section_plane(self) -> "VisorCrossSectionState | None":
+        """See :meth:`IRenderer.get_cross_section_plane`.
+
+        ``None`` unless :meth:`sync_cross_section_plane` wrote one: there is
+        no widget here for :meth:`update_bounds` to seed a record from.
+        """
+        return self._last_cross_section_state
+
+    def serialize_cross_section_state(self) -> None:
+        """See :meth:`IRenderer.serialize_cross_section_state`.
+
+        No-op: this renderer serves the client no VTK object state.
+        """
 
     def set_bounding_box_visibility(self, visible: bool) -> None:
         pass
