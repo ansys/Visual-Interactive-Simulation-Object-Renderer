@@ -1,0 +1,6 @@
+host
+====
+
+.. currentmodule:: ansys.visor.viewer
+
+.. autoproperty:: Visor.host

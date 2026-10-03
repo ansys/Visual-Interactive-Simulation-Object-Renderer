@@ -1,0 +1,48 @@
+
+
+.. _sphx_glr_examples_02-specifying-per-part-state:
+
+.. _specifying-state-gallery:
+
+Examples specifying per-part state
+##################################
+
+This example uses VISOR metadata to specify per-part state.
+
+
+
+.. raw:: html
+
+    <div class="sphx-glr-thumbnails">
+
+.. thumbnail-parent-div-open
+
+.. raw:: html
+
+    <div class="sphx-glr-thumbcontainer" tooltip="Create a small VTK multiblock dataset, with unique names for each part (leaf block).">
+
+.. only:: html
+
+  .. image:: /examples/02-specifying-per-part-state/images/thumb/sphx_glr_00-metadata-per-part-opacity_thumb.png
+    :alt:
+
+  :ref:`sphx_glr_examples_02-specifying-per-part-state_00-metadata-per-part-opacity.py`
+
+.. raw:: html
+
+      <div class="sphx-glr-thumbnail-title">Set per-part opacity for multiblock dataset</div>
+    </div>
+
+
+.. thumbnail-parent-div-close
+
+.. raw:: html
+
+    </div>
+
+
+.. toctree::
+   :hidden:
+
+   /examples/02-specifying-per-part-state/00-metadata-per-part-opacity
+

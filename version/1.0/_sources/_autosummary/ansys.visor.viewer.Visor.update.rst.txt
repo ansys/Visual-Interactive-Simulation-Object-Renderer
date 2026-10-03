@@ -1,0 +1,6 @@
+update
+======
+
+.. currentmodule:: ansys.visor.viewer
+
+.. automethod:: Visor.update
