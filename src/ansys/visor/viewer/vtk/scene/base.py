@@ -905,7 +905,9 @@ class VisorSceneBase(ABC):
         Stop colouring the part identified by *node_id* by a scalar variable.
 
         The variable reference is cleared atomically in the store (id and
-        component together), matching the atomic set.
+        component together), matching the atomic set.  The mapper is then
+        re-serialized inside the lock, as :meth:`_ColorVariableBinding.apply_to`
+        does after an apply, so the state served to the client is current.
         """
         with self._vtk_lock:
             if not self._dataset_registry.clear_part_color_variable(node_id):
@@ -914,6 +916,7 @@ class VisorSceneBase(ABC):
                 )
                 return
             self._renderer.clear_color_variable(node_id)
+            self._renderer.serialize_part_state(node_id)
 
     # =========================================================================
     # Widget state — coordinator surface

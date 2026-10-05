@@ -752,6 +752,36 @@ def test_clear_part_color_variable_flushes_under_the_lock_after_the_apply(scene,
     assert scene._vtk_lock.enter_count == scene._vtk_lock.exit_count
 
 
+def test_clear_part_color_variable_reserializes_the_mapper_after_the_write_under_the_lock(
+    scene, pipeline
+):
+    """The mapper is re-serialized by its own id, after scalar colouring is off, with the lock held."""
+    _seed_records(scene, _seeded_record())
+    scene.set_part_color_variable(
+        NODE_ID, "POINT::pressure::1", VisorVtkVariableType.POINT, "pressure", 0
+    )
+    assert pipeline.mapper.GetScalarVisibility() == 1
+    scene._vtk_lock = _LockSpy()
+    object_manager = scene._renderer._object_manager
+    mapper = pipeline.mapper
+    other_ids = object_manager.GetId.side_effect
+    object_manager.GetId.side_effect = (
+        lambda obj: MAPPER_WASM_ID if obj is mapper else other_ids(obj)
+    )
+    serialized = []
+    object_manager.UpdateStateFromObject.side_effect = lambda object_id: serialized.append(
+        (object_id, scene._vtk_lock.depth, mapper.GetScalarVisibility())
+    )
+
+    scene.clear_part_color_variable(NODE_ID)
+
+    assert len(serialized) == 1
+    object_id, depth, served_visibility = serialized[0]
+    assert object_id == 8150003
+    assert depth >= 1
+    assert served_visibility == 0
+
+
 # ===========================================================================
 # Unknown node id: logged no-op at every layer
 # ===========================================================================
