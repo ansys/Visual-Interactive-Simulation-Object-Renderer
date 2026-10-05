@@ -3668,6 +3668,164 @@ def test_rebuild_at_update_follows_the_reload_and_the_metadata_refresh(records_s
     }
 
 
+# ---------------------------------------------------------------------------
+# Reconcile after rebuild: each part's stored color-variable reference is
+# re-applied or cleared against the rebuilt records.  The fixture "pressure"
+# on NODE_ID has component range (10.0, 20.0); the wider "pressure" a second
+# dataset brings has (-5.0, 30.0), so the widened default is (-5.0, 30.0).
+# ---------------------------------------------------------------------------
+
+def _wider_pressure_variable() -> VisorVariable:
+    """A "pressure" of the same width whose component range is wider on both ends."""
+    return VisorVariable(
+        index=0, type=VisorVtkVariableType.POINT, name="pressure", num_components=1,
+        num_points=50, ranges=[(-5.0, 30.0)], magnitude_range=(0.0, 60.0),
+    )
+
+
+def _color_part_by_pressure_component(scene, registry):
+    """Rebuild the records from the fixture "pressure" and colour NODE_ID by its component 0."""
+    _seed_part_variables(registry, [_pressure_variable()])
+    scene._rebuild_variable_records_from_registry()
+    scene.set_part_color_variable(NODE_ID, VARIABLE_ID, VisorVtkVariableType.POINT, "pressure", 0)
+
+
+def _record_mapper_serializations(scene, mapper, read_back):
+    """Record (object id, lock depth, read_back()) for every re-serialization from here on."""
+    object_manager = scene._renderer._object_manager
+    other_ids = object_manager.GetId.side_effect
+    object_manager.GetId.side_effect = (
+        lambda obj: MAPPER_WASM_ID if obj is mapper else other_ids(obj)
+    )
+    serialized = []
+    object_manager.UpdateStateFromObject.side_effect = lambda object_id: serialized.append(
+        (object_id, scene._vtk_lock.depth, read_back())
+    )
+    return serialized
+
+
+def _add_dataset_carrying(scene, registry, variable):
+    """add_dataset a second dataset whose one part, SECOND_NODE_ID, carries *variable*."""
+    scene._scene_graph = MagicMock(name="scene_graph")
+    scene._scene_graph.load_dataset.return_value = 2
+    scene._scene_graph.get_descendant_node.return_value.get_descendant_part_nodes.return_value = []
+
+    def _registry_add(dataset_id, name, data, node_ids, metadata):
+        registry.datasets[dataset_id] = _make_part_dataset(
+            dataset_id, [SECOND_NODE_ID],
+            part_variables=[VisorPartVariables(SECOND_NODE_ID, "part", [variable])],
+        )
+
+    with (
+        patch.object(registry, "get_sanitized_metadata_name", return_value="second"),
+        patch.object(registry, "add", side_effect=_registry_add),
+    ):
+        scene.add_dataset(MagicMock(name="input"), MagicMock(name="metadata"))
+
+
+def _update_pressure_to_three_components(scene, registry):
+    """update_variables_for_dataset so NODE_ID's "pressure" becomes 3 components wide."""
+    scene._scene_graph = MagicMock(name="scene_graph")
+    wide_pressure = VisorVariable(
+        index=0, type=VisorVtkVariableType.POINT, name="pressure", num_components=3,
+        num_points=50, ranges=[(1.0, 2.0), (3.0, 4.0), (5.0, 6.0)], magnitude_range=(0.0, 7.0),
+    )
+
+    def _update_variables(dataset_id, variables):
+        _seed_part_variables(registry, [wide_pressure])
+
+    with patch.object(registry, "update_variables", side_effect=_update_variables):
+        scene.update_variables_for_dataset(1, [])
+
+
+def test_rebuild_at_add_reapplies_the_widened_range_to_a_colored_part(scene, registry, pipeline):
+    """A part coloured at the default follows the widened default, re-serialized under the lock.
+
+    No trigger is sent after the colouring and nothing is pushed: the rebuild alone reaches the mapper.
+    """
+    _color_part_by_pressure_component(scene, registry)
+    assert pipeline.mapper.GetScalarRange() == pytest.approx((10.0, 20.0))
+    scene._vtk_lock = _LockSpy()
+    serialized = _record_mapper_serializations(
+        scene, pipeline.mapper, lambda: tuple(pipeline.mapper.GetScalarRange())
+    )
+    scene._push_runtime_state = MagicMock(name="push_runtime_state")
+
+    _add_dataset_carrying(scene, registry, _wider_pressure_variable())
+
+    assert pipeline.mapper.GetScalarRange() == pytest.approx((-5.0, 30.0))
+    assert len(serialized) == 1
+    object_id, depth, served_range = serialized[0]
+    assert object_id == 8150003
+    assert depth >= 1
+    assert served_range == pytest.approx((-5.0, 30.0))
+    scene._push_runtime_state.assert_not_called()
+
+
+def test_rebuild_at_update_clears_a_reference_whose_variable_is_gone(scene, registry, pipeline):
+    """Store half: the reference is cleared, and the next load logs no WARNING for it."""
+    _color_part_by_pressure_component(scene, registry)
+
+    _update_pressure_to_three_components(scene, registry)
+
+    state = registry.get_part_state(NODE_ID)
+    assert state.variable_id is None
+    assert state.variable_component is None
+    with patch("ansys.visor.viewer.vtk.scene.base.logger") as mock_logger:
+        _apply(scene, _runtime_state({NODE_ID: state.model_copy()}))
+    assert mock_logger.warning.call_count == 0
+
+
+def test_rebuild_at_update_resets_the_mapper_of_a_cleared_part(scene, registry, pipeline):
+    """Apply half: scalar colouring is off, and the mapper is re-serialized after that, under the lock."""
+    _color_part_by_pressure_component(scene, registry)
+    assert pipeline.mapper.GetScalarVisibility() == 1
+    scene._vtk_lock = _LockSpy()
+    serialized = _record_mapper_serializations(
+        scene, pipeline.mapper, lambda: pipeline.mapper.GetScalarVisibility()
+    )
+
+    _update_pressure_to_three_components(scene, registry)
+
+    assert pipeline.mapper.GetScalarVisibility() == 0
+    assert len(serialized) == 1
+    object_id, depth, served_visibility = serialized[0]
+    assert object_id == 8150003
+    assert depth >= 1
+    assert served_visibility == 0
+
+
+def test_rebuild_with_unchanged_records_writes_no_mapper_and_serializes_nothing(
+    scene, registry, pipeline
+):
+    """A rebuild over the same registry leaves a coloured part's mapper alone."""
+    _color_part_by_pressure_component(scene, registry)
+    object_manager = scene._renderer._object_manager
+    object_manager.UpdateStateFromObject.reset_mock()
+    scene._renderer.apply_color_variable = MagicMock(
+        name="apply_color_variable", wraps=scene._renderer.apply_color_variable
+    )
+    scene._renderer.clear_color_variable = MagicMock(
+        name="clear_color_variable", wraps=scene._renderer.clear_color_variable
+    )
+
+    scene._rebuild_variable_records_from_registry()
+
+    scene._renderer.apply_color_variable.assert_not_called()
+    scene._renderer.clear_color_variable.assert_not_called()
+    object_manager.UpdateStateFromObject.assert_not_called()
+
+
+def test_rebuild_keeps_a_custom_range_on_a_colored_part(scene, registry, pipeline):
+    """A custom range survives a rebuild that widens the default."""
+    _color_part_by_pressure_component(scene, registry)
+    scene.set_variable_range(VARIABLE_ID, 0, 3.25, 6.75)
+
+    _add_dataset_carrying(scene, registry, _wider_pressure_variable())
+
+    assert pipeline.mapper.GetScalarRange() == pytest.approx((3.25, 6.75))
+
+
 def test_load_overlays_the_file_range_before_the_part_restore(scene, registry):
     """#14: the file's range is held after load.
 

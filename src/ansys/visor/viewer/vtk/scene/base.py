@@ -586,15 +586,60 @@ class VisorSceneBase(ABC):
             timer.log()
 
     def _rebuild_variable_records_from_registry(self) -> None:
-        """Rebuild the held records from the registry, carrying custom ranges; under ``_vtk_lock``.
+        """Rebuild the held records from the registry, carrying custom ranges, then reconcile part references;
+        under ``_vtk_lock``.
 
         Used at add, remove, clear and update.  Assigns a new dict to the holder
-        (copy-on-write); never mutates the live dict or its entries.
+        (copy-on-write); never mutates the live dict or its entries, so the dict
+        it replaces is still intact when it is handed to
+        :meth:`_reconcile_part_color_variables` as the previous records.
         """
         with self._vtk_lock:
+            previous = self._variable_records.variables
             records = VisorVariableRecords.from_registry(self._dataset_registry, self._variable_records).variables
             self._variable_records.variables = records
             logger.debug("variable records rebuilt from registry: %d records", len(records))
+            self._reconcile_part_color_variables(previous)
+
+    def _reconcile_part_color_variables(self, previous: Dict[str, VisorVariableRecord]) -> None:
+        """Re-apply or clear each part's color variable against the current records, skipping a part whose
+        effective range is unchanged from *previous*.  Caller holds the scene lock.
+
+        Only a part whose variable id and component are both set is reconciled;
+        a half-set reference is left as it is.  A reference that resolves is
+        re-applied through :meth:`_ColorVariableBinding.apply_to`, unless the
+        part participated in the same record in *previous* at the same range.
+        A reference that no longer resolves is cleared through
+        :meth:`clear_part_color_variable`, which clears the store, resets the
+        mapper and re-serializes it.
+        """
+        references = [
+            (part_id, part_state.variable_id, part_state.variable_component)
+            for dataset in list(self._dataset_registry.datasets.values())
+            for part_id, part_state in list(dataset.state.part_states.items())
+            if part_state.variable_id is not None and part_state.variable_component is not None
+        ]
+        for part_id, variable_id, component in references:
+            binding = self._resolve_color_variable(part_id, variable_id, component)
+            if binding is None:
+                self.clear_part_color_variable(part_id)
+                logger.debug(
+                    "reconcile: part %s cleared; '%s' component %s no longer resolves.",
+                    part_id, variable_id, component
+                )
+                continue
+            old_record = previous.get(variable_id)
+            if (
+                    old_record is not None
+                    and part_id in old_record.part_ids
+                    and old_record.range_for(component) == (binding.min_val, binding.max_val)
+            ):
+                continue
+            binding.apply_to(self._renderer)
+            logger.debug(
+                "reconcile: part %s re-applied at '%s' component %s [%g, %g].",
+                part_id, variable_id, component, binding.min_val, binding.max_val
+            )
 
     def _load_variable_records(self, file_states: Dict[str, VisorVariableState]) -> None:
         """Build the held records fresh from the registry and overlay the file's ranges; under ``_vtk_lock``.
