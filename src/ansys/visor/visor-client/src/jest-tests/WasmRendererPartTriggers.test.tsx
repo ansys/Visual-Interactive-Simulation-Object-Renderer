@@ -233,9 +233,15 @@ describe('WasmRenderer per-part sends: trigger name and payload', () => {
             association: 'POINT',
             arrayName: 'pressure',
             component: 0,
-            min: 2,
-            max: 8,
         });
+        const payload = sender.mock.calls[0][1] as Record<string, unknown>;
+        expect(Object.keys(payload).sort()).toEqual([
+            'arrayName',
+            'association',
+            'component',
+            'nodeId',
+            'variableId',
+        ]);
     });
 
     test('sendPartColorVariableAsync sends CELL as the association for a cell array', async () => {
@@ -257,9 +263,15 @@ describe('WasmRenderer per-part sends: trigger name and payload', () => {
             association: 'CELL',
             arrayName: 'temperature',
             component: -1,
-            min: -1.5,
-            max: 4.5,
         });
+        const payload = sender.mock.calls[0][1] as Record<string, unknown>;
+        expect(Object.keys(payload).sort()).toEqual([
+            'arrayName',
+            'association',
+            'component',
+            'nodeId',
+            'variableId',
+        ]);
     });
 
     test('sendPartColorVariableAsync forwards variableId verbatim without parsing it', async () => {
