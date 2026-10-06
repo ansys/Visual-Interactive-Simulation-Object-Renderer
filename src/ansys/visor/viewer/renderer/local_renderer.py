@@ -309,16 +309,6 @@ class VisorLocalRenderer(IRenderer):
             return
         self._object_manager.UpdateStateFromObject(mapper_id)
 
-    def refresh_color_variable_range(
-        self,
-        node_id: int,
-        variable_id: str,
-        array_type: str,
-        array_name: str,
-        component: int,
-    ) -> None:
-        """No-op in Story 1.2. Phase 3 populates."""
-
     # ------------------------------------------------------------------
     # IRenderer: camera
     # ------------------------------------------------------------------

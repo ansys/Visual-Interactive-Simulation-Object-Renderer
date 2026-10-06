@@ -435,24 +435,6 @@ class TestNodeLifecycle:
 
 
 # ===========================================================================
-# 3.  Per-part visual mutations
-# ===========================================================================
-
-class TestPerPartMutations:
-    """The permanently un-implemented method accepts its arguments.
-
-    It stays a no-op beyond this story: the colour-variable range is not
-    held per part.
-    """
-
-    def test_refresh_color_variable_range(self, renderer):
-        assert (
-            renderer.refresh_color_variable_range(1, "sp-1", "CELL", "temp", 0)
-            is None
-        )
-
-
-# ===========================================================================
 # 3a-bis.  Scene-wide widget state: set_edges_visible
 #
 #      The VTK effect lives on VtkNodePipeline and is asserted in

@@ -162,23 +162,6 @@ class IRenderer(ABC):
         write, and the client is not notified.
         """
 
-    @abstractmethod
-    def refresh_color_variable_range(
-        self,
-        node_id: int,
-        variable_id: str,
-        array_type: str,
-        array_name: str,
-        component: int,
-    ) -> None:
-        """
-        Update only the mapper's scalar range for *node_id* from the current
-        input data, without calling ``pipeline.base_algorithm.Update()``.
-
-        Safe to call after in-place data modifications where VTK's pipeline
-        MTime is stale.
-        """
-
     # ------------------------------------------------------------------------
     # Camera
     # ------------------------------------------------------------------------
