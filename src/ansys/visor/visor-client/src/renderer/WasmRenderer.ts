@@ -96,6 +96,22 @@ export class WasmRenderer implements IRenderer {
             });
         });
 
+        /**
+         * Attribute an orientation-widget camera move to the user.
+         *
+         * Clicking a face of the cube moves the camera entirely inside wasm,
+         * with no DOM input `CameraGestureTracker` can see, so without this
+         * mark the move settles as `programmatic` and the server drops it.
+         * `EndInteractionEvent` (not `InteractionEvent`) fires once per
+         * interaction rather than per animation frame. The callback only
+         * marks the gesture; the report itself is still the settle's,
+         * unchanged, via `sync_camera`.
+         */
+        const orientationWidget = vtkScene.getVtkObject(annotation.widgets.orientationWidgetId);
+        orientationWidget.observe('EndInteractionEvent', () => {
+            vtkScene.noteWidgetGesture();
+        });
+
         // Bounding-box ids are stashed for attachSceneGraph, which is the
         // point at which the live sceneGraph (needed by BoundingBoxWidget)
         // becomes available.
