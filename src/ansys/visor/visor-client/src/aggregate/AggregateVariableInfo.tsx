@@ -84,15 +84,11 @@ export class AggregateVariableInfo {
 
         for (let i = 0; i < actorNodes.length; i++) {
             const node = actorNodes[i];
-            const variable = node.variableCollection.getVariable(variableInfo.id);
-            let thisComponentId: number | null = node.variableComponent;
-
-            if (variable != null) {
-                if (variable.getRangeInfo(node.variableComponent) == null) {
-                    // Default to the first component option.
-                    thisComponentId = variable.componentOptions[0].id;
-                }
-            }
+            const thisComponentId = AggregateVariableInfo.#resolveNodeComponentId(
+                node,
+                variableInfo,
+                obj.#componentOptions
+            );
 
             if (i === 0) {
                 obj.#displayComponentId = thisComponentId;
@@ -115,6 +111,37 @@ export class AggregateVariableInfo {
         }
 
         return obj;
+    }
+
+    /**
+     * The node's component when it names an option of this variable and has a range, else the variable's first option.
+     *
+     * A node holds one component, belonging to the variable it is coloured by,
+     * and it is read here for every variable in its collection.  A component
+     * with a range but no option (component 0 of a one-component variable,
+     * whose only option is the magnitude) is therefore replaced too.
+     *
+     * @param node - Scene node whose configured component is read.
+     * @param variableInfo - Variable the component is resolved for.
+     * @param componentOptions - The variable's options, keyed by component ID string.
+     * @returns The component ID to display for this node.
+     */
+    static #resolveNodeComponentId(
+        node: VisorSceneNodeExtended,
+        variableInfo: VisorVariableInfo,
+        componentOptions: ReadonlyMap<string, AggregateVariableComponentInfo>
+    ): number | null {
+        const componentId: number | null = node.variableComponent;
+        const variable = node.variableCollection.getVariable(variableInfo.id);
+        const firstOptionId = (variable ?? variableInfo).componentOptions[0].id;
+
+        if (componentId == null || !componentOptions.has(componentId.toString())) {
+            return firstOptionId;
+        }
+        if (variable != null && variable.getRangeInfo(componentId) == null) {
+            return firstOptionId;
+        }
+        return componentId;
     }
 
     /**

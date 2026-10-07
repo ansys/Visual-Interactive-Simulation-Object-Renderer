@@ -255,7 +255,7 @@ describe('AggregateVariableInfo', () => {
         expect(component.displayVariableMax).toBe(5);
     });
 
-    test('warns when a displayed component has range data but no component option', async () => {
+    test('falls back to the first option when a displayed component has range data but no component option', async () => {
         const warningSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
 
         const variable = createVariable({
@@ -280,9 +280,9 @@ describe('AggregateVariableInfo', () => {
 
         const result = selection.currentVariableInfo!;
 
-        expect(result.displayComponentId).toBe(999);
-        expect(result.currentComponentInfo).toBeUndefined();
-        expect(warningSpy).toHaveBeenCalledWith("invalid componentId: '999'");
+        expect(result.displayComponentId).toBe(-1);
+        expect(result.currentComponentInfo).toBe(result.componentOptions.get('-1'));
+        expect(warningSpy).not.toHaveBeenCalled();
     });
 
     test('setDisplayComponentId selects a component by number', async () => {
