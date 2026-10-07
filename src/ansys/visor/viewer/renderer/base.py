@@ -150,29 +150,16 @@ class IRenderer(ABC):
         min_val / max_val:
             Scalar display range.
 
-        Re-serializes the part's served state after the write.  **Serialize
-        only; do not notify.**  No-op on a renderer that serves the client no
-        VTK object state.
+        On return, the state this renderer serves to the client reflects the
+        write, and the client is not notified.
         """
 
     @abstractmethod
     def clear_color_variable(self, node_id: int) -> None:
         """Disable scalar colouring on *node_id*, reverting to solid diffuse.
 
-        Re-serializes the part's served state after the write.  **Serialize
-        only; do not notify.**  No-op on a renderer that serves the client no
-        VTK object state.
-        """
-
-    @abstractmethod
-    def serialize_part_state(self, node_id: int) -> None:
-        """Make the state served to the client current for one part's mapper.
-
-        A mapper write without this leaves the served cache holding the old
-        content under a new version number, so the next client fetch gets the
-        pre-write range.  **Serialize only; do not notify.**  An unknown
-        *node_id* is a logged no-op.  No-op on a renderer that serves the
-        client no VTK object state.
+        On return, the state this renderer serves to the client reflects the
+        write, and the client is not notified.
         """
 
     @abstractmethod
@@ -238,8 +225,7 @@ class IRenderer(ABC):
     def serialize_camera_state(self) -> None:
         """Make the state served to the client current for the camera.
 
-        The camera alone; a part's mapper is
-        :meth:`serialize_part_state`'s job.  Writing the pipeline camera
+        The camera alone.  Writing the pipeline camera
         makes the server correct: it does not make the state the client is
         served correct, and the two are separate steps that can each silently
         do nothing.

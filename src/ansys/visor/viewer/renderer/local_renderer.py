@@ -247,8 +247,9 @@ class VisorLocalRenderer(IRenderer):
         registry and is not needed to configure the mapper.  An unknown
         *node_id* is a logged no-op, never a raise.
 
-        Ends with :meth:`serialize_part_state`, after the mapper write, so
-        the state served to the client carries the new range.
+        Ends with :meth:`_serialize_part_state`, after the mapper write, so
+        the state served to the client carries the new range.  Does not
+        notify the client.
         """
         pipe = self._pipelines.get(node_id)
         if pipe is None:
@@ -257,7 +258,7 @@ class VisorLocalRenderer(IRenderer):
             )
             return
         pipe.set_color_variable(array_type, array_name, component, min_val, max_val)
-        self.serialize_part_state(node_id)
+        self._serialize_part_state(node_id)
 
     def clear_color_variable(self, node_id: int) -> None:
         """See :meth:`IRenderer.clear_color_variable`.
@@ -266,8 +267,9 @@ class VisorLocalRenderer(IRenderer):
         :meth:`VtkNodePipeline.clear_color_variable`.  An unknown
         *node_id* is a logged no-op, never a raise.
 
-        Ends with :meth:`serialize_part_state`, after the mapper write, so
-        the state served to the client has scalar colouring off.
+        Ends with :meth:`_serialize_part_state`, after the mapper write, so
+        the state served to the client has scalar colouring off.  Does not
+        notify the client.
         """
         pipe = self._pipelines.get(node_id)
         if pipe is None:
@@ -276,10 +278,15 @@ class VisorLocalRenderer(IRenderer):
             )
             return
         pipe.clear_color_variable()
-        self.serialize_part_state(node_id)
+        self._serialize_part_state(node_id)
 
-    def serialize_part_state(self, node_id: int) -> None:
-        """See :meth:`IRenderer.serialize_part_state`.
+    def _serialize_part_state(self, node_id: int) -> None:
+        """Make the state served to the client current for one part's mapper.
+
+        A mapper write without this leaves the served cache holding the old
+        content under a new version number, so the next client fetch gets the
+        pre-write range.  **Serialize only; do not notify.**  An unknown
+        *node_id* is a logged no-op.
 
         Names the mapper's id alone, derived with ``GetId`` on the object as
         :meth:`serialize_camera_state` derives the camera's.  An id of ``0``
@@ -290,13 +297,13 @@ class VisorLocalRenderer(IRenderer):
         pipe = self._pipelines.get(node_id)
         if pipe is None:
             logger.debug(
-                "serialize_part_state: no pipeline for node %s; skipping.", node_id
+                "_serialize_part_state: no pipeline for node %s; skipping.", node_id
             )
             return
         mapper_id = self._object_manager.GetId(pipe.mapper)
         if mapper_id == 0:
             logger.debug(
-                "serialize_part_state: mapper of node %s is not registered yet; skipping.",
+                "_serialize_part_state: mapper of node %s is not registered yet; skipping.",
                 node_id,
             )
             return
