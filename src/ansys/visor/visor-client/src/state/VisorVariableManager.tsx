@@ -117,9 +117,12 @@ export type VisorVariableManager = Readonly<{
      *
      * @param records - Every variable record in the delivery, each complete.
      *
-     * @throws Error if any record is missing a field, carries fewer ranges than
-     * components, or has an unsupported component count.  The held set is then
-     * left unchanged.
+     * @throws Error if any record is missing a field or carries fewer ranges
+     * than components.  The held set is then left unchanged.
+     *
+     * @remarks
+     * A record whose component count has no label info is not held; one
+     * warning names its id and component count, and the rest are held.
      */
     setRecords: (records: VisorVariableState[]) => void;
 
@@ -336,6 +339,12 @@ export function getVariableManager(): VisorVariableManager {
                 new Map();
             for (const state of records) {
                 const record = HeldVariableRecord.fromState(state);
+                if (!labelInfoMap.has(state.numComponents)) {
+                    console.warn(
+                        `Variable record '${state.id}' skipped: no label info for ${state.numComponents} component(s)`
+                    );
+                    continue;
+                }
                 const existing = heldRecords.get(state.id)?.info;
                 const info =
                     existing != null &&
@@ -388,7 +397,8 @@ export function getVariableManager(): VisorVariableManager {
      * Creates the variable object for a held record.  Its ranges are read from,
      * and written to, whichever record is held under its id at the time.
      *
-     * @throws Error if the record has an unsupported component count.
+     * @throws Error if the record has an unsupported component count; callers
+     * skip such records before calling.
      */
     function createRecordVariableInfo(state: VisorVariableState): VisorVariableInfo {
         const id = state.id;

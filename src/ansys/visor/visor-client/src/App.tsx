@@ -113,50 +113,59 @@ function App() {
 
         wasmView.current.clearObserversAndEventListeners();
         const oldFrontend: VisorFrontend = (window as any).__visorState;
-        const sceneDetailsJson = await wasmView.current.trameTriggerAsync(
-            'get_visor_scene_details_json'
-        );
-        let sceneDetails: VisorSceneDetails;
+        let newFrontend: VisorFrontend;
+        // The listeners cleared above are registered again however this
+        // block ends, so a failed rebuild still receives the next server
+        // update, and `set_state` keeps reaching the frontend named by
+        // `__visorState`, which is switched only after the first pass.
         try {
-            sceneDetails = new VisorSceneDetails(sceneDetailsJson);
-        } catch (err) {
-            if (err instanceof SchemaVersionMismatchError) {
-                setSchemaMismatchError(err);
-                return;
+            const sceneDetailsJson = await wasmView.current.trameTriggerAsync(
+                'get_visor_scene_details_json'
+            );
+            let sceneDetails: VisorSceneDetails;
+            try {
+                sceneDetails = new VisorSceneDetails(sceneDetailsJson);
+            } catch (err) {
+                if (err instanceof SchemaVersionMismatchError) {
+                    setSchemaMismatchError(err);
+                    return;
+                }
+                throw err;
             }
-            throw err;
-        }
-        const renderer = await WasmRenderer.createAsync(
-            wasmView.current.vtkScene,
-            requireWasmAnnotation(sceneDetails.vtkInfo.rendererAnnotation),
-            wasmView.current.trameTriggerAsync
-        );
-        const newFrontend = new VisorFrontend(
-            renderer,
-            sceneDetails.vtkInfo.sceneGraph,
-            wasmView.current.trameTriggerAsync
-        );
-        // Release the frontend being replaced, here and not later: the
-        // `VtkScene` behind both renderers is the same object across a
-        // rebuild, so an unreleased subscription stays live and the next
-        // gesture is reported once per surviving frontend.  There is
-        // deliberately no `await` between the new frontend subscribing (the
-        // constructor above) and the old one releasing, so the window in
-        // which two subscriptions coexist contains no suspension point.
-        if (oldFrontend != null) {
-            oldFrontend.releaseCameraSettledListener();
-        }
+            const renderer = await WasmRenderer.createAsync(
+                wasmView.current.vtkScene,
+                requireWasmAnnotation(sceneDetails.vtkInfo.rendererAnnotation),
+                wasmView.current.trameTriggerAsync
+            );
+            newFrontend = new VisorFrontend(
+                renderer,
+                sceneDetails.vtkInfo.sceneGraph,
+                wasmView.current.trameTriggerAsync
+            );
+            // Release the frontend being replaced, here and not later: the
+            // `VtkScene` behind both renderers is the same object across a
+            // rebuild, so an unreleased subscription stays live and the next
+            // gesture is reported once per surviving frontend.  There is
+            // deliberately no `await` between the new frontend subscribing (the
+            // constructor above) and the old one releasing, so the window in
+            // which two subscriptions coexist contains no suspension point.
+            if (oldFrontend != null) {
+                oldFrontend.releaseCameraSettledListener();
+            }
 
-        if (visorArgs.current.darkMode != null) {
-            // Explicit Dash prop takes precedence over the server's dark_mode value.
-            sceneDetails.appState.ui.setDarkTheme(visorArgs.current.darkMode);
+            if (visorArgs.current.darkMode != null) {
+                // Explicit Dash prop takes precedence over the server's dark_mode value.
+                sceneDetails.appState.ui.setDarkTheme(visorArgs.current.darkMode);
+            }
+            await newFrontend.setAppStateAsync(sceneDetails.appState, false);
+            (window as any).__visorState = newFrontend;
+            setSchemaMismatchError(null);
+            setVisorFrontend(newFrontend); // rebuild/remount React UI
+        } finally {
+            wasmView.current.addServerUpdatedListener(onServerUpdateAsync);
+            wasmView.current.addGetStateListener(onGetState);
+            wasmView.current.addSetStateListener(onSetStateAsync);
         }
-        (window as any).__visorState = newFrontend;
-        await newFrontend.setAppStateAsync(sceneDetails.appState, false);
-        setVisorFrontend(newFrontend); // rebuild/remount React UI
-        wasmView.current.addServerUpdatedListener(onServerUpdateAsync);
-        wasmView.current.addGetStateListener(onGetState);
-        wasmView.current.addSetStateListener(onSetStateAsync);
         if (oldFrontend != null) {
             const oldAppState = await oldFrontend.getAppStateAsync();
             await newFrontend.setAppStateAsync(oldAppState);

@@ -170,7 +170,7 @@ describe('getVariableManager', () => {
             ]);
         });
 
-        test('throws for an unsupported component count', () => {
+        test('skips a record with an unsupported component count and warns once', () => {
             const manager = getVariableManager();
             const ranges = [
                 [0, 1],
@@ -179,8 +179,42 @@ describe('getVariableManager', () => {
                 [0, 1],
                 [0, 1],
             ];
+            const warningSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+            try {
+                manager.setRecords([
+                    record({
+                        id: 'POINT::displacement::5',
+                        numComponents: 5,
+                        defaultRanges: ranges,
+                        ranges,
+                    }),
+                    record(),
+                ]);
+                manager.finishAddingDataArrayMetadata();
 
-            expect(() => {
+                expect(manager.globalVariableCollection.array.map((item) => item.id)).toEqual([
+                    'POINT::displacement::3',
+                ]);
+                expect(warningSpy).toHaveBeenCalledTimes(1);
+                expect(warningSpy.mock.calls[0][0]).toContain("'POINT::displacement::5'");
+                expect(warningSpy.mock.calls[0][0]).toContain('5 component(s)');
+            } finally {
+                warningSpy.mockRestore();
+            }
+        });
+
+        test('a delivery of only unsupported widths holds an empty set', () => {
+            const manager = getVariableManager();
+            const ranges = [
+                [0, 1],
+                [0, 1],
+                [0, 1],
+                [0, 1],
+                [0, 1],
+            ];
+            const warningSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+            try {
+                manager.setRecords([record()]);
                 manager.setRecords([
                     record({
                         id: 'POINT::displacement::5',
@@ -189,7 +223,12 @@ describe('getVariableManager', () => {
                         ranges,
                     }),
                 ]);
-            }).toThrow('Do we support label info for variables with 5 component(s)?');
+                manager.finishAddingDataArrayMetadata();
+
+                expect(manager.globalVariableCollection.array).toEqual([]);
+            } finally {
+                warningSpy.mockRestore();
+            }
         });
 
         test('returns variables in input order', () => {
