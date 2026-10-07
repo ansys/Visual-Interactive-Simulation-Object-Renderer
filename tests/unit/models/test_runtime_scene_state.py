@@ -3,9 +3,8 @@ from unittest.mock import MagicMock
 import pytest
 from pydantic import ValidationError
 
-from ansys.visor.viewer.models.common.visor_variable_state import (
-    VisorVariableState,
-)
+from ansys.visor.viewer.core.visor_enums import VisorVtkVariableType
+from ansys.visor.viewer.models.common.visor_variable_record import VisorVariableRecord
 from ansys.visor.viewer.models.runtime.dataset.runtime_dataset_state import (
     RuntimeDatasetState,
 )
@@ -102,13 +101,24 @@ def test_dataset_states_accept_valid_mapping():
 # ------------------------------------------------------------------
 
 def test_variable_states_default_and_assignment():
-    """variable_states should accept valid mapping."""
+    """variable_states holds the server's records: a real record built from literals."""
 
-    data = {
-        "a": MagicMock(spec=VisorVariableState),
-    }
+    record = VisorVariableRecord(
+        id="POINT::pressure::1",
+        array_name="pressure",
+        type=VisorVtkVariableType.POINT,
+        num_components=1,
+        part_ids=[1],
+        default_magnitude_range=(0.0, 10.0),
+        default_ranges=[(0.0, 10.0)],
+        magnitude_range=(2.0, 3.0),
+        ranges=[(2.0, 3.0)],
+    )
 
-    state = RuntimeSceneState(variable_states=data)
+    state = RuntimeSceneState(variable_states={"POINT::pressure::1": record})
 
-    assert "a" in state.variable_states
-    assert isinstance(state.variable_states["a"], VisorVariableState)
+    stored = state.variable_states["POINT::pressure::1"]
+    assert isinstance(stored, VisorVariableRecord)
+    assert stored.magnitude_range == (2.0, 3.0)
+    assert stored.default_ranges == [(0.0, 10.0)]
+    assert stored.part_ids == [1]

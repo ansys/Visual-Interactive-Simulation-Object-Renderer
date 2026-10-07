@@ -13,6 +13,7 @@ from ansys.visor.viewer.core.visor_enums import VisorVtkVariableType
 from ansys.visor.viewer.core.visor_logging import VisorDefaultLogger
 from ansys.visor.viewer.models.common.visor_camera_state import VisorCameraState
 from ansys.visor.viewer.models.runtime.requests.sync_camera_payload import SyncCameraPayload
+from ansys.visor.viewer.models.runtime.requests.variable_range_payload import SetVariableRangePayload
 from ansys.visor.viewer.models.runtime.requests.widget_state_payloads import (
     SetBoundingBoxVisibilityPayload,
     SetCrossSectionVisibilityPayload,
@@ -60,9 +61,11 @@ class SceneMutationApi(Protocol):
         association: VisorVtkVariableType,
         array_name: str,
         component: int,
-        min_val: float,
-        max_val: float,
-    ) -> None: ...
+    ) -> bool: ...
+
+    def set_variable_range(
+        self, variable_id: str, component: int, min_val: float, max_val: float
+    ) -> bool: ...
 
     def clear_part_color_variable(self, node_id: int) -> None: ...
 
@@ -215,6 +218,7 @@ class LocalApp:
         set_part_selected: selects or deselects one part
         set_part_color_variable: colours one part by a scalar variable
         clear_part_color_variable: stops colouring one part by a scalar variable
+        set_variable_range: stores one variable slot's effective range
         sync_camera: records a settled camera reported by the frontend
         set_cross_section_visibility: shows or hides the cross-section plane
         set_edges_visible: shows or hides edges on every part
@@ -444,6 +448,10 @@ class LocalApp:
         no-op, matching the posture the pipeline takes on an unknown array
         name.  ``variableId`` is forwarded verbatim and is never parsed by
         the server.
+
+        ``min`` and ``max`` are still required on the wire and appear on the
+        arrival line, but are not forwarded: the server applies its own
+        record's effective range for the referenced slot.
         """
         api = self._mutation_api("set_part_color_variable", payload)
         if api is None:
@@ -454,8 +462,6 @@ class LocalApp:
             payload.association,
             payload.array_name,
             payload.component,
-            payload.min_val,
-            payload.max_val,
         )
 
     @trigger("clear_part_color_variable")
@@ -466,6 +472,21 @@ class LocalApp:
         if api is None:
             return
         api.clear_part_color_variable(payload.node_id)
+
+    @trigger("set_variable_range")
+    @parse_payload(SetVariableRangePayload)
+    def set_variable_range(self, payload) -> None:
+        """Frontend -> Backend: store one variable slot's effective range.
+
+        Scene-wide, not per-part: the coordinator applies the range to every
+        part whose reference names that slot.
+        """
+        api = self._mutation_api("set_variable_range", payload)
+        if api is None:
+            return
+        api.set_variable_range(
+            payload.variable_id, payload.component, payload.min_val, payload.max_val
+        )
 
     # ------------------------------------------------------------------
     # Camera trigger

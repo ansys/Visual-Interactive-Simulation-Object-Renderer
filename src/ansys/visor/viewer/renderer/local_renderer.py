@@ -246,6 +246,10 @@ class VisorLocalRenderer(IRenderer):
         *variable_id* is not forwarded -- it is stored opaquely by the
         registry and is not needed to configure the mapper.  An unknown
         *node_id* is a logged no-op, never a raise.
+
+        Ends with :meth:`_serialize_part_state`, after the mapper write, so
+        the state served to the client carries the new range.  Does not
+        notify the client.
         """
         pipe = self._pipelines.get(node_id)
         if pipe is None:
@@ -254,6 +258,7 @@ class VisorLocalRenderer(IRenderer):
             )
             return
         pipe.set_color_variable(array_type, array_name, component, min_val, max_val)
+        self._serialize_part_state(node_id)
 
     def clear_color_variable(self, node_id: int) -> None:
         """See :meth:`IRenderer.clear_color_variable`.
@@ -261,6 +266,10 @@ class VisorLocalRenderer(IRenderer):
         Resolves the pipeline and delegates to
         :meth:`VtkNodePipeline.clear_color_variable`.  An unknown
         *node_id* is a logged no-op, never a raise.
+
+        Ends with :meth:`_serialize_part_state`, after the mapper write, so
+        the state served to the client has scalar colouring off.  Does not
+        notify the client.
         """
         pipe = self._pipelines.get(node_id)
         if pipe is None:
@@ -269,6 +278,36 @@ class VisorLocalRenderer(IRenderer):
             )
             return
         pipe.clear_color_variable()
+        self._serialize_part_state(node_id)
+
+    def _serialize_part_state(self, node_id: int) -> None:
+        """Make the state served to the client current for one part's mapper.
+
+        A mapper write without this leaves the served cache holding the old
+        content under a new version number, so the next client fetch gets the
+        pre-write range.  **Serialize only; do not notify.**  An unknown
+        *node_id* is a logged no-op.
+
+        Names the mapper's id alone, derived with ``GetId`` on the object as
+        :meth:`serialize_camera_state` derives the camera's.  An id of ``0``
+        is one the store has never held (the ROOT sentinel); naming it
+        degrades to an error-logged no-op in VTK, so it is skipped here with
+        a debug line and the next full serialization carries the mapper.
+        """
+        pipe = self._pipelines.get(node_id)
+        if pipe is None:
+            logger.debug(
+                "_serialize_part_state: no pipeline for node %s; skipping.", node_id
+            )
+            return
+        mapper_id = self._object_manager.GetId(pipe.mapper)
+        if mapper_id == 0:
+            logger.debug(
+                "_serialize_part_state: mapper of node %s is not registered yet; skipping.",
+                node_id,
+            )
+            return
+        self._object_manager.UpdateStateFromObject(mapper_id)
 
     def refresh_color_variable_range(
         self,
