@@ -246,6 +246,9 @@ class VisorLocalRenderer(IRenderer):
         *variable_id* is not forwarded -- it is stored opaquely by the
         registry and is not needed to configure the mapper.  An unknown
         *node_id* is a logged no-op, never a raise.
+
+        Ends with :meth:`serialize_part_state`, after the mapper write, so
+        the state served to the client carries the new range.
         """
         pipe = self._pipelines.get(node_id)
         if pipe is None:
@@ -254,6 +257,7 @@ class VisorLocalRenderer(IRenderer):
             )
             return
         pipe.set_color_variable(array_type, array_name, component, min_val, max_val)
+        self.serialize_part_state(node_id)
 
     def clear_color_variable(self, node_id: int) -> None:
         """See :meth:`IRenderer.clear_color_variable`.
@@ -261,6 +265,9 @@ class VisorLocalRenderer(IRenderer):
         Resolves the pipeline and delegates to
         :meth:`VtkNodePipeline.clear_color_variable`.  An unknown
         *node_id* is a logged no-op, never a raise.
+
+        Ends with :meth:`serialize_part_state`, after the mapper write, so
+        the state served to the client has scalar colouring off.
         """
         pipe = self._pipelines.get(node_id)
         if pipe is None:
@@ -269,6 +276,7 @@ class VisorLocalRenderer(IRenderer):
             )
             return
         pipe.clear_color_variable()
+        self.serialize_part_state(node_id)
 
     def serialize_part_state(self, node_id: int) -> None:
         """See :meth:`IRenderer.serialize_part_state`.

@@ -65,7 +65,6 @@ class _ColorVariableBinding:
             self.min_val,
             self.max_val,
         )
-        renderer.serialize_part_state(self.part_id)
 
 
 class VisorSceneBase(ABC):
@@ -950,9 +949,9 @@ class VisorSceneBase(ABC):
         Stop colouring the part identified by *node_id* by a scalar variable.
 
         The variable reference is cleared atomically in the store (id and
-        component together), matching the atomic set.  The mapper is then
-        re-serialized inside the lock, as :meth:`_ColorVariableBinding.apply_to`
-        does after an apply, so the state served to the client is current.
+        component together), matching the atomic set.  The renderer's clear
+        then re-serializes the mapper inside the lock, as its apply does, so
+        the state served to the client is current.
         """
         with self._vtk_lock:
             if not self._dataset_registry.clear_part_color_variable(node_id):
@@ -961,7 +960,6 @@ class VisorSceneBase(ABC):
                 )
                 return
             self._renderer.clear_color_variable(node_id)
-            self._renderer.serialize_part_state(node_id)
 
     # =========================================================================
     # Widget state — coordinator surface
@@ -1226,7 +1224,7 @@ class VisorSceneBase(ABC):
         Otherwise the reference resolves against the held records, which the
         load path has rebuilt and overlaid with the file's ranges before this
         runs.  A refused reference is a logged no-op; the mapper is re-serialized
-        after an applied one.
+        after an applied or cleared one.
         """
         variable_id = part_state.variable_id
         component = part_state.variable_component

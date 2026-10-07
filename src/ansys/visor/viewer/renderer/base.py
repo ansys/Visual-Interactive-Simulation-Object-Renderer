@@ -149,11 +149,20 @@ class IRenderer(ABC):
             Component index. ``-1`` means magnitude.
         min_val / max_val:
             Scalar display range.
+
+        Re-serializes the part's served state after the write.  **Serialize
+        only; do not notify.**  No-op on a renderer that serves the client no
+        VTK object state.
         """
 
     @abstractmethod
     def clear_color_variable(self, node_id: int) -> None:
-        """Disable scalar colouring on *node_id*, reverting to solid diffuse."""
+        """Disable scalar colouring on *node_id*, reverting to solid diffuse.
+
+        Re-serializes the part's served state after the write.  **Serialize
+        only; do not notify.**  No-op on a renderer that serves the client no
+        VTK object state.
+        """
 
     @abstractmethod
     def serialize_part_state(self, node_id: int) -> None:
@@ -229,8 +238,8 @@ class IRenderer(ABC):
     def serialize_camera_state(self) -> None:
         """Make the state served to the client current for the camera.
 
-        The camera alone; the node pipelines are
-        :meth:`serialize_pipeline_states`'s job.  Writing the pipeline camera
+        The camera alone; a part's mapper is
+        :meth:`serialize_part_state`'s job.  Writing the pipeline camera
         makes the server correct: it does not make the state the client is
         served correct, and the two are separate steps that can each silently
         do nothing.
