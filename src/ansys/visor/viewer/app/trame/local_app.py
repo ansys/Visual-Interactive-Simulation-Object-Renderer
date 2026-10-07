@@ -140,8 +140,6 @@ class SetPartColorVariablePayload(BaseModel):
     association: VisorVtkVariableType
     array_name: str = Field(alias="arrayName")
     component: int
-    min_val: float = Field(alias="min")
-    max_val: float = Field(alias="max")
 
 
 class ClearPartColorVariablePayload(BaseModel):
@@ -449,9 +447,8 @@ class LocalApp:
         name.  ``variableId`` is forwarded verbatim and is never parsed by
         the server.
 
-        ``min`` and ``max`` are still required on the wire and appear on the
-        arrival line, but are not forwarded: the server applies its own
-        record's effective range for the referenced slot.
+        The range is not carried: the server applies its own record's
+        effective range for the referenced slot.
         """
         api = self._mutation_api("set_part_color_variable", payload)
         if api is None:

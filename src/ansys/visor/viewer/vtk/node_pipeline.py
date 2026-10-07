@@ -4,13 +4,14 @@ VtkNodePipeline
 
 A self-contained VTK rendering pipeline for a single scene-graph leaf node.
 
-Owns the three VTK objects that turn a raw dataset into something the
+Owns the four VTK objects that turn a raw dataset into something the
 renderer can display:
 
 * ``base_algorithm`` -- geometry extraction (``vtkGeometryFilter`` for
   unstructured grids; ``vtkAppendPolyData`` for poly data).
 * ``mapper``         -- ``vtkPolyDataMapper`` connected to the algorithm output.
 * ``actor``          -- ``vtkActor`` connected to the mapper.
+* ``lookup_table``   -- ``vtkLookupTable`` set on the mapper.
 
 Created when a leaf node is registered with the renderer and destroyed when
 that node is deregistered. The scene-graph node itself owns only the raw
@@ -20,6 +21,7 @@ dataset and metadata; no VTK pipeline objects live on it.
 from dataclasses import dataclass
 from typing import Callable, Optional
 
+from vtkmodules.vtkCommonCore import vtkLookupTable
 from vtkmodules.vtkCommonDataModel import vtkDataObject, vtkPlane, vtkPolyData, vtkUnstructuredGrid
 from vtkmodules.vtkCommonExecutionModel import vtkPolyDataAlgorithm
 from vtkmodules.vtkFiltersCore import vtkAppendPolyData
@@ -31,6 +33,9 @@ from ansys.visor.viewer.core.visor_enums import VisorVtkVariableType
 from ansys.visor.viewer.core.visor_logging import VisorDefaultLogger
 
 logger = VisorDefaultLogger(__name__)
+
+LOOKUP_TABLE_HUE_RANGE: tuple[float, float] = (0.667, 0.0)
+"""Blue (low) to red (high)."""
 
 
 @dataclass
@@ -45,11 +50,15 @@ class VtkNodePipeline:
         The ``vtkPolyDataMapper`` driving the actor.
     base_algorithm:
         The geometry-extraction algorithm whose output feeds the mapper.
+    lookup_table:
+        The part's only table: MAGNITUDE over ``LOOKUP_TABLE_HUE_RANGE``,
+        built, set on ``mapper``, and never reconfigured.
     """
 
     actor: vtkActor
     mapper: vtkPolyDataMapper
     base_algorithm: vtkPolyDataAlgorithm
+    lookup_table: vtkLookupTable
 
     # ------------------------------------------------------------------
     # Factories
@@ -57,7 +66,7 @@ class VtkNodePipeline:
 
     @classmethod
     def from_dataset(cls, dataset: vtkDataObject) -> "VtkNodePipeline":
-        """Build a complete pipeline from ``dataset``.
+        """Build a complete pipeline from ``dataset``, its mapper holding a built lookup table.
 
         Parameters
         ----------
@@ -69,13 +78,20 @@ class VtkNodePipeline:
 
         mapper = vtkPolyDataMapper()
         mapper.SetInputConnection(base_algorithm.GetOutputPort())
+        lookup_table = cls._create_lookup_table()
+        mapper.SetLookupTable(lookup_table)
 
         actor = vtkActor()
         actor.SetMapper(mapper)
         actor.GetProperty().SetDiffuseColor(VisorColors.DefaultMeshColor)
         actor.GetProperty().SetInterpolation(0)  # flat shading
 
-        return cls(actor=actor, mapper=mapper, base_algorithm=base_algorithm)
+        return cls(
+            actor=actor,
+            mapper=mapper,
+            base_algorithm=base_algorithm,
+            lookup_table=lookup_table,
+        )
 
 
     # ------------------------------------------------------------------
@@ -204,9 +220,8 @@ class VtkNodePipeline:
     ) -> None:
         """Colour this part by a scalar array, over an explicit range.
 
-        Configures the mapper only.  No lookup table is authored here: the
-        table belongs to a later story, and until then a reference resolves
-        against the client-held default table.
+        Configures the mapper only.  Colours through ``lookup_table``; the
+        component stays on the mapper (-1 is magnitude).
 
         ``association`` is compared by identity against
         :class:`VisorVtkVariableType`; it is never parsed, upper-cased or
@@ -261,6 +276,23 @@ class VtkNodePipeline:
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _create_lookup_table() -> vtkLookupTable:
+        """A MAGNITUDE table over LOOKUP_TABLE_HUE_RANGE, built, its Table array marked modified.
+
+        Created before the pipeline is registered, so the first serialize
+        ships it built.  Any later write to this table must configure it,
+        call ``Build()`` and ``GetTable().Modified()``, then re-serialize the
+        mapper id, the table id and the ``Table`` array id inside the scene
+        lock, without notifying.
+        """
+        table = vtkLookupTable()
+        table.SetHueRange(*LOOKUP_TABLE_HUE_RANGE)
+        table.SetVectorModeToMagnitude()
+        table.Build()
+        table.GetTable().Modified()
+        return table
 
     @staticmethod
     def _create_base_algorithm(dataset: vtkDataObject) -> vtkPolyDataAlgorithm:
