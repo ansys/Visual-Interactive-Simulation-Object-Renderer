@@ -16,6 +16,7 @@ export default class VisorSceneState {
     private _crossSection: VisorCrossSectionState = new VisorCrossSectionState();
     private _datasetStates: Record<string, VisorDatasetState> = {};
     private _variableStates: Record<string, VisorVariableState> = {};
+    private _hasVariableStates: boolean = false;
     private _orthographicEnabled: boolean | undefined = undefined;
     private _crossSectionEnabled: boolean | undefined = undefined;
     private _edgesEnabled: boolean | undefined = undefined;
@@ -88,6 +89,14 @@ export default class VisorSceneState {
         return delete this._datasetStates[idStr];
     }
 
+    /**
+     * Whether this state carries a variable block at all.  An empty block is a
+     * delivery of zero variables; an absent one delivers nothing.
+     */
+    get hasVariableStates(): boolean {
+        return this._hasVariableStates;
+    }
+
     getVariableState(idStr: string): VisorVariableState | null {
         ensureString(idStr, 'idStr');
         return this._variableStates[idStr] ?? null;
@@ -112,6 +121,7 @@ export default class VisorSceneState {
 
         const newState = new VisorVariableState(variableState, key);
         const existing = this._variableStates[newState.id];
+        this._hasVariableStates = true;
 
         if (existing) {
             return existing.copy(newState, replace);
@@ -236,6 +246,7 @@ export default class VisorSceneState {
 
             const variableStates = data.variableStates;
             if (variableStates) {
+                this._hasVariableStates = true;
                 for (const [k, v] of Object.entries(variableStates)) {
                     this.copyVariable(v as JsonDict, replace, k);
                 }
@@ -276,7 +287,9 @@ export default class VisorSceneState {
             crossSectionEnabled: this.crossSectionEnabled,
             edgesEnabled: this.edgesEnabled,
             boundingBoxEnabled: this.boundingBoxEnabled,
-            variableStates,
+            // Omitted rather than emitted empty, so that a copy of this state
+            // does not read as a delivery of zero variables.
+            ...(this._hasVariableStates ? { variableStates } : {}),
             datasetStates,
         };
     }
