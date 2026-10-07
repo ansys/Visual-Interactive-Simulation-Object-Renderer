@@ -706,7 +706,9 @@ describe('re-selection carries the node component only where it names an option'
 
         let container: HTMLElement = null!;
         await act(async () => {
-            container = render(<Panel_TopRight visorState={frontend} onLoad={() => {}} />).container;
+            container = render(
+                <Panel_TopRight visorState={frontend} onLoad={() => {}} />
+            ).container;
         });
         const util = await frontend.panelTopRightUtilPromise;
         const warningSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
