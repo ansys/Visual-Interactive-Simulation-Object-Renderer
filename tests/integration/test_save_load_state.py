@@ -496,8 +496,8 @@ class TestRegistrySourcedPartState:
         assert record.visible is False
         assert record.selected is True
         assert record.diffuse_rgb == [1.0, 0.0, 0.0]
-        assert record.variable_id == "POINT::pressure::1"
-        assert record.variable_component == 0
+        assert record.color_variable.variable_id == "POINT::pressure::1"
+        assert record.color_variable.variable_component == 0
 
     def test_reloading_a_colored_part_restores_its_file_range(self, file_io, iface, tmp_path):
         """I-1: a colored part loads at the range the file stores, through the server's record.
