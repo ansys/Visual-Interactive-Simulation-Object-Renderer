@@ -213,11 +213,6 @@ export default class RemoteVtkScene {
         trameInterface.addSingleCallback('startEventLoop', instance.#startEventLoop);
         trameInterface.addSingleCallback('stopEventLoop', instance.#stopEventLoop);
         trameInterface.addSingleCallback('update', instance.updateAsync);
-        trameInterface.addSingleCallback('getState', (payload) => {
-            for (const callback of instance.#getStateListeners.values()) {
-                callback(payload);
-            }
-        });
         trameInterface.addSingleCallback('setState', (payload) => {
             for (const callback of instance.#setStateListeners.values()) {
                 callback(payload);
@@ -420,8 +415,6 @@ export default class RemoteVtkScene {
     /**@type{Map<Function,()=>void>}*/
     #serverUpdatedListeners = new Map();
     /**@type{Map<Function,(payload:any)=>void>}*/
-    #getStateListeners = new Map();
-    /**@type{Map<Function,(payload:any)=>void>}*/
     #setStateListeners = new Map();
     /**
      * @return {void}
@@ -431,7 +424,6 @@ export default class RemoteVtkScene {
             remover();
         }
         this.#serverUpdatedListeners.clear();
-        this.#getStateListeners.clear();
         this.#setStateListeners.clear();
     };
     /**
@@ -441,15 +433,6 @@ export default class RemoteVtkScene {
     addServerUpdatedListener = (handler) => {
         const remover = () => this.#serverUpdatedListeners.delete(remover);
         this.#serverUpdatedListeners.set(remover, handler);
-        return remover;
-    };
-    /**
-     * @param {(payload:any)=>void} handler
-     * @return {()=>void}
-     */
-    addGetStateListener = (handler) => {
-        const remover = () => this.#getStateListeners.delete(remover);
-        this.#getStateListeners.set(remover, handler);
         return remover;
     };
     /**

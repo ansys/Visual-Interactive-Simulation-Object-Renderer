@@ -109,11 +109,11 @@ def test_save_load_state(tmp_path):
 
     visor_instance = Visor()
 
-    # New behavior: save_state awaits a frontend-backed `scene.get_state()`.
+    # save_state reads the scene's server-side `get_state()`; no client is involved.
     # Keep the persisted state minimal and aligned with PersistedViewerStateV1 schema.
     mock_state = PersistedViewerStateV1()
 
-    async def fake_get_state(timeout: float = 5.0):
+    def fake_get_state():
         return mock_state
 
     # `save_state` is async; it also requires the server to be "on" via decorator.

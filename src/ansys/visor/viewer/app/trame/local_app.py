@@ -206,7 +206,6 @@ class LocalApp:
         server (Server): the Trame server instance
     Methods:
         get_scene_details_json: returns the scene details in JSON format
-        save_state_response: sends the current app state as payload
         pick_geometry: picks the geometry for rendering
         perf_report_wasm: reports the performance of the wasm update cycle
         perf_report_server_update: reports the performance of the server update cycle
@@ -235,7 +234,6 @@ class LocalApp:
             self,
             server: Server,
             get_scene_details_json: callable,
-            handle_save_state_response: callable,
             standalone: bool = True,
             trame_logger: Logger | None = None,
             pick_geometry=None,
@@ -244,8 +242,6 @@ class LocalApp:
         self.server = server
         # Callable to get the scene details in JSON format
         self._get_scene_details_json = get_scene_details_json
-        # Callable to handle the save state response from the frontend
-        self._handle_save_state_response = handle_save_state_response
         # Callable for sub-geometry picking (optional)
         self._pick_geometry = pick_geometry
         # Per-part visual state coordinator (see SceneMutationApi).  The one
@@ -309,11 +305,6 @@ class LocalApp:
     def get_visor_scene_details_json(self):
         """ returns the scene details in JSON format. """
         return self._get_scene_details_json()
-
-    @trigger("save_state_response")
-    def save_state_response(self, request_id: int, payload: dict):
-        """Frontend → Backend: the frontend sends the current app state as payload."""
-        return self._handle_save_state_response(request_id, payload)
 
     @trigger("pick_geometry")
     def pick_geometry(self, actor_wasm_id, cell_id, mode: str, world_x: float, world_y: float, world_z: float):

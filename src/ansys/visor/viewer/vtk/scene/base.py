@@ -5,7 +5,7 @@ import math
 import threading
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Dict, List
+from typing import Dict, List
 
 from trame_server import Server
 
@@ -24,6 +24,7 @@ from ansys.visor.viewer.models.common.visor_variable_record import (
 from ansys.visor.viewer.models.common.visor_variable_state import VisorVariableState
 from ansys.visor.viewer.models.persist.persisted_viewer_state import PersistedViewerStateV1
 from ansys.visor.viewer.models.runtime.dataset.runtime_dataset_state import RuntimePartProperties
+from ansys.visor.viewer.models.runtime.scene.runtime_app_state import RuntimeAppState
 from ansys.visor.viewer.models.runtime.visor_scene_details import VisorSceneDetails
 from ansys.visor.viewer.renderer.base import IRenderer
 from ansys.visor.viewer.vtk.datasets.visor_dataset import VisorDataset
@@ -33,9 +34,6 @@ from ansys.visor.viewer.vtk.scene.visor_state_mapper import VisorStateMapper
 from ansys.visor.viewer.vtk.scene_graph import VisorSceneGraph
 from ansys.visor.viewer.vtk.variables.visor_part_variables import VisorPartVariables
 from ansys.visor.viewer.vtk.variables.visor_variable_update import VisorVariableUpdate
-
-if TYPE_CHECKING:
-    from ansys.visor.viewer.models.runtime.scene.runtime_app_state import RuntimeAppState
 
 logger = VisorDefaultLogger(__name__)
 
@@ -81,19 +79,20 @@ class VisorSceneBase(ABC):
     implementation (``self._vtk_renderer``): VTK pipeline objects, actor
     lifecycle, camera, and scene-state serialisation.
 
-    Subclasses must implement two abstract hooks that capture the difference
-    in *state authority* between rendering backends:
+    Subclasses must implement one abstract hook, which captures the difference
+    in *state delivery* between rendering backends:
 
-    * :meth:`_get_runtime_state_async` — wasm path does a frontend round-trip;
-      RCA/headless paths build state server-side.
     * :meth:`_push_runtime_state` — wasm path calls a JS
       ``set_state``; RCA path pushes camera onto ``vtkCamera``; headless
       is a no-op.
 
+    The saved state is built here, from the server's own records, for every
+    backend; no backend asks a client for it.
+
     This separation means that adding a new rendering backend requires only:
 
     1. A new :class:`IRenderer` implementation.
-    2. A new :class:`VisorSceneBase` subclass that overrides the two hooks.
+    2. A new :class:`VisorSceneBase` subclass that overrides the hook.
     """
 
     _server: Server
@@ -187,19 +186,8 @@ class VisorSceneBase(ABC):
         self._state_mapper = VisorStateMapper(self._dataset_registry)
 
     # =========================================================================
-    # Abstract hooks — subclasses differ on state authority
+    # Abstract hook — subclasses differ on state delivery
     # =========================================================================
-
-    @abstractmethod
-    async def _get_runtime_state_async(self, timeout: float) -> "RuntimeAppState":
-        """
-        Obtain the current runtime app state.
-
-        * Wasm path: round-trip to the React frontend via
-          :class:`VisorFrontendBridge`.
-        * RCA / headless paths: build entirely from server-side VTK objects and
-          the dataset registry — no frontend call.
-        """
 
     @abstractmethod
     def _push_runtime_state(self, runtime_app_state: "RuntimeAppState") -> None:
@@ -248,29 +236,25 @@ class VisorSceneBase(ABC):
         """Convenience: metadata snapshot for UI without parts."""
         return self._dataset_registry.list_info()
 
-    async def get_state(self, timeout: float) -> PersistedViewerStateV1:
+    def get_state(self) -> PersistedViewerStateV1:
         """
-        Capture the current viewer state and return it as a
-        :class:`PersistedViewerStateV1`.
+        Build the current viewer state from the server's own records and
+        return it as a :class:`PersistedViewerStateV1`.
 
-        The frontend round trip remains the only source for everything the browser owns.
-        Per-part state is not: ``scene.dataset_states`` is replaced with the registry's
-        own runtime state before the persisted mapping runs.
+        No client is consulted, so a save works with no browser connected.
+        The runtime state starts empty and every one of its fields is assigned
+        below; a field left unassigned here would be saved at its model default.
 
-        The registry hands out live ``RuntimeDatasetState`` objects that the per-part
-        setters mutate from the trame daemon thread, so each one is deep-copied under
-        ``_vtk_lock``.  The lock is taken after the ``await`` and never held across one.
+        Per-part state comes from the registry.  The registry hands out live
+        ``RuntimeDatasetState`` objects that the per-part setters mutate from the
+        trame daemon thread, so each one is deep-copied under ``_vtk_lock``.
 
-        The camera and the widget toggles are what the browser's reply does not
-        get to supply.  Per-part state comes from the registry, the toggles from
-        this object's own store, and the camera from the renderer's record; the
-        reply is consulted for none of the three.
-
-        The UI record is the fourth.  ``runtime_state.ui`` is replaced
-        wholesale with a copy of this object's own record.
+        The widget toggles come from this object's own store, and the UI record
+        is a copy of this object's own record, so a panel trigger landing after
+        the call cannot mutate the state already returned.
 
         The camera comes from the renderer's record, which is authoritative, rather than
-        from the reply or from the pipeline ``vtkCamera``: the pipeline is the
+        from the pipeline ``vtkCamera``: the pipeline is the
         record's projection, and reading it back would re-import whatever drift
         VTK introduced -- ``ResetCamera`` rewrites ``clipping_range``.  The
         assignment is unconditional.  A ``None`` record means no camera was ever
@@ -288,8 +272,11 @@ class VisorSceneBase(ABC):
         ``None`` means.  In normal operation there is no ``None`` case to
         guard because the renderer seeds the record from its own widget the
         first time bounds are pushed.
+
+        Variables and unit are the server's: the variable records and the
+        registry's unit.
         """
-        runtime_state = await self._get_runtime_state_async(timeout)
+        runtime_state = RuntimeAppState()
 
         with self._vtk_lock:
             registry_dataset_states = {
@@ -306,7 +293,6 @@ class VisorSceneBase(ABC):
             runtime_state.scene.edges_enabled = self._edges_enabled
             runtime_state.scene.bounding_box_enabled = self._bounding_box_enabled
             runtime_state.ui = self._ui_state.model_copy()
-            # Variables and unit are the server's, never the browser's reply.
             runtime_state.scene.variable_states = self._variable_records.model_copy(deep=True).variables
             runtime_state.scene.unit = self._dataset_registry.unit
         runtime_state.scene.dataset_states = registry_dataset_states
@@ -418,10 +404,6 @@ class VisorSceneBase(ABC):
     def get_scene_details_json(self) -> str:
         """Return the VisorVtkPipelineState as JSON string."""
         return json.dumps(self.get_scene_details().model_dump(exclude_none=True, by_alias=True))
-
-    def handle_save_state_response(self, request_id: int, response: dict) -> None:
-        """Called by LocalApp trigger when the frontend responds."""
-        self._frontend_bridge.resolve_save_state_response(request_id, response)
 
     def clear(self):
         """Remove all actors from the renderer and reset the scene.

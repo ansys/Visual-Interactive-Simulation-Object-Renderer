@@ -85,10 +85,10 @@ class PersistedSceneState(BaseModel):
         """Fill absent identity fields on read, from the variable identifier.
 
         ``array_name``, ``type``, and ``num_components`` are required and stay
-        required: the model is shared with ``RuntimeSceneState.variable_states``,
-        so relaxing them would also relax the save-path coercion in
-        ``VisorSaveStateResponse._coerce_app_state``.  Tolerance for older save
-        files lives here, on the container, and applies to the ingest boundary only.
+        required: the model is also built on the save path, by
+        ``VisorVariableRecord.to_variable_state``, so relaxing them would also
+        relax that construction.  Tolerance for older save files lives here, on
+        the container, and applies to the ingest boundary only.
         """
         if not isinstance(value, Mapping):
             return value
