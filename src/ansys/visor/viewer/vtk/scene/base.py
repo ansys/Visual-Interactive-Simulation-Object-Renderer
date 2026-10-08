@@ -1050,8 +1050,9 @@ class VisorSceneBase(ABC):
         """
         Restore per-part state from a runtime app state, on the load path.
 
-        Replaces the part states of each dataset named in the supplied states,
-        then applies every part to this process's VTK pipeline through ``IRenderer``.
+        Installs the part records of each dataset named in the supplied states, which
+        are that dataset's current records overlaid with the loaded entries, one per
+        part.  Then applies every part to this process's VTK pipeline through ``IRenderer``.
         Datasets the registry does not hold are skipped and logged.  Every other failure
         is a logged no-op.
 

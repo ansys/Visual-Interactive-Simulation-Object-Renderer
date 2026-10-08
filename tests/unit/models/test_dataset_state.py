@@ -116,7 +116,10 @@ def test_default_for_yields_a_record_with_every_field_set():
 
 def test_from_part_properties_resolves_each_null_to_its_literal():
     """A persisted entry with every field null resolves to the literals."""
-    p = RuntimePartProperties.from_part_properties(id=5, props=PartProperties())
+    props = PartProperties(
+        opacity=None, visible=None, selected=None, color_by=None, color_by_component=None, diffuse_rgb=None
+    )
+    p = RuntimePartProperties.from_part_properties(id=5, props=props)
 
     assert p.visible is True
     assert p.opacity == 1.0
@@ -145,4 +148,23 @@ def test_color_variable_round_trips_through_color_by():
     back = p.to_part_properties()
     assert back.color_by == "POINT::pressure::1"
     assert back.color_by_component == 2
+
+
+def test_overlaid_with_keeps_an_absent_field_and_resolves_a_named_one():
+    """An absent key keeps the record's value; a named value is taken; a named null resolves to the default."""
+    current = _record(
+        5, opacity=0.3, color_variable=VariableReference(variable_id="POINT::pressure::1", variable_component=2)
+    )
+    props = PartProperties(
+        visible=False, selected=True, diffuse_rgb=[0.1, 0.2, 0.3], color_by=None, color_by_component=None
+    )
+
+    p = current.overlaid_with(props)
+
+    assert p.opacity == 0.3
+    assert p.visible is False
+    assert p.selected is True
+    assert p.diffuse_rgb == [0.1, 0.2, 0.3]
+    assert p.color_variable is None
+
 
