@@ -746,11 +746,8 @@ class DummyScene(VisorSceneBase):
         self._reset_called = False
         self._render_called = False
 
-    # Implement the two abstract hooks with no-op stubs so the class is
-    # instantiable.  These stubs are never called by finalize_scene tests.
-    async def _get_runtime_state_async(self, timeout: float):
-        return None
-
+    # Implement the abstract hook with a no-op stub so the class is
+    # instantiable.  The stub is never called by finalize_scene tests.
     def _push_runtime_state(self, runtime_app_state) -> None:
         pass
 

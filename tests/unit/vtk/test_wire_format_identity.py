@@ -134,11 +134,8 @@ class _StubRenderer:
 
 class _WireFormatScene(VisorSceneBase):
     """Minimal concrete ``VisorSceneBase`` for exercising the real
-    ``get_scene_details()`` path end to end. The two abstract hooks are
-    unused by that path and are never called by this test."""
-
-    async def _get_runtime_state_async(self, timeout: float):
-        raise NotImplementedError
+    ``get_scene_details()`` path end to end. The abstract hook is
+    unused by that path and is never called by this test."""
 
     def _push_runtime_state(self, runtime_app_state) -> None:
         raise NotImplementedError
