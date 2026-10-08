@@ -163,7 +163,6 @@ function App() {
             setVisorFrontend(newFrontend); // rebuild/remount React UI
         } finally {
             wasmView.current.addServerUpdatedListener(onServerUpdateAsync);
-            wasmView.current.addGetStateListener(onGetState);
             wasmView.current.addSetStateListener(onSetStateAsync);
         }
         if (oldFrontend != null) {
@@ -181,23 +180,6 @@ function App() {
                 .trameTriggerAsync('perf_report_server_update', { handlerMs })
                 .catch(() => {});
         }
-    }
-
-    async function onGetState(payload: any) {
-        if (wasmView.current == null) {
-            throw new Error(`wasmView should not be null here`);
-        }
-        const oldFrontend: VisorFrontend = (window as any).__visorState;
-        const appState = await oldFrontend.getAppStateAsync();
-        const response = {
-            requestId: payload.requestId,
-            appState: appState.toDict(),
-        };
-        await wasmView.current.trameTriggerAsync(
-            'save_state_response',
-            payload.requestId,
-            response
-        );
     }
 
     async function onSetStateAsync(payload: any) {
