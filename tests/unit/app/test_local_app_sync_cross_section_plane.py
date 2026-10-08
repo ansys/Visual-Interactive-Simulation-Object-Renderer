@@ -77,7 +77,6 @@ def app(mock_server, api):
     return LocalApp(
         server=mock_server,
         get_scene_details_json=MagicMock(),
-        handle_save_state_response=MagicMock(),
         standalone=True,
         scene_mutation_api=api,
     )

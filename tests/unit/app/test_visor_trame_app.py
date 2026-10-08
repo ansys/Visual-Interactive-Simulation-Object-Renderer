@@ -41,18 +41,11 @@ def mock_get_scene_details_json():
     return MagicMock(return_value={"scene": "details"})
 
 
-@pytest.fixture
-def mock_handle_save_state_response():
-    """Provide a mock save-state callback."""
-    return MagicMock(return_value={"ok": True})
-
-
 @patch("ansys.visor.viewer.app.trame.local_app.settings")
 def test_init_sets_attributes(
     mock_settings,
     mock_server,
     mock_get_scene_details_json,
-    mock_handle_save_state_response,
     mock_logger,
 ):
     """Verify that initialization stores the provided attributes."""
@@ -60,7 +53,6 @@ def test_init_sets_attributes(
     app = LocalApp(
         server=mock_server,
         get_scene_details_json=mock_get_scene_details_json,
-        handle_save_state_response=mock_handle_save_state_response,
         standalone=True,
         trame_logger=mock_logger,
     )
@@ -70,26 +62,24 @@ def test_init_sets_attributes(
 
 
 def test_register_lifecycle_hooks_adds_handlers(
-    mock_server, mock_get_scene_details_json, mock_handle_save_state_response
+    mock_server, mock_get_scene_details_json
 ):
     """Verify that lifecycle event handlers are registered."""
     LocalApp(
         server=mock_server,
         get_scene_details_json=mock_get_scene_details_json,
-        handle_save_state_response=mock_handle_save_state_response,
         standalone=True,
     )
     assert mock_server.controller.add_call_count >= 5
 
 
 def test_set_headers_sets_http_headers(
-    mock_server, mock_get_scene_details_json, mock_handle_save_state_response
+    mock_server, mock_get_scene_details_json
 ):
     """Verify that the required HTTP headers are configured."""
     LocalApp(
         server=mock_server,
         get_scene_details_json=mock_get_scene_details_json,
-        handle_save_state_response=mock_handle_save_state_response,
         standalone=True,
     )
     mock_server.http_headers.set_header.assert_any_call(
@@ -105,27 +95,24 @@ def test_set_www_path_sets_www(
     mock_settings,
     mock_server,
     mock_get_scene_details_json,
-    mock_handle_save_state_response,
 ):
     """Verify that the client bundle path is assigned to the server."""
     mock_settings.get_client_bundle.return_value = "/mock/path"
     LocalApp(
         server=mock_server,
         get_scene_details_json=mock_get_scene_details_json,
-        handle_save_state_response=mock_handle_save_state_response,
         standalone=True,
     )
     assert mock_server._www == "/mock/path"
 
 
 def test_get_visor_scene_details_json_returns_scene_details(
-    mock_server, mock_get_scene_details_json, mock_handle_save_state_response
+    mock_server, mock_get_scene_details_json
 ):
     """Verify that scene details are returned from the callback."""
     app = LocalApp(
         server=mock_server,
         get_scene_details_json=mock_get_scene_details_json,
-        handle_save_state_response=mock_handle_save_state_response,
         standalone=True,
     )
     result = app.get_visor_scene_details_json()
@@ -137,7 +124,6 @@ def test_trame_logger_is_set_when_provided(
     mock_settings,
     mock_server,
     mock_get_scene_details_json,
-    mock_handle_save_state_response,
     mock_logger,
 ):
     """Verify that the provided logger is stored."""
@@ -145,7 +131,6 @@ def test_trame_logger_is_set_when_provided(
     app = LocalApp(
         server=mock_server,
         get_scene_details_json=mock_get_scene_details_json,
-        handle_save_state_response=mock_handle_save_state_response,
         standalone=True,
         trame_logger=mock_logger,
     )
@@ -157,14 +142,12 @@ def test_trame_logger_is_none_when_not_provided(
     mock_settings,
     mock_server,
     mock_get_scene_details_json,
-    mock_handle_save_state_response,
 ):
     """Verify that the logger is None when not provided."""
     mock_settings.get_client_bundle.return_value = "/mock/path"
     app = LocalApp(
         server=mock_server,
         get_scene_details_json=mock_get_scene_details_json,
-        handle_save_state_response=mock_handle_save_state_response,
         standalone=True,
     )
     assert app._LocalApp__trame_logger is None
@@ -175,7 +158,6 @@ def test_lifecycle_logging_calls_debug(
     mock_settings,
     mock_server,
     mock_get_scene_details_json,
-    mock_handle_save_state_response,
     mock_logger,
 ):
     """Verify that lifecycle events generate debug log messages."""
@@ -183,7 +165,6 @@ def test_lifecycle_logging_calls_debug(
     LocalApp(
         server=mock_server,
         get_scene_details_json=mock_get_scene_details_json,
-        handle_save_state_response=mock_handle_save_state_response,
         standalone=True,
         trame_logger=mock_logger,
     )

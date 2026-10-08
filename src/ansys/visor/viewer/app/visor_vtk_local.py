@@ -42,7 +42,6 @@ class VisorVTKLocal(VisorVTK):
         self._trame_app = LocalApp(
             self.server,
             lambda: self._scene.get_scene_details_json(),
-            lambda request_id, response: self._scene.handle_save_state_response(request_id, response),
             standalone,
             trame_logger=get_trame_logger(trame_log_dir),
             pick_geometry=lambda

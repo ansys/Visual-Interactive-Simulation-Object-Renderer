@@ -18,10 +18,9 @@ class VisorLocalScene(VisorSceneBase):
     """
     Coordinator for a Visor viewer scene using the wasm/LocalView rendering path.
 
-    The React frontend is authority for camera state.  :meth:`get_state` asks
-    the frontend for the current camera via :class:`VisorFrontendBridge` and
-    waits for the response.  :meth:`apply_state` pushes the restored state back
-    to the frontend via a JS ``set_state`` call.
+    :meth:`get_state` is the base class's server-side build and asks the
+    frontend for nothing.  :meth:`apply_state` pushes the restored state to
+    the frontend via a JS ``set_state`` call through :class:`VisorFrontendBridge`.
 
     This is the scene used by
     :class:`~ansys.visor.viewer.app.visor_vtk_local.VisorVTKLocal`
@@ -42,13 +41,8 @@ class VisorLocalScene(VisorSceneBase):
             raise RuntimeError(msg) from e
 
     # -------------------------------------------------------------------------
-    # State authority hooks — wasm: frontend round-trip
+    # State delivery hook — wasm: JS set_state
     # -------------------------------------------------------------------------
-
-    async def _get_runtime_state_async(self, timeout: float) -> "RuntimeAppState":
-        """Ask the React frontend for the current app state (camera, UI, …)."""
-        response = await self._frontend_bridge.request_state(timeout=timeout)
-        return response.app_state
 
     def _push_runtime_state(self, runtime_app_state: "RuntimeAppState") -> None:
         """
@@ -69,10 +63,6 @@ class VisorLocalScene(VisorSceneBase):
     # -------------------------------------------------------------------------
     # Wasm-specific helpers (not part of VisorSceneBase)
     # -------------------------------------------------------------------------
-
-    def handle_save_state_response(self, request_id: int, response: dict) -> None:
-        """Called by LocalApp trigger when the frontend responds."""
-        self._frontend_bridge.resolve_save_state_response(request_id, response)
 
     def cleanup_state(self) -> None:
         """Remove transient wasm keys from trame server state."""
