@@ -5,6 +5,7 @@ import pytest
 from vtkmodules.util.vtkConstants import VTK_FLOAT
 
 from ansys.visor.viewer.core.visor_enums import VisorVtkVariableType
+from ansys.visor.viewer.models.common.part_properties import PartProperties
 
 # Target import
 from ansys.visor.viewer.vtk.datasets.visor_dataset import VisorDataset
@@ -614,3 +615,54 @@ def test_update_variables_marks_dataset_dirty(dataset_with_variables, mock_point
     finally:
         cleanup()
 
+
+# ================================================================== #
+# Part records: one per part, overlaid with the persisted entries
+# ================================================================== #
+
+_DEFAULT_FIELDS = (1.0, True, False, [0.8, 0.8, 0.8], None)
+
+
+def _fields(record):
+    """The five resolved fields of a part record, in a fixed order."""
+    return (record.opacity, record.visible, record.selected, record.diffuse_rgb, record.color_variable)
+
+
+def _three_part_dataset(parts_by_name):
+    """A VisorDataset over a patched three-part index named a/b/c -> 1/2/3, built with *parts_by_name*."""
+    mock_part_index = MagicMock()
+    mock_part_index.name_to_id_map = {"a": 1, "b": 2, "c": 3}
+    mock_part_index.part_ids = [1, 2, 3]
+    mock_part_index.get_leaf_block.return_value = MagicMock()
+
+    mock_metadata = MagicMock()
+    mock_metadata.unit = "mm"
+    mock_metadata.file_path = None
+    mock_metadata.metadata_path = None
+    mock_metadata.state.parts = parts_by_name
+
+    with patch("ansys.visor.viewer.vtk.datasets.visor_dataset.PartIndex", return_value=mock_part_index), \
+            patch("ansys.visor.viewer.vtk.datasets.visor_dataset.VisorVariables", return_value=MagicMock()):
+        return VisorDataset(id=7, name="ds", data=MagicMock(), node_ids=[], metadata=mock_metadata)
+
+
+def test_persisted_to_runtime_state_overlays_the_named_part_and_defaults_the_rest():
+    """Three parts, one named entry: three records, the named one overlaid, the others at the defaults."""
+    ds = _three_part_dataset({})
+
+    state = ds.persisted_to_runtime_state({"b": PartProperties(opacity=0.5)})
+
+    assert sorted(state.part_states) == [1, 2, 3]
+    assert _fields(state.part_states[2]) == (0.5, True, False, [0.8, 0.8, 0.8], None)
+    assert _fields(state.part_states[1]) == _DEFAULT_FIELDS
+    assert _fields(state.part_states[3]) == _DEFAULT_FIELDS
+
+
+def test_dataset_constructed_with_no_part_metadata_has_a_record_per_part():
+    """A dataset whose metadata names no part holds a default record for every part."""
+    ds = _three_part_dataset({})
+
+    assert sorted(ds.state.part_states) == [1, 2, 3]
+    for part_id in (1, 2, 3):
+        assert ds.state.part_states[part_id].id == part_id
+        assert _fields(ds.state.part_states[part_id]) == _DEFAULT_FIELDS

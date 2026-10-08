@@ -97,21 +97,46 @@ class RuntimePartProperties(BaseModel):
 
     @classmethod
     def from_part_properties(cls, id: int, props: PartProperties) -> "RuntimePartProperties":
-        """Resolve a persisted entry: a null field takes its default, color_by/color_by_component become the
-        reference.
+        """The default record for the part, overlaid with the persisted entry."""
+        return cls.default_for(id).overlaid_with(props)
 
-        A diffuse colour that is not three elements resolves as a null does,
-        with one WARNING.  A reference with only one of its two halves
-        resolves to ``None`` and logs one WARNING.
+    def overlaid_with(self, props: PartProperties) -> "RuntimePartProperties":
+        """A new record: a field the entry names takes its value, or its default where null; an unnamed field
+        keeps this record's.
+
+        A key is named when it is in ``props.model_fields_set``.  A diffuse
+        colour that is not three elements resolves as a null does, with one
+        WARNING.  color_by and color_by_component are one field: with neither
+        named the reference is kept; with either named the pair resolves from
+        the entry alone, and a pair with only one half resolves to ``None``
+        with one WARNING.  This record is not modified.
         """
-        return cls(
-            id=id,
-            opacity=props.opacity if props.opacity is not None else VisorPartDefaults.Opacity,
-            visible=props.visible if props.visible is not None else VisorPartDefaults.Visible,
-            selected=props.selected if props.selected is not None else VisorPartDefaults.Selected,
-            diffuse_rgb=cls._resolve_diffuse_rgb(id, props),
-            color_variable=cls._resolve_color_variable(id, props),
+        named = props.model_fields_set
+        if "diffuse_rgb" in named:
+            diffuse_rgb = self._resolve_diffuse_rgb(self.id, props)
+        else:
+            diffuse_rgb = list(self.diffuse_rgb)
+        if "color_by" in named or "color_by_component" in named:
+            color_variable = self._resolve_color_variable(self.id, props)
+        else:
+            color_variable = self.color_variable.model_copy() if self.color_variable is not None else None
+        return type(self)(
+            id=self.id,
+            opacity=self._overlaid(self.opacity, props, "opacity", VisorPartDefaults.Opacity),
+            visible=self._overlaid(self.visible, props, "visible", VisorPartDefaults.Visible),
+            selected=self._overlaid(self.selected, props, "selected", VisorPartDefaults.Selected),
+            diffuse_rgb=diffuse_rgb,
+            color_variable=color_variable,
         )
+
+    @staticmethod
+    def _overlaid(current: Any, props: PartProperties, field: str, default: Any) -> Any:
+        """The current value where the entry does not name the field; else the entry's value, or the default
+        where null."""
+        if field not in props.model_fields_set:
+            return current
+        value = getattr(props, field)
+        return value if value is not None else default
 
     @staticmethod
     def _resolve_diffuse_rgb(part_id: int, props: PartProperties) -> List[float]:

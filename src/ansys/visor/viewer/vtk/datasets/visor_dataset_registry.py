@@ -282,11 +282,13 @@ class VisorDatasetRegistry:
 
     def replace_part_states(self, dataset_states: Dict[int, RuntimeDatasetState]) -> None:
         """
-        Replace the runtime state of registered datasets in bulk.
+        Install runtime dataset states on registered datasets in bulk.
 
         For each dataset ID present in both dataset_states and the
-        registry, that dataset's .state is replaced directly with the
-        supplied RuntimeDatasetState (already-runtime, id-keyed input).
+        registry, that dataset's .state is set to the supplied
+        RuntimeDatasetState.  On the load path that state is the dataset's
+        current records overlaid with the loaded entries, one record per
+        part (VisorDataset.persisted_to_runtime_state).
         Dataset IDs in dataset_states that are not present in the registry
         are skipped silently; processing continues for the remaining
         entries. Never raises.
