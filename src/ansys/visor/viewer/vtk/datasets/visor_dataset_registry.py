@@ -5,11 +5,13 @@ from collections.abc import Sequence
 from typing import Dict, List
 
 from ansys.visor.viewer.core.metadata import ExtendedMetadata
+from ansys.visor.viewer.core.visor_colors import VisorPartDefaults
 from ansys.visor.viewer.core.visor_logging import VisorDefaultLogger
 from ansys.visor.viewer.core.visor_types import VisorDatasetType
 from ansys.visor.viewer.models.runtime.dataset.runtime_dataset_state import (
     RuntimeDatasetState,
     RuntimePartProperties,
+    VariableReference,
 )
 from ansys.visor.viewer.vtk.datasets.visor_dataset import VisorDataset
 from ansys.visor.viewer.vtk.variables.visor_part_variables import VisorPartVariables
@@ -155,8 +157,8 @@ class VisorDatasetRegistry:
         Resolve the live part-state record for part_id, upserting if needed.
 
         If the owning dataset has no part_states entry yet for part_id (e.g.
-        a freshly added dataset with no persisted part state), a
-        RuntimePartProperties(id=part_id) record is created and inserted
+        a freshly added dataset with no persisted part state), the default
+        record RuntimePartProperties.default_for(part_id) is created and inserted
         into the dataset's part_states dict first. This is mandatory: a
         freshly added dataset has an empty part_states dict, so without
         this upsert every setter would silently no-op for it.
@@ -171,7 +173,7 @@ class VisorDatasetRegistry:
         dataset = self.datasets[dataset_id]
         part_state = dataset.state.part_states.get(part_id)
         if part_state is None:
-            part_state = RuntimePartProperties(id=part_id)
+            part_state = RuntimePartProperties.default_for(part_id)
             dataset.state.part_states[part_id] = part_state
         return part_state
 
@@ -203,9 +205,9 @@ class VisorDatasetRegistry:
         part_state.opacity = opacity
         return True
 
-    def set_part_diffuse_color(self, part_id: int, diffuse_rgb: list[float] | None) -> bool:
+    def set_part_diffuse_color(self, part_id: int, diffuse_rgb: list[float]) -> bool:
         """
-        Set a part's custom diffuse colour, or clear it with None.
+        Set a part's diffuse colour.
 
         Returns:
             bool: True when the record was written, False when part_id
@@ -215,6 +217,20 @@ class VisorDatasetRegistry:
         if part_state is None:
             return False
         part_state.diffuse_rgb = diffuse_rgb
+        return True
+
+    def reset_part_diffuse_color(self, part_id: int) -> bool:
+        """
+        Write the default colour into the part's record.
+
+        Returns:
+            bool: True when the record was written, False when part_id
+            resolves to no dataset. Never raises.
+        """
+        part_state = self._get_or_create_part_state(part_id)
+        if part_state is None:
+            return False
+        part_state.diffuse_rgb = list(VisorPartDefaults.DiffuseRgb)
         return True
 
     def set_part_selected(self, part_id: int, selected: bool) -> bool:
@@ -231,12 +247,12 @@ class VisorDatasetRegistry:
         part_state.selected = selected
         return True
 
-    def set_part_color_variable(self, part_id: int, variable_id: str, component: int | None) -> bool:
+    def set_part_color_variable(self, part_id: int, variable_id: str, component: int) -> bool:
         """
         Set the variable a part is coloured by, and its component.
 
-        variable_id and component are set together, atomically, in this one
-        call, mirroring clear_part_color_variable's atomic clear.
+        Writes one VariableReference, so the identifier and the component
+        are only ever set together.
 
         Returns:
             bool: True when the record was written, False when part_id
@@ -245,17 +261,14 @@ class VisorDatasetRegistry:
         part_state = self._get_or_create_part_state(part_id)
         if part_state is None:
             return False
-        part_state.variable_id = variable_id
-        part_state.variable_component = component
+        part_state.color_variable = VariableReference(variable_id=variable_id, variable_component=component)
         return True
 
     def clear_part_color_variable(self, part_id: int) -> bool:
         """
         Clear the variable a part is coloured by.
 
-        Sets variable_id and variable_component to None together, in one
-        call — the compound class is only ever set or cleared atomically,
-        never field by field.
+        Writes None, the resolved value "not coloured by a variable".
 
         Returns:
             bool: True when the record was written, False when part_id
@@ -264,8 +277,7 @@ class VisorDatasetRegistry:
         part_state = self._get_or_create_part_state(part_id)
         if part_state is None:
             return False
-        part_state.variable_id = None
-        part_state.variable_component = None
+        part_state.color_variable = None
         return True
 
     def replace_part_states(self, dataset_states: Dict[int, RuntimeDatasetState]) -> None:

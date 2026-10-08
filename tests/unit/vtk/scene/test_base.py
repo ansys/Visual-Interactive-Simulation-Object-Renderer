@@ -34,6 +34,7 @@ from ansys.visor.viewer.models.persist.persisted_viewer_state import PersistedVi
 from ansys.visor.viewer.models.runtime.dataset.runtime_dataset_state import (
     RuntimeDatasetState,
     RuntimePartProperties,
+    VariableReference,
 )
 from ansys.visor.viewer.models.runtime.scene.runtime_app_state import RuntimeAppState
 from ansys.visor.viewer.renderer.local_renderer import VisorLocalRenderer
@@ -122,6 +123,11 @@ def _make_part_dataset(dataset_id: int, part_ids, part_states=None, part_variabl
     dataset.state = RuntimeDatasetState(id=dataset_id, part_states=part_states or {})
     dataset.list_variables.return_value = list(part_variables or [])
     return dataset
+
+
+def _record(part_id, **overrides):
+    """A complete record for *part_id* with *overrides* applied."""
+    return RuntimePartProperties.default_for(part_id).model_copy(update=overrides)
 
 
 @pytest.fixture
@@ -343,13 +349,13 @@ def test_set_part_diffuse_color_applies_to_the_vtk_property(scene, pipeline):
     assert pipeline.actor.GetProperty().GetDiffuseColor() == pytest.approx((1.0, 0.0, 0.0))
 
 
-def test_set_part_diffuse_color_none_clears_the_registry_record(scene, registry):
-    """Store half of a clear: absence is stored as absence, not as a colour."""
+def test_set_part_diffuse_color_none_writes_the_default_colour_into_the_record(scene, registry):
+    """Store half of a reset: the record holds the default colour, not None."""
     registry.set_part_diffuse_color(NODE_ID, [1.0, 0.0, 0.0])
 
     scene.set_part_diffuse_color(NODE_ID, None)
 
-    assert registry.get_part_state(NODE_ID).diffuse_rgb is None
+    assert registry.get_part_state(NODE_ID).diffuse_rgb == [0.8, 0.8, 0.8]
 
 
 def test_set_part_diffuse_color_none_applies_the_default_mesh_colour(scene, pipeline):
@@ -406,14 +412,6 @@ def test_set_part_selected_uses_the_stored_diffuse_colour(scene, registry, pipel
 
     assert pipeline.actor.GetProperty().GetDiffuseColor() == pytest.approx((0.25, 0.5, 0.75))
 
-
-def test_set_part_selected_falls_back_to_the_default_mesh_colour(scene, pipeline):
-    """With no stored colour, the default constant is used."""
-    scene.set_part_selected(NODE_ID, True)
-
-    assert pipeline.actor.GetProperty().GetDiffuseColor() == pytest.approx(
-        tuple(VisorColors.DefaultMeshColor)
-    )
 
 
 def test_set_part_selected_flushes_under_the_lock_after_the_apply(scene, pipeline):
@@ -477,8 +475,9 @@ def test_set_part_color_variable_writes_the_registry_record(scene, registry):
     )
 
     state = registry.get_part_state(NODE_ID)
-    assert state.variable_id == "POINT::pressure::1"
-    assert state.variable_component == 0
+    assert state.color_variable == VariableReference(
+        variable_id="POINT::pressure::1", variable_component=0
+    )
 
 
 def test_set_part_color_variable_applies_to_the_vtk_mapper(scene, pipeline):
@@ -717,8 +716,7 @@ def test_clear_part_color_variable_clears_the_registry_record(scene, registry):
     scene.clear_part_color_variable(NODE_ID)
 
     state = registry.get_part_state(NODE_ID)
-    assert state.variable_id is None
-    assert state.variable_component is None
+    assert state.color_variable is None
 
 
 def test_clear_part_color_variable_disables_scalar_visibility_on_the_mapper(scene, pipeline):
@@ -809,7 +807,7 @@ def test_unknown_node_id_is_a_logged_no_op(scene, registry, pipeline, name):
 
 def test_seeded_part_state_is_mutated_in_place(scene, registry):
     """An existing record is mutated in place, not replaced."""
-    seeded = RuntimePartProperties(id=NODE_ID)
+    seeded = _record(NODE_ID)
     registry.datasets[1].state.part_states[NODE_ID] = seeded
 
     scene.set_part_opacity(NODE_ID, 0.25)
@@ -1359,7 +1357,13 @@ def test_apply_state_pushes_a_json_encodable_runtime_state(scene, registry):
     _apply(
         scene,
         _runtime_state(
-            {NODE_ID: RuntimePartProperties(id=NODE_ID, opacity=0.25, variable_id=VARIABLE_ID)},
+            {
+                NODE_ID: _record(
+                    NODE_ID,
+                    opacity=0.25,
+                    color_variable=VariableReference(variable_id=VARIABLE_ID, variable_component=0),
+                )
+            },
         ),
         file_variable_states={VARIABLE_ID: _variable_state()},
     )
@@ -1377,7 +1381,7 @@ def test_apply_state_populates_the_registry_from_the_persisted_state(scene, regi
     _apply(
         scene,
         _runtime_state(
-            {NODE_ID: RuntimePartProperties(id=NODE_ID, opacity=0.25, visible=False)}
+            {NODE_ID: _record(NODE_ID, opacity=0.25, visible=False)}
         ),
     )
 
@@ -1398,8 +1402,8 @@ def test_apply_state_applies_every_part_to_the_pipeline(
         scene,
         _runtime_state(
             {
-                NODE_ID: RuntimePartProperties(id=NODE_ID, visible=False),
-                SECOND_NODE_ID: RuntimePartProperties(id=SECOND_NODE_ID, opacity=0.25),
+                NODE_ID: _record(NODE_ID, visible=False),
+                SECOND_NODE_ID: _record(SECOND_NODE_ID, opacity=0.25),
             }
         ),
     )
@@ -1436,7 +1440,7 @@ def test_apply_state_flushes_before_the_bridge_call(scene, registry):
     scene._push_runtime_state = lambda state: order.append("bridge")
     scene._renderer._local_view.update = lambda: order.append("flush")
 
-    _apply(scene, _runtime_state({NODE_ID: RuntimePartProperties(id=NODE_ID, opacity=0.25)}))
+    _apply(scene, _runtime_state({NODE_ID: _record(NODE_ID, opacity=0.25)}))
 
     assert order == ["flush", "bridge"]
 
@@ -1878,7 +1882,7 @@ def test_restore_part_states_holds_the_lock(scene, registry, pipeline):
     registry.replace_part_states = _replace
     scene._renderer.apply_opacity = _apply_opacity
 
-    _apply(scene, _runtime_state({NODE_ID: RuntimePartProperties(id=NODE_ID, opacity=0.25)}))
+    _apply(scene, _runtime_state({NODE_ID: _record(NODE_ID, opacity=0.25)}))
 
     assert observed["store_depth"] >= 1
     assert observed["apply_depth"] >= 1
@@ -1893,7 +1897,7 @@ def test_apply_state_unregistered_dataset_id_is_a_logged_skip(scene, pipeline):
         _apply(
             scene,
             _runtime_state(
-                {NODE_ID: RuntimePartProperties(id=NODE_ID, visible=False)},
+                {NODE_ID: _record(NODE_ID, visible=False)},
                 dataset_id=FRONTEND_DATASET_ID,
             ),
         )
@@ -1910,7 +1914,7 @@ def test_apply_state_unknown_node_is_a_logged_no_op(scene, registry, pipeline):
         result = _apply(
             scene,
             _runtime_state(
-                {UNKNOWN_NODE_ID: RuntimePartProperties(id=UNKNOWN_NODE_ID, visible=False)}
+                {UNKNOWN_NODE_ID: _record(UNKNOWN_NODE_ID, visible=False)}
             ),
         )
 
@@ -1927,13 +1931,41 @@ def test_apply_state_short_diffuse_color_is_a_logged_no_op(scene, registry, pipe
         _apply(
             scene,
             _runtime_state(
-                {NODE_ID: RuntimePartProperties(id=NODE_ID, diffuse_rgb=[1.0, 0.0])}
+                {NODE_ID: _record(NODE_ID, diffuse_rgb=[1.0, 0.0])}
             ),
         )
 
     assert mock_logger.warning.call_count == 1
     assert pipeline.actor.GetProperty().GetDiffuseColor() == pytest.approx((0.1, 0.2, 0.3))
     assert registry.get_part_state(NODE_ID).diffuse_rgb == [1.0, 0.0]
+
+
+RESTORE_SELECTION_CASES = {
+    # case: (selected, stored colour, expected ambient, expected diffuse, expected colour)
+    "selected_custom_colour": (True, [0.25, 0.5, 0.75], 0.5, 0.5, (0.25, 0.5, 0.75)),
+    "selected_default_colour": (True, [0.8, 0.8, 0.8], 0.5, 0.5, (0.8, 0.8, 0.8)),
+    "unselected_custom_colour": (False, [0.25, 0.5, 0.75], 0.0, 1.0, (0.25, 0.5, 0.75)),
+    "unselected_default_colour": (False, [0.8, 0.8, 0.8], 0.0, 1.0, (0.8, 0.8, 0.8)),
+}
+
+
+@pytest.mark.parametrize("case", list(RESTORE_SELECTION_CASES))
+def test_apply_state_restores_selection_lighting_and_colour(scene, registry, pipeline, case):
+    """The restored actor carries the record's selection lighting and its stored colour."""
+    selected, stored_rgb, ambient, diffuse, colour = RESTORE_SELECTION_CASES[case]
+    prop = pipeline.actor.GetProperty()
+    prop.SetAmbient(0.3)
+    prop.SetDiffuse(0.7)
+    prop.SetDiffuseColor(0.1, 0.2, 0.3)
+
+    _apply(
+        scene,
+        _runtime_state({NODE_ID: _record(NODE_ID, selected=selected, diffuse_rgb=stored_rgb)}),
+    )
+
+    assert prop.GetAmbient() == pytest.approx(ambient)
+    assert prop.GetDiffuse() == pytest.approx(diffuse)
+    assert prop.GetDiffuseColor() == pytest.approx(colour)
 
 
 # ---------------------------------------------------------------------------
@@ -1944,8 +1976,9 @@ def _color_variable_state(component, variable_id=VARIABLE_ID):
     """A part coloured by *variable_id*, at *component*."""
     return _runtime_state(
         {
-            NODE_ID: RuntimePartProperties(
-                id=NODE_ID, variable_id=variable_id, variable_component=component
+            NODE_ID: _record(
+                NODE_ID,
+                color_variable=VariableReference(variable_id=variable_id, variable_component=component),
             )
         },
     )
@@ -2106,42 +2139,10 @@ def test_apply_state_clears_the_color_variable_when_none_is_stored(
     """No stored identifier and no stored component: the clear branch."""
     pipeline.mapper.SetScalarVisibility(1)
 
-    _apply(scene, _runtime_state({NODE_ID: RuntimePartProperties(id=NODE_ID)}))
+    _apply(scene, _runtime_state({NODE_ID: _record(NODE_ID, color_variable=None)}))
 
     assert pipeline.mapper.GetScalarVisibility() == 0
 
-
-def test_apply_state_variable_id_without_component_is_a_logged_no_op(
-    scene, registry, pipeline
-):
-    """Half a compound value: an identifier with no component."""
-    _seed_part_variables(registry, [_pressure_variable()])
-    _seed_unconfigured_mapper(pipeline)
-    runtime = _runtime_state(
-        {NODE_ID: RuntimePartProperties(id=NODE_ID, variable_id=VARIABLE_ID)},
-    )
-
-    with patch("ansys.visor.viewer.vtk.scene.base.logger") as mock_logger:
-        _apply(scene, runtime, _file_entries())
-
-    assert mock_logger.warning.call_count == 1
-    assert pipeline.mapper.GetScalarVisibility() == 0
-
-
-def test_apply_state_component_without_variable_id_does_not_clear(
-    scene, registry, pipeline
-):
-    """The mirror half: a component with no identifier must not fall through."""
-    pipeline.mapper.SetScalarVisibility(1)
-    runtime = _runtime_state(
-        {NODE_ID: RuntimePartProperties(id=NODE_ID, variable_component=0)},
-    )
-
-    with patch("ansys.visor.viewer.vtk.scene.base.logger") as mock_logger:
-        _apply(scene, runtime, _file_entries())
-
-    assert mock_logger.warning.call_count == 1
-    assert pipeline.mapper.GetScalarVisibility() == 1
 
 
 # ===========================================================================
@@ -3503,8 +3504,7 @@ def test_rebuild_at_update_clears_a_reference_whose_variable_is_gone(scene, regi
     _update_pressure_to_three_components(scene, registry)
 
     state = registry.get_part_state(NODE_ID)
-    assert state.variable_id is None
-    assert state.variable_component is None
+    assert state.color_variable is None
     with patch("ansys.visor.viewer.vtk.scene.base.logger") as mock_logger:
         _apply(scene, _runtime_state({NODE_ID: state.model_copy()}))
     assert mock_logger.warning.call_count == 0

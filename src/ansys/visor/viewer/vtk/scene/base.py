@@ -11,7 +11,6 @@ from trame_server import Server
 
 from ansys.visor.viewer.core.metadata import ExtendedMetadata
 from ansys.visor.viewer.core.perf_timer import PerfTimer
-from ansys.visor.viewer.core.visor_colors import VisorColors
 from ansys.visor.viewer.core.visor_enums import VisorVtkVariableType
 from ansys.visor.viewer.core.visor_logging import VisorDefaultLogger
 from ansys.visor.viewer.core.visor_types import VisorDatasetType
@@ -586,8 +585,8 @@ class VisorSceneBase(ABC):
         """Re-apply or clear each part's color variable against the current records, skipping a part whose
         effective range is unchanged from *previous*.  Caller holds the scene lock.
 
-        Only a part whose variable id and component are both set is reconciled;
-        a half-set reference is left as it is.  A reference that resolves is
+        Only a part with a colour-variable reference is reconciled.  A
+        reference that resolves is
         re-applied through :meth:`_ColorVariableBinding.apply_to`, unless the
         part participated in the same record in *previous* at the same range.
         A reference that no longer resolves is cleared through
@@ -595,10 +594,10 @@ class VisorSceneBase(ABC):
         mapper and re-serializes it.
         """
         references = [
-            (part_id, part_state.variable_id, part_state.variable_component)
+            (part_id, part_state.color_variable.variable_id, part_state.color_variable.variable_component)
             for dataset in list(self._dataset_registry.datasets.values())
             for part_id, part_state in list(dataset.state.part_states.items())
-            if part_state.variable_id is not None and part_state.variable_component is not None
+            if part_state.color_variable is not None
         ]
         for part_id, variable_id, component in references:
             binding = self._resolve_color_variable(part_id, variable_id, component)
@@ -758,20 +757,20 @@ class VisorSceneBase(ABC):
     def set_part_diffuse_color(self, node_id: int, diffuse_rgb: list[float] | None) -> None:
         """
         Set the custom diffuse colour of the part identified by *node_id*, or
-        clear it with ``None``.
+        reset it with ``None``.
 
-        The store records the absence as absence: ``diffuse_rgb=None`` is
-        written through as ``None``.  The pipeline needs a concrete colour, so
-        the apply falls back to :attr:`VisorColors.DefaultMeshColor` — "no
-        custom colour" means "the scene-wide default".
+        A reset writes the default colour into the record.  Either way the
+        pipeline is given the colour the record then holds.
         """
         with self._vtk_lock:
-            if not self._dataset_registry.set_part_diffuse_color(node_id, diffuse_rgb):
+            if diffuse_rgb is None:
+                written = self._dataset_registry.reset_part_diffuse_color(node_id)
+            else:
+                written = self._dataset_registry.set_part_diffuse_color(node_id, diffuse_rgb)
+            if not written:
                 logger.debug("set_part_diffuse_color: no dataset owns node %s; skipping.", node_id)
                 return
-            applied_rgb = (
-                diffuse_rgb if diffuse_rgb is not None else list(VisorColors.DefaultMeshColor)
-            )
+            applied_rgb = self._dataset_registry.get_part_state(node_id).diffuse_rgb
             self._renderer.apply_diffuse_color(
                 node_id, applied_rgb[0], applied_rgb[1], applied_rgb[2]
             )
@@ -781,9 +780,8 @@ class VisorSceneBase(ABC):
         Select or deselect the part identified by *node_id*.
 
         No colour crosses the trigger for this class: the server reads the
-        part's stored ``diffuse_rgb`` from its own record and falls back to
-        :attr:`VisorColors.DefaultMeshColor` when it is ``None``.  The record
-        is guaranteed to exist here — the setter above returned ``True``,
+        part's stored ``diffuse_rgb`` from its own record.  The record is
+        guaranteed to exist here — the setter above returned ``True``,
         which means it either found the record or upserted one — so
         ``get_part_state`` cannot return ``None`` at this point.
         """
@@ -791,10 +789,7 @@ class VisorSceneBase(ABC):
             if not self._dataset_registry.set_part_selected(node_id, selected):
                 logger.debug("set_part_selected: no dataset owns node %s; skipping.", node_id)
                 return
-            stored_rgb = self._dataset_registry.get_part_state(node_id).diffuse_rgb
-            diffuse_rgb = (
-                stored_rgb if stored_rgb is not None else list(VisorColors.DefaultMeshColor)
-            )
+            diffuse_rgb = self._dataset_registry.get_part_state(node_id).diffuse_rgb
             self._renderer.apply_selected(node_id, selected, diffuse_rgb)
 
     def set_part_color_variable(
@@ -881,7 +876,12 @@ class VisorSceneBase(ABC):
                 part_state = self._dataset_registry.get_part_state(part_id)
                 if part_state is None:
                     continue
-                if part_state.variable_id != variable_id or part_state.variable_component != component:
+                reference = part_state.color_variable
+                if (
+                        reference is None
+                        or reference.variable_id != variable_id
+                        or reference.variable_component != component
+                ):
                     continue
                 binding = self._resolve_color_variable(part_id, variable_id, component)
                 if binding is not None:
@@ -1157,42 +1157,26 @@ class VisorSceneBase(ABC):
 
     def _restore_one_part_state(self, part_id: int, part_state: RuntimePartProperties) -> None:
         """
-        Apply one restored part record to the pipeline.
+        Apply one restored part record to the pipeline, every field.
 
-        A ``None`` field means ""this record says nothing about that property",
-        not "reset it to the default", so nothing is applied for it.
-
-        The color is validated to exactly three elements here; a malformed
-        color is a logged no-op and the same guard covers the color the
-        selection branch reads.  The registry keeps the malformed value it was
-        loaded with; requiring on load would make the next save silently
-        rewrite the user's file.
+        The color is validated to exactly three elements here.  A malformed
+        color is one logged warning, and neither the color nor the selection,
+        which re-applies the color, reaches the pipeline.  The registry keeps
+        the malformed value it was loaded with; requiring on load would make
+        the next save silently rewrite the user's file.
         """
-        if part_state.visible is not None:
-            self._renderer.apply_visibility(part_id, part_state.visible)
-
-        if part_state.opacity is not None:
-            self._renderer.apply_opacity(part_id, part_state.opacity)
+        self._renderer.apply_visibility(part_id, part_state.visible)
+        self._renderer.apply_opacity(part_id, part_state.opacity)
 
         stored_rgb = part_state.diffuse_rgb
-        valid_rgb = None
-        if stored_rgb is not None:
-            if len(stored_rgb) == 3:
-                valid_rgb = stored_rgb
-            else:
-                logger.warning(
-                    "_restore_one_part_state: part %s has a diffuse colour of %s elements, "
-                    "not 3; leaving the pipeline colour unchanged.", part_id, len(stored_rgb)
-                )
-
-        if valid_rgb is not None:
-            self._renderer.apply_diffuse_color(part_id, valid_rgb[0], valid_rgb[1], valid_rgb[2])
-
-        if part_state.selected is not None:
-            selection_rgb = (
-                valid_rgb if valid_rgb is not None else list(VisorColors.DefaultMeshColor)
+        if len(stored_rgb) == 3:
+            self._renderer.apply_diffuse_color(part_id, stored_rgb[0], stored_rgb[1], stored_rgb[2])
+            self._renderer.apply_selected(part_id, part_state.selected, stored_rgb)
+        else:
+            logger.warning(
+                "_restore_one_part_state: part %s has a diffuse colour of %s elements, "
+                "not 3; leaving the pipeline colour and selection unchanged.", part_id, len(stored_rgb)
             )
-            self._renderer.apply_selected(part_id, part_state.selected, selection_rgb)
 
         self._restore_part_color_variable(part_id, part_state)
 
@@ -1200,35 +1184,19 @@ class VisorSceneBase(ABC):
         """
         Restore one part's color-variable reference through the resolve helper, or clear it.
 
-        The reference is a compound value, set and cleared as a unit, so if
-        either the identifier or component is missing, it is a logged no-op.
-
-        Otherwise the reference resolves against the held records, which the
-        load path has rebuilt and overlaid with the file's ranges before this
-        runs.  A refused reference is a logged no-op; the mapper is re-serialized
-        after an applied or cleared one.
+        No reference clears the mapper.  A reference resolves against the
+        held records, which the load path has rebuilt and overlaid with the
+        file's ranges before this runs.  A refused reference is a logged
+        no-op; the mapper is re-serialized after an applied or cleared one.
         """
-        variable_id = part_state.variable_id
-        component = part_state.variable_component
-
-        if variable_id is None:
-            if component is not None:
-                logger.warning(
-                    "_restore_part_color_variable: part %s stores component %s with no variable "
-                    "identifier; not clearing and not applying.", part_id, component
-                )
-                return
+        reference = part_state.color_variable
+        if reference is None:
             self._renderer.clear_color_variable(part_id)
             return
 
-        if component is None:
-            logger.warning(
-                "_restore_part_color_variable: part %s stores variable '%s' with no component; "
-                "skipping.", part_id, variable_id
-            )
-            return
-
-        binding = self._resolve_color_variable(part_id, variable_id, component)
+        binding = self._resolve_color_variable(
+            part_id, reference.variable_id, reference.variable_component
+        )
         if binding is None:
             return
         binding.apply_to(self._renderer)
