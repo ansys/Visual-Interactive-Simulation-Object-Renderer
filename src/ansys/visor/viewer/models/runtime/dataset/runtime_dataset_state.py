@@ -100,19 +100,31 @@ class RuntimePartProperties(BaseModel):
         """Resolve a persisted entry: a null field takes its default, color_by/color_by_component become the
         reference.
 
-        A reference with only one of its two halves resolves to ``None`` and
-        logs one WARNING.
+        A diffuse colour that is not three elements resolves as a null does,
+        with one WARNING.  A reference with only one of its two halves
+        resolves to ``None`` and logs one WARNING.
         """
         return cls(
             id=id,
             opacity=props.opacity if props.opacity is not None else VisorPartDefaults.Opacity,
             visible=props.visible if props.visible is not None else VisorPartDefaults.Visible,
             selected=props.selected if props.selected is not None else VisorPartDefaults.Selected,
-            diffuse_rgb=(
-                props.diffuse_rgb if props.diffuse_rgb is not None else list(VisorPartDefaults.DiffuseRgb)
-            ),
+            diffuse_rgb=cls._resolve_diffuse_rgb(id, props),
             color_variable=cls._resolve_color_variable(id, props),
         )
+
+    @staticmethod
+    def _resolve_diffuse_rgb(part_id: int, props: PartProperties) -> List[float]:
+        """The persisted colour, or the default when it is null or not three elements."""
+        if props.diffuse_rgb is None:
+            return list(VisorPartDefaults.DiffuseRgb)
+        if len(props.diffuse_rgb) != 3:
+            logger.warning(
+                "part %s stores a diffuse colour of %s elements, not 3; resolved as the default.",
+                part_id, len(props.diffuse_rgb)
+            )
+            return list(VisorPartDefaults.DiffuseRgb)
+        return list(props.diffuse_rgb)
 
     @staticmethod
     def _resolve_color_variable(part_id: int, props: PartProperties) -> VariableReference | None:

@@ -1158,25 +1158,13 @@ class VisorSceneBase(ABC):
     def _restore_one_part_state(self, part_id: int, part_state: RuntimePartProperties) -> None:
         """
         Apply one restored part record to the pipeline, every field.
-
-        The color is validated to exactly three elements here.  A malformed
-        color is one logged warning, and neither the color nor the selection,
-        which re-applies the color, reaches the pipeline.  The registry keeps
-        the malformed value it was loaded with; requiring on load would make
-        the next save silently rewrite the user's file.
         """
         self._renderer.apply_visibility(part_id, part_state.visible)
         self._renderer.apply_opacity(part_id, part_state.opacity)
 
-        stored_rgb = part_state.diffuse_rgb
-        if len(stored_rgb) == 3:
-            self._renderer.apply_diffuse_color(part_id, stored_rgb[0], stored_rgb[1], stored_rgb[2])
-            self._renderer.apply_selected(part_id, part_state.selected, stored_rgb)
-        else:
-            logger.warning(
-                "_restore_one_part_state: part %s has a diffuse colour of %s elements, "
-                "not 3; leaving the pipeline colour and selection unchanged.", part_id, len(stored_rgb)
-            )
+        rgb = part_state.diffuse_rgb
+        self._renderer.apply_diffuse_color(part_id, rgb[0], rgb[1], rgb[2])
+        self._renderer.apply_selected(part_id, part_state.selected, rgb)
 
         self._restore_part_color_variable(part_id, part_state)
 

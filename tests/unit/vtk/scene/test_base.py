@@ -1923,22 +1923,6 @@ def test_apply_state_unknown_node_is_a_logged_no_op(scene, registry, pipeline):
     assert pipeline.actor.GetVisibility() == 1
 
 
-def test_apply_state_short_diffuse_color_is_a_logged_no_op(scene, registry, pipeline):
-    """A malformed colour leaves the VTK object alone; the record keeps it."""
-    pipeline.actor.GetProperty().SetDiffuseColor(0.1, 0.2, 0.3)
-
-    with patch("ansys.visor.viewer.vtk.scene.base.logger") as mock_logger:
-        _apply(
-            scene,
-            _runtime_state(
-                {NODE_ID: _record(NODE_ID, diffuse_rgb=[1.0, 0.0])}
-            ),
-        )
-
-    assert mock_logger.warning.call_count == 1
-    assert pipeline.actor.GetProperty().GetDiffuseColor() == pytest.approx((0.1, 0.2, 0.3))
-    assert registry.get_part_state(NODE_ID).diffuse_rgb == [1.0, 0.0]
-
 
 RESTORE_SELECTION_CASES = {
     # case: (selected, stored colour, expected ambient, expected diffuse, expected colour)

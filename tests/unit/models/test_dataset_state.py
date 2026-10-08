@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 from ansys.visor.viewer.models.common.part_properties import PartProperties
 from ansys.visor.viewer.models.runtime.dataset.runtime_dataset_state import (
     RuntimeDatasetState,
@@ -119,6 +121,17 @@ def test_from_part_properties_resolves_each_null_to_its_literal():
     assert p.visible is True
     assert p.opacity == 1.0
     assert p.selected is False
+    assert p.diffuse_rgb == [0.8, 0.8, 0.8]
+
+
+def test_from_part_properties_resolves_a_short_colour_to_the_default():
+    """A persisted colour that is not three elements resolves as a null does, with one WARNING."""
+    with patch(
+        "ansys.visor.viewer.models.runtime.dataset.runtime_dataset_state.logger"
+    ) as mock_logger:
+        p = RuntimePartProperties.from_part_properties(id=5, props=PartProperties(diffuse_rgb=[1.0, 0.0]))
+
+    assert mock_logger.warning.call_count == 1
     assert p.diffuse_rgb == [0.8, 0.8, 0.8]
 
 
