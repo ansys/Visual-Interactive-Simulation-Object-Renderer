@@ -399,7 +399,7 @@ describe('setAppStateAsync holds a delivered variable block', () => {
         });
     });
 
-    test("the client's own state carried back leaves the held records untouched", async () => {
+    test('a state with no variable block leaves the held records untouched', async () => {
         // The client's own state carries `ui.darkTheme`, whose branch fetches
         // the two theme stylesheets; jsdom has no `fetch`.
         const globals = globalThis as unknown as { fetch: unknown };
