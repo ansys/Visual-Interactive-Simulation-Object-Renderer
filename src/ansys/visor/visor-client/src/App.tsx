@@ -165,10 +165,6 @@ function App() {
             wasmView.current.addServerUpdatedListener(onServerUpdateAsync);
             wasmView.current.addSetStateListener(onSetStateAsync);
         }
-        if (oldFrontend != null) {
-            const oldAppState = await oldFrontend.getAppStateAsync();
-            await newFrontend.setAppStateAsync(oldAppState);
-        }
         const view = wasmView.current;
         setTimeout(() => {
             view.vtkScene.resizeAsync();
