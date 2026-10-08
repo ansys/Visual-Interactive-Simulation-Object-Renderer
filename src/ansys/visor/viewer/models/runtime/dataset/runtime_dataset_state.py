@@ -1,98 +1,130 @@
 """Model for runtime dataset state serialization."""
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_serializer
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SerializationInfo,
+    SerializerFunctionWrapHandler,
+    field_validator,
+    model_serializer,
+)
 
+from ansys.visor.viewer.core.visor_colors import VisorPartDefaults
+from ansys.visor.viewer.core.visor_logging import VisorDefaultLogger
 from ansys.visor.viewer.models.common.part_properties import PartProperties
+
+logger = VisorDefaultLogger(__name__)
+
+
+class VariableReference(BaseModel):
+    """The variable and component a part is coloured by."""
+    model_config = ConfigDict(populate_by_name=True)
+
+    variable_id: str = Field(alias="variableId")
+    variable_component: int = Field(alias="variableComponent")
 
 
 class RuntimePartProperties(BaseModel):
     """
-    Frontend-facing model of part properties for runtime state serialization.
+    Frontend-facing record of one part's properties, every field resolved.
 
-    This class mirrors the fields of ``PartProperties`` using snake_case Python
-    attribute names, but serializes with camelCase aliases (``variableId``,
-    ``variableComponent``, ``diffuseRgb``) for parity with the frontend wire
-    format.  Callers must pass ``by_alias=True`` when dumping (e.g., in
-    ``get_scene_details_json``) so the emitted keys stay camelCase.
+    No field holds ``None`` except ``color_variable``, whose ``None`` is the
+    resolved value "not coloured by a variable".
 
-    Serialization semantics (aligned with the frontend state model):
+    The wire carries the reference flat, as ``variableId`` and
+    ``variableComponent``.  With no reference, ``variableId`` is ``null`` and
+    ``variableComponent`` is absent; under ``exclude_none`` ``variableId`` is
+    absent too.  Callers pass ``by_alias=True`` so the keys stay camelCase.
 
-    - ``variableId`` is **always included** in the serialized output, even when
-      ``None``.  On the frontend, ``null`` means "no variable applied" (a real
-      value), while an absent key means "leave this property unchanged".
-    - All other optional fields (``opacity``, ``visible``, ``selected``,
-      ``variableComponent``, ``diffuseRgb``) are **omitted from the serialized
-      output when ``None``**, so that the frontend treats them as pass-through
-      / unchanged.
-
-    id: int
-    opacity: Optional[float]: The opacity of the part, between 0.0 (fully transparent) and 1.0 (fully opaque).
-    visible: Optional[bool]: Whether the part is visible in the scene.
-    selected: Optional[bool]: Whether the part is currently selected by the user.
-    variable_id: Optional[str]: The ID of the variable used to colour this part,
-        or ``None`` to indicate that no variable is applied.  Always serialized.
-    variable_component: Optional[int]: If the variable specified by variable_id has multiple components,
-        this specifies which component to use for coloring.
+    id: The part's scene-graph node ID.
+    opacity: Between 0.0 (fully transparent) and 1.0 (fully opaque).
+    visible: Whether the part is visible in the scene.
+    selected: Whether the part is selected by the user.
+    diffuse_rgb: The part's diffuse colour, each channel between 0 and 1.
+    color_variable: The variable the part is coloured by, or ``None``.
     """
     model_config = ConfigDict(populate_by_name=True)
 
     id: int
-    opacity: Optional[float] = Field(default=None, ge=0.0, le=1.0)
-    visible: Optional[bool] = Field(default=None)
-    selected: Optional[bool] = Field(default=None)
-
-    # variable_id=None means "no variable applied" — a real, meaningful value.
-    # It is always included in serialized output so the frontend can act on it.
-    variable_id: Optional[str] = Field(default=None, alias="variableId")
-    # If the variable with ID variable_id has multiple components, this specifies which component to use for coloring.
-    variable_component: Optional[int] = Field(default=None, alias="variableComponent")
-
-    # If set, this part's color is determined by the specified RGB values (each between 0 and 1).
-    diffuse_rgb: Optional[List[float]] = Field(default=None, alias="diffuseRgb")
+    opacity: float = Field(ge=0.0, le=1.0)
+    visible: bool
+    selected: bool
+    diffuse_rgb: List[float] = Field(alias="diffuseRgb")
+    color_variable: VariableReference | None
 
     @model_serializer(mode="wrap")
-    def _serialize(self, handler: Any, info: Any = None) -> dict:
-        """Custom serializer that implements the frontend undefined-vs-null contract.
-
-        ``variableId`` is always present in the output (``null`` is meaningful).
-        All other optional fields are omitted when their value is ``None``, so
-        the frontend interprets them as pass-through / undefined.
-
-        The set of "omit-when-None" keys is checked against **both** the
-        snake_case attribute names and their camelCase aliases so this works
-        regardless of whether the caller uses ``by_alias=True``.
-        """
+    def _serialize(self, handler: SerializerFunctionWrapHandler, info: SerializationInfo) -> dict:
+        """Emit the reference flat as variableId/variableComponent; with none, variableId is null unless
+        exclude_none."""
         data: dict = handler(self)
-        keys_to_omit_when_none = {
-            "opacity", "visible", "selected",
-            "variable_component", "variableComponent",
-            "diffuse_rgb", "diffuseRgb",
-        }
-        return {k: v for k, v in data.items() if not (k in keys_to_omit_when_none and v is None)}
+        data.pop("color_variable", None)
+        id_key = "variableId" if info.by_alias else "variable_id"
+        component_key = "variableComponent" if info.by_alias else "variable_component"
+        reference = self.color_variable
+        if reference is not None:
+            data[id_key] = reference.variable_id
+            data[component_key] = reference.variable_component
+        elif not info.exclude_none:
+            data[id_key] = None
+        return data
+
+    @classmethod
+    def default_for(cls, part_id: int) -> "RuntimePartProperties":
+        """The record of a part none of whose properties has been set."""
+        return cls(
+            id=part_id,
+            opacity=VisorPartDefaults.Opacity,
+            visible=VisorPartDefaults.Visible,
+            selected=VisorPartDefaults.Selected,
+            diffuse_rgb=list(VisorPartDefaults.DiffuseRgb),
+            color_variable=None,
+        )
 
     def to_part_properties(self) -> PartProperties:
+        """The persisted entry for this record; the reference maps back to color_by/color_by_component."""
+        reference = self.color_variable
         return PartProperties(
             opacity=self.opacity,
             visible=self.visible,
             selected=self.selected,
-            color_by=self.variable_id,
-            color_by_component=self.variable_component,
+            color_by=reference.variable_id if reference is not None else None,
+            color_by_component=reference.variable_component if reference is not None else None,
             diffuse_rgb=self.diffuse_rgb,
         )
 
     @classmethod
     def from_part_properties(cls, id: int, props: PartProperties) -> "RuntimePartProperties":
+        """Resolve a persisted entry: a null field takes its default, color_by/color_by_component become the
+        reference.
+
+        A reference with only one of its two halves resolves to ``None`` and
+        logs one WARNING.
+        """
         return cls(
             id=id,
-            opacity=props.opacity,
-            visible=props.visible,
-            selected=props.selected,
-            variable_id=props.color_by,
-            variable_component=props.color_by_component,
-            diffuse_rgb=props.diffuse_rgb,
+            opacity=props.opacity if props.opacity is not None else VisorPartDefaults.Opacity,
+            visible=props.visible if props.visible is not None else VisorPartDefaults.Visible,
+            selected=props.selected if props.selected is not None else VisorPartDefaults.Selected,
+            diffuse_rgb=(
+                props.diffuse_rgb if props.diffuse_rgb is not None else list(VisorPartDefaults.DiffuseRgb)
+            ),
+            color_variable=cls._resolve_color_variable(id, props),
         )
+
+    @staticmethod
+    def _resolve_color_variable(part_id: int, props: PartProperties) -> VariableReference | None:
+        """The reference a persisted entry names, or None when it names none or only half of one."""
+        if props.color_by is not None and props.color_by_component is not None:
+            return VariableReference(variable_id=props.color_by, variable_component=props.color_by_component)
+        if props.color_by is not None or props.color_by_component is not None:
+            logger.warning(
+                "part %s stores color_by %r with color_by_component %r; resolved as not coloured.",
+                part_id, props.color_by, props.color_by_component
+            )
+        return None
 
 
 class RuntimeDatasetState(BaseModel):
