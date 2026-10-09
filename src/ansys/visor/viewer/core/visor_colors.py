@@ -7,3 +7,11 @@ class VisorColors:
     DefaultSelectionColor: tuple[float, float, float] = (0.184, 0.427, 0.620)
     DefaultSelectedMeshEdgeColor: tuple[float, float, float] = (0, 0, 0)
 
+
+class VisorPartDefaults:
+    """Values a part record holds for a property nothing has set."""
+    Visible: bool = True
+    Opacity: float = 1.0
+    Selected: bool = False
+    DiffuseRgb: tuple[float, float, float] = VisorColors.DefaultMeshColor
+
