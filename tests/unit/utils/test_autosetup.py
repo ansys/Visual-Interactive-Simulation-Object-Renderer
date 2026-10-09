@@ -65,7 +65,7 @@ def test_prepare_wasm_assets_unsupported_platform(monkeypatch, tmp_path):
     """Ensure unsupported platforms raise RuntimeError."""
     _setup_common_mocks(monkeypatch)
 
-    monkeypatch.setattr(f"{MODULE}.sys.platform", "darwin")
+    monkeypatch.setattr(f"{MODULE}.sys.platform", "dummy")
 
     with pytest.raises(RuntimeError):
         prepare_wasm_assets(tmp_path)
