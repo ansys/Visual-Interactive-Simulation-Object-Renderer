@@ -1,0 +1,6 @@
+standalone
+==========
+
+.. currentmodule:: ansys.visor.viewer
+
+.. autoproperty:: Visor.standalone
