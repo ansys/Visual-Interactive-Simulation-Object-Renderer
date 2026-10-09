@@ -1,5 +1,10 @@
 import json
-from unittest.mock import mock_open, patch
+import subprocess
+import sys
+from unittest.mock import MagicMock, mock_open, patch
+
+import pytest
+import requests
 
 from ansys.visor.viewer.cli.apis import InstanceAPI, LogsAPI, ServerAPI
 from ansys.visor.viewer.core.visor_enums import RenderingMode
@@ -41,9 +46,36 @@ def test_serverapi_initialize_prints_response():
     api = ServerAPI("host", 1234)
     with patch("requests.post") as mock_post, patch("builtins.print") as mock_print:
         mock_post.return_value.json.return_value = {"result": "ok"}
-        api.initialize("h", 1, RenderingMode.LOCAL, True, dark_mode=False)
+        api.initialize("h", 1, RenderingMode.LOCAL, True, dark_mode=False, start=False)
         mock_post.assert_called_once()
         mock_print.assert_called_with({"result": "ok"})
+
+def test_serverapi_initialize_with_start_also_starts_instance():
+    """Verify that passing start=True also posts to the /start endpoint."""
+    api = ServerAPI("host", 1234)
+    with patch("requests.post") as mock_post, patch("builtins.print"):
+        mock_post.return_value.json.return_value = {"result": "ok"}
+        api.initialize("h", 1, RenderingMode.LOCAL, True, dark_mode=False, start=True)
+        assert mock_post.call_count == 2
+        mock_post.assert_any_call(f"{api.base}/initialize", json={
+            "host": "h", "port": 1, "rendering_mode": RenderingMode.LOCAL,
+            "standalone": True, "dark_mode": False,
+        })
+        mock_post.assert_any_call(f"{api.base}/start", json={})
+
+def test_serverapi_initialize_with_start_raises_on_start_failure():
+    """Verify that an HTTP error from /start is propagated."""
+    api = ServerAPI("host", 1234)
+    init_resp = MagicMock()
+    init_resp.json.return_value = {"result": "ok"}
+    start_resp = MagicMock()
+    start_resp.json.return_value = {"detail": "failed"}
+    start_resp.raise_for_status.side_effect = requests.HTTPError("500")
+    with patch("requests.post", side_effect=[init_resp, start_resp]), patch("builtins.print"):
+        with pytest.raises(requests.HTTPError):
+            api.initialize("h", 1, RenderingMode.LOCAL, True, dark_mode=False, start=True)
+    init_resp.raise_for_status.assert_called_once()
+    start_resp.raise_for_status.assert_called_once()
 
 def test_serverapi_list_prints_urls():
     """Verify that available instance URLs are printed."""
@@ -137,7 +169,7 @@ def test_logsapi_list_logs_prints_files(tmp_path):
     api = LogsAPI(str(log_dir))
     with patch("builtins.print") as mock_print:
         api.list_logs()
-        mock_print.assert_any_call("Available log files:")
+        mock_print.assert_any_call(f"Available log files in log dir {log_dir}:")
         mock_print.assert_any_call("  foo")
         mock_print.assert_any_call("  bar")
 
@@ -146,7 +178,7 @@ def test_logsapi_list_logs_prints_no_files(tmp_path):
     api = LogsAPI(str(tmp_path))
     with patch("builtins.print") as mock_print:
         api.list_logs()
-        mock_print.assert_any_call("No log files found.")
+        mock_print.assert_any_call(f"No log files found in log dir {tmp_path}.")
 
 def test_logsapi_list_logs_prints_dir_not_found():
     """Verify that a missing log directory is reported."""
@@ -155,25 +187,25 @@ def test_logsapi_list_logs_prints_dir_not_found():
         api.list_logs()
         mock_print.assert_any_call("Log directory not found: not_a_dir")
 
-def test_logsapi_show_log_prints_last_lines():
+def test_logsapi_tail_log_prints_last_lines():
     """Verify that the requested tail of the log file is printed."""
     api = LogsAPI()
     log_content = "line1\nline2\nline3\n"
     m = mock_open(read_data=log_content)
     with patch("builtins.open", m), patch("builtins.print") as mock_print, patch("os.path.join", return_value="file.log"):
-        api.show_log("file", follow=False, lines=2)
+        api.tail_log("file", follow=False, lines=2)
         # Should print last 2 lines
         printed = "".join([call.args[0] for call in mock_print.call_args_list])
         assert "line2" in printed and "line3" in printed
 
-def test_logsapi_show_log_file_not_found():
+def test_logsapi_tail_log_file_not_found():
     """Verify that a missing log file is reported."""
     api = LogsAPI()
     with patch("builtins.open", side_effect=FileNotFoundError), patch("builtins.print") as mock_print, patch("os.path.join", return_value="file.log"):
-        api.show_log("file")
+        api.tail_log("file")
         mock_print.assert_any_call("Log file not found: file.log")
 
-def test_logsapi_show_log_follow_prints_and_waits(monkeypatch):
+def test_logsapi_tail_log_follow_prints_and_waits(monkeypatch):
     """Verify that follow mode continues monitoring the log file."""
     api = LogsAPI()
     log_content = "line1\nline2\nline3\n"
@@ -196,8 +228,83 @@ def test_logsapi_show_log_follow_prints_and_waits(monkeypatch):
 
     with patch("builtins.print") as mock_print, patch("time.sleep", side_effect=sleep_side_effect):
         try:
-            api.show_log("file", follow=True, lines=2)
+            api.tail_log("file", follow=True, lines=2)
         except SystemExit:
             pass
         printed = "".join([call.args[0] for call in mock_print.call_args_list])
         assert "line2" in printed or "line3" in printed
+
+def test_logsapi_clear_logs_prints_dir_not_found():
+    """Verify that a missing log directory is reported when clearing."""
+    api = LogsAPI("not_a_dir")
+    with patch("builtins.print") as mock_print:
+        api.clear_logs()
+        mock_print.assert_any_call("Log directory not found: not_a_dir")
+
+def test_logsapi_clear_logs_aborted_on_no(tmp_path):
+    """Verify that clearing is aborted when the user does not confirm."""
+    api = LogsAPI(str(tmp_path))
+    with patch("builtins.input", return_value="n"), \
+         patch("builtins.print") as mock_print, \
+         patch("shutil.rmtree") as mock_rmtree:
+        api.clear_logs()
+        mock_print.assert_any_call("Aborted.")
+        mock_rmtree.assert_not_called()
+
+def test_logsapi_clear_logs_removes_dir_on_confirm(tmp_path):
+    """Verify that the log directory is removed when the user confirms."""
+    api = LogsAPI(str(tmp_path))
+    with patch("builtins.input", return_value="y"), \
+         patch("builtins.print") as mock_print, \
+         patch("shutil.rmtree") as mock_rmtree:
+        api.clear_logs()
+        mock_rmtree.assert_called_once_with(str(tmp_path))
+        mock_print.assert_any_call("Log directory removed: " + str(tmp_path))
+
+def test_logsapi_clear_logs_reports_failure(tmp_path):
+    """Verify that failures during removal are reported."""
+    api = LogsAPI(str(tmp_path))
+    with patch("builtins.input", return_value="y"), \
+         patch("builtins.print") as mock_print, \
+         patch("shutil.rmtree", side_effect=OSError("boom")):
+        assert api.clear_logs() is False
+        mock_print.assert_any_call(f"Failed to remove log directory {tmp_path}: boom")
+
+def test_logsapi_clear_logs_force_reports_failure(tmp_path):
+    """Verify that a forced removal failure returns False."""
+    api = LogsAPI(str(tmp_path))
+    with patch("builtins.print") as mock_print, \
+         patch("shutil.rmtree", side_effect=OSError("boom")):
+        assert api.clear_logs(force=True) is False
+        mock_print.assert_any_call(f"Failed to remove log directory {tmp_path}: boom")
+
+def test_logsapi_clear_logs_force_skips_confirmation(tmp_path):
+    """Verify that force=True removes the log directory without prompting."""
+    api = LogsAPI(str(tmp_path))
+    with patch("builtins.input") as mock_input, \
+         patch("builtins.print") as mock_print, \
+         patch("shutil.rmtree") as mock_rmtree:
+        api.clear_logs(force=True)
+        mock_input.assert_not_called()
+        mock_rmtree.assert_called_once_with(str(tmp_path))
+        mock_print.assert_any_call("Log directory removed: " + str(tmp_path))
+
+def test_cli_import_does_not_open_log_files(tmp_path):
+    """Verify that importing the CLI does not load app loggers or open log files.
+
+    Runs in a fresh interpreter because other tests may already have imported
+    the application modules into this process.
+    """
+    code = (
+        "import logging, sys\n"
+        "import ansys.visor.viewer.cli.visor_cli\n"
+        "assert 'ansys.visor.viewer.core.visor_logging' not in sys.modules, 'visor_logging imported'\n"
+        "assert 'ansys.visor.viewer.app.visor' not in sys.modules, 'app imported'\n"
+        "files = [r() for r in logging._handlerList if isinstance(r(), logging.FileHandler)]\n"
+        "assert not files, files\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code], cwd=tmp_path, capture_output=True, text=True
+    )
+    assert result.returncode == 0, result.stderr
+    assert not (tmp_path / "logs").exists()

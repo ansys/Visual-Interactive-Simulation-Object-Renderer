@@ -41,16 +41,18 @@ def test_server_init_args_defaults():
     assert args.standalone is None
     assert args.port == 0
     assert args.dark_mode is None
+    assert args.start is False
 
 def test_server_init_args_custom():
     """Verify that custom server init arguments are parsed correctly."""
     args = run_parse_args([
         "visor-cli", "server", "init",
-        "--host", "myhost", "--port", "12345", "--standalone", "False"
+        "--host", "myhost", "--port", "12345", "--standalone", "False", "--start"
     ])
     assert args.host == "myhost"
     assert args.port == 12345
     assert args.standalone is False
+    assert args.start is True
 
 def test_server_list_args():
     """Verify that server list arguments are parsed correctly."""
@@ -119,23 +121,52 @@ def test_instance_stop_args():
     assert args.action == "stop"
 
 def test_logs_list_args_defaults():
-    """Verify that logs arguments use the expected default values."""
-    args = run_parse_args(["visor-cli", "logs"])
+    """Verify that log list arguments use the expected default values."""
+    args = run_parse_args(["visor-cli", "logs", "list"])
     assert args.group == "logs"
-    assert args.log_name is None
+    assert args.action == "list"
+    assert args.log_dir is None
+
+def test_logs_tail_args_defaults():
+    """Verify that log tail uses the expected default argument values."""
+    args = run_parse_args(["visor-cli", "logs", "tail"])
+    assert args.group == "logs"
+    assert args.action == "tail"
+    assert args.log_name == "visor"
     assert args.follow is False
     assert args.log_dir is None
     assert args.lines == 10
 
-def test_logs_show_args_custom():
-    """Verify that custom log display arguments are parsed correctly."""
+def test_logs_tail_args_custom():
+    """Verify that custom log tail arguments are parsed correctly."""
     args = run_parse_args([
-        "visor-cli", "logs", "mylog", "-f", "--log-dir", "/tmp", "-n", "5"
+        "visor-cli", "logs", "--log-dir", "/tmp", "tail", "mylog", "-f", "-n", "5"
     ])
     assert args.log_name == "mylog"
     assert args.follow is True
     assert args.log_dir == "/tmp"
     assert args.lines == 5
+
+def test_logs_clear_args():
+    """Verify that the log clear subcommand is parsed correctly."""
+    args = run_parse_args(["visor-cli", "logs", "clear"])
+    assert args.group == "logs"
+    assert args.action == "clear"
+    assert args.force is False
+
+def test_logs_clear_args_force_short_flag():
+    """Verify that the -f flag sets force=True for log clear."""
+    args = run_parse_args(["visor-cli", "logs", "clear", "-f"])
+    assert args.group == "logs"
+    assert args.action == "clear"
+    assert args.force is True
+
+def test_logs_clear_args_force_long_flag():
+    """Verify that the --force flag sets force=True for log clear."""
+    args = run_parse_args(["visor-cli", "logs", "clear", "--force"])
+    assert args.group == "logs"
+    assert args.action == "clear"
+    assert args.force is True
 
 def test_missing_group_raises():
     """Verify that omitting the command group raises SystemExit."""
