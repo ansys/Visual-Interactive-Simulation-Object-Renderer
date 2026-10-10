@@ -1,7 +1,7 @@
 import pytest
 
 from ansys.visor.viewer.core.visor_enums import VisorVtkVariableType
-from ansys.visor.viewer.models.common.visor_ui_state import VisorUIState
+from ansys.visor.viewer.models.persist.visor_ui_state import PersistedUIState
 from ansys.visor.viewer.models.common.visor_variable_record import VisorVariableRecord
 from ansys.visor.viewer.models.common.visor_variable_state import VisorVariableState
 from ansys.visor.viewer.models.runtime.scene.runtime_app_state import RuntimeAppState
@@ -120,7 +120,7 @@ def test_runtime_to_persisted_projects_records_onto_the_persisted_entry():
     """#22: through the real persisted model, the saved entry carries the effective range and no default keys."""
     registry = FakeRegistry(datasets={})
     runtime_app_state = RuntimeAppState.from_components(
-        ui=VisorUIState(),
+        ui=PersistedUIState(),
         unit="m",
         dataset_states={},
         variable_states={"POINT::pressure::1": _literal_record()},

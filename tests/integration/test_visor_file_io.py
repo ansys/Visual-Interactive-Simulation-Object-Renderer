@@ -159,8 +159,8 @@ class TestWriteReadStateIntegration:
 
     def test_round_trip_preserves_ui_state(self, file_io, tmp_path):
         """Test that round trip preserves ui state."""
-        from ansys.visor.viewer.models.common.visor_ui_state import VisorUIState
-        state = PersistedViewerStateV1(ui=VisorUIState(dark_theme=True))
+        from ansys.visor.viewer.models.persist.visor_ui_state import PersistedUIState
+        state = PersistedViewerStateV1(ui=PersistedUIState(dark_theme=True))
         file_io.write_state(str(tmp_path), state)
         result = file_io.read_state(str(tmp_path))
         assert result.ui.dark_theme is True
@@ -184,9 +184,9 @@ class TestWriteReadStateIntegration:
 
     def test_write_overwrites_existing_state_file(self, file_io, tmp_path):
         """Test that write_state overwrites existing state file."""
-        from ansys.visor.viewer.models.common.visor_ui_state import VisorUIState
-        state_a = PersistedViewerStateV1(ui=VisorUIState(dark_theme=False))
-        state_b = PersistedViewerStateV1(ui=VisorUIState(dark_theme=True))
+        from ansys.visor.viewer.models.persist.visor_ui_state import PersistedUIState
+        state_a = PersistedViewerStateV1(ui=PersistedUIState(dark_theme=False))
+        state_b = PersistedViewerStateV1(ui=PersistedUIState(dark_theme=True))
         file_io.write_state(str(tmp_path), state_a)
         file_io.write_state(str(tmp_path), state_b)
         result = file_io.read_state(str(tmp_path))
@@ -333,7 +333,7 @@ class TestFileHandleReleased:
         so that save_state can delete it as a stale snapshot."""
         import shutil
 
-        from ansys.visor.viewer.models.common.visor_ui_state import VisorUIState
+        from ansys.visor.viewer.models.persist.visor_ui_state import PersistedUIState
         from ansys.visor.viewer.models.persist.persisted_viewer_state import PersistedViewerStateV1
 
         src = _vtkhdf_multiblock_path()
@@ -345,7 +345,7 @@ class TestFileHandleReleased:
         assert dataset.GetNumberOfBlocks() > 0
 
         state = PersistedViewerStateV1.from_components(
-            ui_state=VisorUIState(), unit="m", orthographic_enabled=None,
+            ui_state=PersistedUIState(), unit="m", orthographic_enabled=None,
             cross_section_enabled=None, edges_enabled=None, bounding_box_enabled=None,
             datasets={}, variable_states={}
         )

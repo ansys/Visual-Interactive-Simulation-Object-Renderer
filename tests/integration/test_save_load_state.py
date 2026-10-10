@@ -45,7 +45,7 @@ from ansys.visor.viewer.core.metadata import ExtendedMetadata
 from ansys.visor.viewer.core.visor_enums import VisorVtkVariableType
 from ansys.visor.viewer.models.common.part_properties import PartProperties
 from ansys.visor.viewer.models.common.visor_camera_state import VisorCameraState
-from ansys.visor.viewer.models.common.visor_ui_state import VisorUIState
+from ansys.visor.viewer.models.persist.visor_ui_state import PersistedUIState
 from ansys.visor.viewer.models.common.visor_variable_state import VisorVariableState
 from ansys.visor.viewer.models.persist.dataset.persisted_dataset_state import PersistedDatasetState
 from ansys.visor.viewer.models.persist.persisted_viewer_state import PersistedViewerStateV1
@@ -248,7 +248,7 @@ class TestLoadDatasetsFromState:
 
     def _make_state(self, dataset_states: dict, unit: str = "m") -> PersistedViewerStateV1:
         return PersistedViewerStateV1.from_components(
-            ui_state=VisorUIState(),
+            ui_state=PersistedUIState(),
             unit=unit,
             orthographic_enabled=None,
             cross_section_enabled=None,
@@ -455,7 +455,7 @@ class TestRegistrySourcedPartState:
         file_io.write_dataset(snap, original)
 
         state = PersistedViewerStateV1.from_components(
-            ui_state=VisorUIState(),
+            ui_state=PersistedUIState(),
             unit="m",
             orthographic_enabled=None,
             cross_section_enabled=None,
@@ -512,7 +512,7 @@ class TestRegistrySourcedPartState:
         file_io.write_dataset(snap, original)
 
         state = PersistedViewerStateV1.from_components(
-            ui_state=VisorUIState(),
+            ui_state=PersistedUIState(),
             unit="m",
             orthographic_enabled=None,
             cross_section_enabled=None,

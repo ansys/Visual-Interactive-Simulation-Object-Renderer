@@ -15,7 +15,7 @@ from ansys.visor.viewer.core.visor_enums import VisorVtkVariableType
 from ansys.visor.viewer.core.visor_logging import VisorDefaultLogger
 from ansys.visor.viewer.core.visor_types import VisorDatasetType
 from ansys.visor.viewer.models.common.visor_camera_state import VisorCameraState
-from ansys.visor.viewer.models.common.visor_ui_state import VisorUIState
+from ansys.visor.viewer.models.persist.visor_ui_state import PersistedUIState
 from ansys.visor.viewer.models.common.visor_variable_record import (
     VisorVariableRecord,
     VisorVariableRecords,
@@ -102,7 +102,7 @@ class VisorSceneBase(ABC):
     _cross_section_enabled: bool
     _edges_enabled: bool
     _bounding_box_enabled: bool
-    _ui_state: VisorUIState
+    _ui_state: PersistedUIState
     _variable_records: VisorVariableRecords
 
     def __init__(
@@ -129,7 +129,7 @@ class VisorSceneBase(ABC):
         # Written only by the four panel triggers and the load path, always
         # as absolute values, never toggles.  Projection is deliberately
         # absent here: it's derived from the camera record, not stored twice.
-        self._ui_state = VisorUIState(
+        self._ui_state = PersistedUIState(
             dark_theme=dark_mode,
             panel_top_left_panel_collapsed=False,
             panel_top_right_panel_collapsed=False,
