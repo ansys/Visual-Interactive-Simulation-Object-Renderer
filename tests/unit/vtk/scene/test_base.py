@@ -28,7 +28,7 @@ from ansys.visor.viewer.core.visor_colors import VisorColors
 from ansys.visor.viewer.core.visor_enums import VisorVtkVariableType
 from ansys.visor.viewer.models.common.visor_camera_state import VisorCameraState
 from ansys.visor.viewer.models.common.visor_cross_section_state import VisorCrossSectionState
-from ansys.visor.viewer.models.common.visor_ui_state import VisorUIState
+from ansys.visor.viewer.models.persist.visor_ui_state import PersistedUIState
 from ansys.visor.viewer.models.common.visor_variable_state import VisorVariableState
 from ansys.visor.viewer.models.persist.persisted_viewer_state import PersistedViewerStateV1
 from ansys.visor.viewer.models.runtime.dataset.runtime_dataset_state import (
@@ -836,7 +836,7 @@ def mocked_scene(renderer):
     # must return a real RuntimeAppState rather than a MagicMock (whose
     # dataset_states would be a MagicMock and raise on iteration).
     s._state_mapper.persisted_to_runtime.return_value = RuntimeAppState.from_components(
-        ui=VisorUIState(dark_theme=False), unit="m", dataset_states={}, variable_states={}
+        ui=PersistedUIState(dark_theme=False), unit="m", dataset_states={}, variable_states={}
     )
     s._vtk_lock = _LockSpy()
     return s
@@ -1045,7 +1045,7 @@ def _runtime_state(part_states, dataset_id=1):
     variable entries are handed to :func:`_apply` instead.
     """
     return RuntimeAppState.from_components(
-        ui=VisorUIState(dark_theme=False),
+        ui=PersistedUIState(dark_theme=False),
         unit="m",
         dataset_states={
             dataset_id: RuntimeDatasetState(id=dataset_id, part_states=part_states)
@@ -1485,7 +1485,7 @@ def _persisted_state(camera):
     rather than two unrelated tests.
     """
     return PersistedViewerStateV1.from_components(
-        ui_state=VisorUIState(dark_theme=False),
+        ui_state=PersistedUIState(dark_theme=False),
         unit="m",
         orthographic_enabled=None,
         cross_section_enabled=None,
@@ -2345,7 +2345,7 @@ def test_get_state_takes_the_toggles_from_the_store(scene):
 def _toggle_runtime_state(**toggles):
     """A real RuntimeAppState carrying only the toggles named."""
     return RuntimeAppState.from_components(
-        ui=VisorUIState(dark_theme=False),
+        ui=PersistedUIState(dark_theme=False),
         unit="m",
         dataset_states={},
         **toggles,
@@ -2894,7 +2894,7 @@ def test_apply_state_serializes_the_loaded_plane_after_syncing_it(scene):
 
     scene.apply_state(
         PersistedViewerStateV1.from_components(
-            ui_state=VisorUIState(dark_theme=False),
+            ui_state=PersistedUIState(dark_theme=False),
             unit="m",
             orthographic_enabled=None,
             cross_section_enabled=None,
@@ -3089,7 +3089,7 @@ def test_apply_state_restores_the_ui_panel_state_to_the_store(scene):
     _apply(
         scene,
         _panel_runtime_state(
-            VisorUIState(
+            PersistedUIState(
                 dark_theme=False,
                 panel_top_left_panel_collapsed=PANEL_COLLAPSED,
                 panel_top_right_panel_collapsed=PANEL_COLLAPSED,
@@ -3118,7 +3118,7 @@ def test_apply_state_leaves_an_absent_ui_panel_field_alone(scene):
     scene.set_panel_top_right_legend_collapsed(PANEL_COLLAPSED)
     scene.set_panel_top_right_tab_index(PANEL_TAB_INDEX)
 
-    _apply(scene, _panel_runtime_state(VisorUIState(dark_theme=False)))
+    _apply(scene, _panel_runtime_state(PersistedUIState(dark_theme=False)))
 
     assert scene._ui_state.panel_top_left_panel_collapsed is True
     assert scene._ui_state.panel_top_right_panel_collapsed is True

@@ -4,7 +4,7 @@ from typing import Dict
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from ansys.visor.viewer.models.common.visor_ui_state import VisorUIState
+from ansys.visor.viewer.models.persist.visor_ui_state import PersistedUIState
 from ansys.visor.viewer.models.common.visor_variable_record import VisorVariableRecord
 from ansys.visor.viewer.models.runtime.dataset.runtime_dataset_state import RuntimeDatasetState
 from ansys.visor.viewer.models.runtime.scene.runtime_app_state import RuntimeAppState
@@ -28,7 +28,7 @@ class VisorSceneDetails(BaseModel):
     @classmethod
     def from_components(
             cls,
-            ui: VisorUIState,
+            ui: PersistedUIState,
             unit: str | None,
             dataset_states: Dict[int, RuntimeDatasetState],
             scene_graph_state: SceneGraphNodeInfo | None = None,
