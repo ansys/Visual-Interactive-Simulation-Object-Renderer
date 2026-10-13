@@ -1072,9 +1072,16 @@ class VisorSceneBase(ABC):
         """
         Write the resolved unit and the three widget toggles, on the load path.
 
-        Unconditional: the mapper has already resolved every field against
-        the server's current state.  The unit goes to the registry; each
-        toggle goes through its coordinator, store first, renderer second.
+        The unit is written unconditionally; the mapper has already resolved
+        it against the server's current state.  Each toggle is written only
+        when it differs from the server's current value: the mapper resolves
+        an absent file field to the current one, so a no-op restore of an
+        unnamed toggle would otherwise still re-apply and re-serialize it --
+        for edges, every registered part's actor property -- interleaving
+        unrelated writes between the camera and plane steps
+        :meth:`_restore_view_state` performs next.  A toggle the file does
+        change still goes through its coordinator, store first, renderer
+        second.
 
         ``orthographic_enabled`` is not written.  Projection arrives on the
         camera, restored by :meth:`_restore_view_state`.
@@ -1082,9 +1089,12 @@ class VisorSceneBase(ABC):
         Callers must hold ``_vtk_lock``.
         """
         self._dataset_registry.set_unit(scene.unit)
-        self.set_cross_section_visibility(scene.cross_section_enabled)
-        self.set_edges_visible(scene.edges_enabled)
-        self.set_bounding_box_visibility(scene.bounding_box_enabled)
+        if scene.cross_section_enabled != self._cross_section_enabled:
+            self.set_cross_section_visibility(scene.cross_section_enabled)
+        if scene.edges_enabled != self._edges_enabled:
+            self.set_edges_visible(scene.edges_enabled)
+        if scene.bounding_box_enabled != self._bounding_box_enabled:
+            self.set_bounding_box_visibility(scene.bounding_box_enabled)
 
     def _restore_view_state(self, view: RuntimeViewState) -> None:
         """
