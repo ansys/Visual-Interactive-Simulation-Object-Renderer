@@ -1,5 +1,6 @@
 """Command line interface for Visor Viewer."""
 
+import socket
 import sys
 
 import requests
@@ -26,6 +27,22 @@ def check_server_running(host, port):
         print("Could not connect to server:", e)
     return False
 
+def check_server_reachable(host, port):
+    """
+    Check whether anything is listening on the server address, healthy or not.
+
+    Intended for guarding destructive commands. Probes the TCP socket directly
+    so that post-connect failures (resets, protocol errors, no reply) still
+    count as reachable.  Returns False only when a TCP connection cannot be
+    established.
+    """
+    binding_host = settings.binding_host or host
+    try:
+        with socket.create_connection((binding_host, port), timeout=1):
+            return True
+    except OSError:
+        return False  # refused, unreachable, DNS failure, or connect timeout
+
 def check_init_args(
         api_host,
         api_port,
@@ -33,7 +50,7 @@ def check_init_args(
         port,
         rendering_mode,
         standalone,
-        dark_mode
+        dark_mode,
 ):
     """
     If the user explicitly passed --rendering-mode, --standalone, or --dark-mode, check whether
@@ -76,17 +93,42 @@ def check_init_args(
         )
         sys.exit(1)
 
+def needs_server_running(args):
+    """
+    Determine if the current command requires a running server.
+    Returns False if the command is 'server start', 'server health', or 'logs'.
+    """
+    if args.group == "logs" or \
+       args.group == "server" and args.action in ["start", "health"]:
+        return False
+    return True
+
+def needs_server_stopped(args):
+    """
+    Determine if the current command requires a stopped server.
+    Returns True if the command is 'logs clear'.
+    """
+    return args.group == "logs" and args.action == "clear"
 
 
 def main():
     """Main CLI tool for Visor Viewer."""
     args = parse_args()
 
-    # Check if the server is running before executing instance commands
-    # unless the command is to start the server
-    if not (args.group == "server" and args.action in ["start", "health"]):
+    # Most commands talk to the server, so make sure it is up first
+    if needs_server_running(args):
         if not check_server_running(args.api_host, args.api_port):
             print("Server is not running. Please start the server first.")
+            sys.exit(1)
+
+    # Clearing logs while the server is writing to them is unsafe
+    if needs_server_stopped(args):
+        print(f"Checking if the server is running on {args.api_host}:{args.api_port}...")
+        if check_server_reachable(args.api_host, args.api_port):
+            print(
+                f"Server is running on {args.api_host}:{args.api_port}. "
+                "Please stop the server before clearing logs."
+            )
             sys.exit(1)
 
     # Execute the appropriate API action based on the group and action
@@ -106,9 +148,9 @@ def main():
                 args.port,
                 args.rendering_mode,
                 args.standalone,
-                args.dark_mode
+                args.dark_mode,
             )
-            api.initialize(args.host, args.port, args.rendering_mode, args.standalone, args.dark_mode)
+            api.initialize(args.host, args.port, args.rendering_mode, args.standalone, args.dark_mode, args.start)
         elif args.action == "list":
             api.list()
     elif args.group == "instance":
@@ -134,10 +176,13 @@ def main():
 
     if args.group == "logs":
         api = LogsAPI(log_dir=args.log_dir)
-        if not args.log_name:
+        if args.action == "list":
             api.list_logs()
-        else:
-            api.show_log(args.log_name, args.follow, args.lines)
+        elif args.action == "tail":
+            api.tail_log(args.log_name, args.follow, args.lines)
+        elif args.action == "clear":
+            if not api.clear_logs(args.force):
+                sys.exit(1)
         return
 
 

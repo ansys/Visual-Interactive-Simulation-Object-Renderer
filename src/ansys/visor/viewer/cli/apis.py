@@ -2,6 +2,7 @@
 
 import json
 import os
+import shutil
 import time
 
 import requests
@@ -59,7 +60,7 @@ class ServerAPI:
         resp = requests.get(f"{self.base}/info")
         print(resp.json())
 
-    def initialize(self, host, port, rendering_mode, standalone, dark_mode):
+    def initialize(self, host, port, rendering_mode, standalone, dark_mode, start=False):
         """Initialize the server with viewer configuration.
 
         Parameters
@@ -69,17 +70,33 @@ class ServerAPI:
         port : int
             Port the viewer client should connect to.  Pass ``0`` to let
             the Visor server pick an unused port on its own host.
-        standalone : RenderingMode
+        rendering_mode : RenderingMode
             Rendering mode to use for the viewer instance.  Must be one of the
             values defined in ``RenderingMode``.
         standalone : bool
             Whether to run in standalone mode (no external orchestrator).
         dark_mode : bool
             Whether to enable dark mode in the viewer UI.
+        start : bool
+            Whether to start the viewer instance immediately after initialization.
+
+        Raises
+        ------
+        requests.HTTPError
+            If the ``/initialize`` request or, when ``start`` is ``True``,
+            the ``/start`` request returns an HTTP error status.
         """
-        data = {"host": host, "port": port, "rendering_mode": rendering_mode, "standalone": standalone, "dark_mode": dark_mode}
+        data = {"host": host, "port": port, "rendering_mode": rendering_mode, "standalone": standalone,
+                "dark_mode": dark_mode}
         resp = requests.post(f"{self.base}/initialize", json=data)
         print(resp.json())
+        resp.raise_for_status()
+        if start:
+            resp = requests.post(f"{self.base}/start", json={})
+            print(resp)
+            print(resp.json())
+            resp.raise_for_status()
+
 
     def list(self):
         """Print the URLs of all currently available viewer instances."""
@@ -229,25 +246,25 @@ class LogsAPI:
             return
         files = [f for f in os.listdir(self.log_dir) if f.endswith(".log")]
         if not files:
-            print("No log files found.")
+            print(f"No log files found in log dir {self.log_dir}.")
         else:
-            print("Available log files:")
+            print(f"Available log files in log dir {self.log_dir}:")
             for f in files:
                 print("  " + f[:-4])  # strip .log
 
-    def show_log(self, log_name, follow=False, lines=10):
+    def tail_log(self, log_name, follow=False, lines=10):
         """Display the contents of a log file.
 
         Parameters
         ----------
         log_name : str
-            Name of the log file to display, without the ``.log`` extension.
+            Name of the log file to tail, without the ``.log`` extension.
         follow : bool, optional
             When ``True``, print the last *lines* lines and then stream new
             content as it is appended (like ``tail -f``).  Defaults to
             ``False``.
         lines : int, optional
-            Number of lines from the end of the file to display.  Defaults
+            Number of lines from the end of the file to tail.  Defaults
             to ``10``.
         """
         log_path = os.path.join(self.log_dir, f"{log_name}.log")
@@ -272,3 +289,40 @@ class LogsAPI:
                     print("".join(deque(f, maxlen=lines)), end="")
         except FileNotFoundError:
             print(f"Log file not found: {log_path}")
+
+    def clear_logs(self, force=False):
+        """Delete the log directory.
+
+        Parameters
+        ----------
+        force : bool, optional
+            When ``True``, skip the confirmation prompt.  Defaults to ``False``.
+
+        Returns
+        -------
+        bool
+            ``False`` if removing the log directory failed, ``True`` otherwise
+            (including when the directory does not exist or the user aborts).
+
+        Notes
+        -----
+        Nothing should be writing to the log directory (e.g. a running Visor
+        server); otherwise deletion may fail on Windows or remove files that
+        are still in use on Unix.
+        """
+        if not os.path.isdir(self.log_dir):
+            print(f"Log directory not found: {self.log_dir}")
+            return True
+        if not force:
+            print(f"Remove log directory {self.log_dir}? (y/n): ", end="")
+            choice = input().strip().lower()
+            if choice != "y":
+                print("Aborted.")
+                return True
+        try:
+            shutil.rmtree(self.log_dir)
+        except Exception as e:
+            print(f"Failed to remove log directory {self.log_dir}: {e}")
+            return False
+        print(f"Log directory removed: {self.log_dir}")
+        return True
