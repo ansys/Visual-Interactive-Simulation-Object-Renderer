@@ -434,7 +434,7 @@ def test_mutating_the_handed_out_records_leaves_the_holder_unchanged():
     scene = _scene_with_two_datasets_sharing_pressure()
 
     details = scene.get_scene_details()
-    handed_out = details.app_state.scene.variable_states["POINT::pressure::1"]
+    handed_out = details.scene.variable_states["POINT::pressure::1"]
     handed_out.magnitude_range = (900.0, 901.0)
     handed_out.ranges[0] = (902.0, 903.0)
     handed_out.part_ids.append(999)

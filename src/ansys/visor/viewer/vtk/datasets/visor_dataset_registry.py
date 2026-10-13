@@ -395,13 +395,19 @@ class VisorDatasetRegistry:
 
         return True
 
+    def set_unit(self, unit: str) -> None:
+        """
+        Set the scene unit.
+        """
+        self.unit = unit
+
     def _update_unit(self, metadata: ExtendedMetadata):
         """
         Update the unit to the specified value.
         """
         if self._validate_unit(metadata):
             # store unit to this class
-            self.unit = metadata.unit
+            self.set_unit(metadata.unit)
         else:
             # reset unit to empty string
             self._reset_unit()
@@ -410,5 +416,5 @@ class VisorDatasetRegistry:
         """
         Reset the unit to an empty string.
         """
-        self.unit = ""
+        self.set_unit("")
 

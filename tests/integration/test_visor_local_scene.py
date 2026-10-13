@@ -85,7 +85,7 @@ def test_get_scene_details_and_json(pipeline_instance):
     metadata = ExtendedMetadata(name="test_model", unit="mm")
     pipeline_instance.add_dataset(dataset, metadata)
     details = pipeline_instance.get_scene_details()
-    assert details.app_state.scene.unit == "mm"
+    assert details.scene.unit == "mm"
     payload = json.loads(pipeline_instance.get_scene_details_json())
     assert payload["appState"]["scene"]["unit"] == "mm"
     assert "vtkInfo" in payload

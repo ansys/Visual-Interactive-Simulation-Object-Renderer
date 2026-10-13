@@ -1,3 +1,9 @@
+from ansys.visor.viewer.models.common.visor_camera_state import VisorCameraState
+from ansys.visor.viewer.models.common.visor_cross_section_state import VisorCrossSectionState
+from ansys.visor.viewer.models.runtime.scene.runtime_app_state import RuntimeAppState
+from ansys.visor.viewer.models.runtime.scene.runtime_scene_state import RuntimeSceneState
+from ansys.visor.viewer.models.runtime.scene.runtime_ui_state import RuntimeUIState
+from ansys.visor.viewer.models.runtime.scene.runtime_view_state import RuntimeViewState
 from ansys.visor.viewer.vtk.scene.visor_frontend_bridge import VisorFrontendBridge
 
 # ------------------------------------------------------------------
@@ -49,3 +55,51 @@ def test_set_state_sends_js_call(monkeypatch):
     assert server.calls[0][0] == "visor-frontend-ref"
     assert server.calls[0][1] == "setState"
     assert server.calls[0][2] == {"id": 123}
+
+
+def test_load_push_carries_camera_and_plane_under_the_scene():
+    """The real request, dumped by the real bridge call: camera and plane sit in appState.scene, no view key."""
+    state = RuntimeAppState(
+        ui=RuntimeUIState(
+            dark_theme=True,
+            panel_top_left_panel_collapsed=False,
+            panel_top_right_panel_collapsed=False,
+            panel_top_right_legend_collapsed=False,
+            panel_top_right_tab_index=0,
+        ),
+        view=RuntimeViewState(
+            camera=VisorCameraState(
+                position=[1.0, 2.0, 3.0],
+                focal_point=[4.0, 5.0, 6.0],
+                view_up=[0.0, 0.0, 1.0],
+                clipping_range=[7.0, 8.0],
+                parallel_projection=True,
+                view_angle=30.0,
+                parallel_scale=9.0,
+            ),
+            cross_section=VisorCrossSectionState(origin=[0.5, 0.5, 0.5], normal=[0.0, 1.0, 0.0]),
+        ),
+        scene=RuntimeSceneState(
+            unit="mm",
+            orthographic_enabled=True,
+            cross_section_enabled=False,
+            edges_enabled=True,
+            bounding_box_enabled=False,
+        ),
+    )
+    server = FakeServer()
+
+    VisorFrontendBridge(server, "visor-frontend-ref").set_state(state)
+
+    app_state = server.calls[0][2]["appState"]
+    assert "view" not in app_state
+    assert app_state["scene"]["camera"] == {
+        "position": [1.0, 2.0, 3.0],
+        "focalPoint": [4.0, 5.0, 6.0],
+        "viewUp": [0.0, 0.0, 1.0],
+        "clippingRange": [7.0, 8.0],
+        "parallelProjection": True,
+        "viewAngle": 30.0,
+        "parallelScale": 9.0,
+    }
+    assert app_state["scene"]["crossSection"] == {"origin": [0.5, 0.5, 0.5], "normal": [0.0, 1.0, 0.0]}

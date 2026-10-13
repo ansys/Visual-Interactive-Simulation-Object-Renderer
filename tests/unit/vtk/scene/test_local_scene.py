@@ -513,9 +513,9 @@ def test_get_scene_details_returns_model(pipeline_instance):
 
     details = pipeline_instance.get_scene_details()
 
-    assert details.app_state.ui.dark_theme == pipeline_instance.dark_mode
-    assert details.app_state.scene.unit == "m"
-    assert details.app_state.scene.dataset_states == {}
+    assert details.ui.dark_theme == pipeline_instance.dark_mode
+    assert details.scene.unit == "m"
+    assert details.scene.dataset_states == {}
     assert details.vtk_info.renderer_annotation.widgets.orientation_widget_id == 10
     assert details.vtk_info.renderer_annotation.widgets.cross_section_plane_id == 20
     assert details.vtk_info.renderer_annotation.widgets.cross_section_plane_widget_id == 21

@@ -1,13 +1,17 @@
 """Model for visor scene details, the data transfer object sent to the client."""
 
-from typing import Dict
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SerializationInfo,
+    SerializerFunctionWrapHandler,
+    model_serializer,
+)
 
-from pydantic import BaseModel, ConfigDict, Field
-
-from ansys.visor.viewer.models.persist.visor_ui_state import PersistedUIState
-from ansys.visor.viewer.models.common.visor_variable_record import VisorVariableRecord
-from ansys.visor.viewer.models.runtime.dataset.runtime_dataset_state import RuntimeDatasetState
-from ansys.visor.viewer.models.runtime.scene.runtime_app_state import RuntimeAppState
+from ansys.visor.viewer.models.runtime.scene.runtime_scene_state import RuntimeSceneState
+from ansys.visor.viewer.models.runtime.scene.runtime_ui_state import RuntimeUIState
+from ansys.visor.viewer.models.runtime.scene.runtime_view_state import scene_dump_with_view
 from ansys.visor.viewer.models.runtime.vtk.renderer_annotation import RendererAnnotation
 from ansys.visor.viewer.models.runtime.vtk.runtime_vtk_info import RuntimeVTKInfo
 from ansys.visor.viewer.models.runtime.vtk.scene_graph_node_info import SceneGraphNodeInfo
@@ -17,53 +21,60 @@ SCENE_DETAILS_SCHEMA_VERSION: int = 3
 
 
 class VisorSceneDetails(BaseModel):
+    """What a rebuilt or reconnecting client is served: the UI and scene records and the VTK info.
+
+    Never carries the view records; the client receives the camera and the
+    plane through the VTK object state instead.
+    """
     model_config = ConfigDict(arbitrary_types_allowed=True, populate_by_name=True)
 
     schema_version: int = Field(
         default=SCENE_DETAILS_SCHEMA_VERSION, alias="schemaVersion"
     )
-    app_state: RuntimeAppState | None = Field(default=None, alias="appState")
+    ui: RuntimeUIState
+    scene: RuntimeSceneState
     vtk_info: RuntimeVTKInfo | None = Field(default=None, alias="vtkInfo")
 
     @classmethod
     def from_components(
             cls,
-            ui: PersistedUIState,
-            unit: str | None,
-            dataset_states: Dict[int, RuntimeDatasetState],
+            ui: RuntimeUIState,
+            scene: RuntimeSceneState,
             scene_graph_state: SceneGraphNodeInfo | None = None,
             renderer_annotation: RendererAnnotation | None = None,
-            orthographic_enabled: bool | None = None,
-            cross_section_enabled: bool | None = None,
-            edges_enabled: bool | None = None,
-            bounding_box_enabled: bool | None = None,
-            *,
-            variable_states: Dict[str, VisorVariableRecord],
     ) -> "VisorSceneDetails":
-        """Construct an instance from components.
-
-        The UI record is forwarded whole to
-        :meth:`RuntimeAppState.from_components`; this class does not build one
-        and does not read any field of it.
-        """
+        """Assemble the details from the server's UI and scene records and the VTK info."""
         vtk_info = RuntimeVTKInfo(
             scene_graph=scene_graph_state,
             renderer_annotation=renderer_annotation,
         )
-        app_state = RuntimeAppState.from_components(
-            ui=ui,
-            unit=unit,
-            dataset_states=dataset_states,
-            orthographic_enabled=orthographic_enabled,
-            cross_section_enabled=cross_section_enabled,
-            edges_enabled=edges_enabled,
-            bounding_box_enabled=bounding_box_enabled,
-            variable_states=variable_states,
-        )
-        return cls(
-            app_state=app_state,
-            vtk_info=vtk_info,
-        )
+        return cls(ui=ui, scene=scene, vtk_info=vtk_info)
+
+    @model_serializer(mode="wrap")
+    def _dump_in_the_app_state_shape(
+            self, handler: SerializerFunctionWrapHandler, info: SerializationInfo
+    ) -> dict:
+        """Nest ui and scene under appState, beside schemaVersion and vtkInfo.
+
+        The scene object carries null ``camera`` and ``crossSection`` keys
+        after ``unit`` unless ``exclude_none`` is set, which is the shape the
+        client reads.
+        """
+        data: dict = handler(self)
+        schema_key = "schemaVersion" if info.by_alias else "schema_version"
+        app_key = "appState" if info.by_alias else "app_state"
+        vtk_key = "vtkInfo" if info.by_alias else "vtk_info"
+        view = {} if info.exclude_none else {
+            "camera": None,
+            "crossSection" if info.by_alias else "cross_section": None,
+        }
+        out: dict = {}
+        if schema_key in data:
+            out[schema_key] = data[schema_key]
+        out[app_key] = {"ui": data["ui"], "scene": scene_dump_with_view(data["scene"], view)}
+        if vtk_key in data:
+            out[vtk_key] = data[vtk_key]
+        return out
 
 
 VisorSceneDetails.model_rebuild()

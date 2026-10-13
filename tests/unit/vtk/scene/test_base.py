@@ -37,6 +37,9 @@ from ansys.visor.viewer.models.runtime.dataset.runtime_dataset_state import (
     VariableReference,
 )
 from ansys.visor.viewer.models.runtime.scene.runtime_app_state import RuntimeAppState
+from ansys.visor.viewer.models.runtime.scene.runtime_scene_state import RuntimeSceneState
+from ansys.visor.viewer.models.runtime.scene.runtime_ui_state import RuntimeUIState
+from ansys.visor.viewer.models.runtime.scene.runtime_view_state import RuntimeViewState
 from ansys.visor.viewer.renderer.local_renderer import VisorLocalRenderer
 from ansys.visor.viewer.vtk.datasets.visor_dataset_registry import VisorDatasetRegistry
 from ansys.visor.viewer.vtk.node_pipeline import VtkNodePipeline
@@ -128,6 +131,39 @@ def _make_part_dataset(dataset_id: int, part_ids, part_states=None, part_variabl
 def _record(part_id, **overrides):
     """A complete record for *part_id* with *overrides* applied."""
     return RuntimePartProperties.default_for(part_id).model_copy(update=overrides)
+
+
+def _ui_record(**overrides) -> RuntimeUIState:
+    """A complete UI record, at the server's own initial values unless overridden."""
+    fields = {
+        "dark_theme": False,
+        "panel_top_left_panel_collapsed": False,
+        "panel_top_right_panel_collapsed": False,
+        "panel_top_right_legend_collapsed": False,
+        "panel_top_right_tab_index": 0,
+    }
+    fields.update(overrides)
+    return RuntimeUIState(**fields)
+
+
+def _app_state(dataset_states=None, ui=None, **scene_fields) -> RuntimeAppState:
+    """A real, fully resolved RuntimeAppState with no view records.
+
+    Scene-level fields are the literals below unless overridden.
+    """
+    fields = {
+        "unit": "m",
+        "orthographic_enabled": None,
+        "cross_section_enabled": False,
+        "edges_enabled": False,
+        "bounding_box_enabled": False,
+    }
+    fields.update(scene_fields)
+    return RuntimeAppState(
+        ui=ui if ui is not None else _ui_record(),
+        view=RuntimeViewState(camera=None, cross_section=None),
+        scene=RuntimeSceneState(dataset_states=dataset_states or {}, **fields),
+    )
 
 
 @pytest.fixture
@@ -830,14 +866,18 @@ def mocked_scene(renderer):
     s._scene_graph = MagicMock(name="scene_graph")
     s._dataset_registry = MagicMock(name="dataset_registry")
     s._dataset_registry.count = 1
+    # apply_state snapshots the server's records into validated models, so the
+    # values it reads must be real: a MagicMock is absorbed for calls, not for values.
+    s._dataset_registry.unit = "m"
+    s._dataset_registry.runtime_state_dict = {}
     s._renderer = MagicMock(name="renderer")
+    s._renderer.get_camera_state.return_value = None
+    s._renderer.get_cross_section_plane.return_value = None
     s._state_mapper = MagicMock(name="state_mapper")
-    # apply_state now walks the mapped state's dataset_states, so the mapper
+    # apply_state walks the mapped state's dataset_states, so the mapper
     # must return a real RuntimeAppState rather than a MagicMock (whose
     # dataset_states would be a MagicMock and raise on iteration).
-    s._state_mapper.persisted_to_runtime.return_value = RuntimeAppState.from_components(
-        ui=PersistedUIState(dark_theme=False), unit="m", dataset_states={}, variable_states={}
-    )
+    s._state_mapper.persisted_to_runtime.return_value = _app_state()
     s._vtk_lock = _LockSpy()
     return s
 
@@ -1044,13 +1084,10 @@ def _runtime_state(part_states, dataset_id=1):
     apply_state fills it from the server's rebuilt record (CC-1).  A file's
     variable entries are handed to :func:`_apply` instead.
     """
-    return RuntimeAppState.from_components(
-        ui=PersistedUIState(dark_theme=False),
-        unit="m",
+    return _app_state(
         dataset_states={
             dataset_id: RuntimeDatasetState(id=dataset_id, part_states=part_states)
         },
-        variable_states={},
     )
 
 
@@ -1448,19 +1485,12 @@ def test_apply_state_flushes_before_the_bridge_call(scene, registry):
 # ---------------------------------------------------------------------------
 # Load path — the camera
 #
-# These are the only tests in this module that drive apply_state with a real
-# PersistedViewerStateV1, through the real state mapper, rather than through
-# the _apply helper (which stubs the mapper) or mocked_scene (which pins its
-# return value).  Two consequences, both deliberate:
-#
-#   1. They exercise the mapper's camera pass-through as well as the camera
-#      step, so they are the first tests here that would notice if the mapper
-#      stopped handing camera on verbatim.
-#   2. A failure could in principle be the unstubbed path rather than the
-#      camera step.  The camera-bearing and camera-free tests below are built
-#      from the SAME constructor call, differing in one argument, so the pair
-#      discriminates: both failing means the shared path, only the first
-#      failing means the camera step, only the second means the guard.
+# These tests drive apply_state with a real PersistedViewerStateV1, through
+# the real state mapper, rather than through the _apply helper (which stubs
+# the mapper) or mocked_scene (which pins its return value).  They exercise
+# the mapper's camera resolution as well as the camera step, so they would
+# notice if the mapper stopped handing a file's camera on verbatim.  The
+# null-camera case is pinned in the overlay section below.
 #
 # ``datasets={}`` keeps the mapper's per-dataset loop empty, so the registry
 # hop (get_by_name) is never taken and cannot contribute a failure.
@@ -1478,12 +1508,7 @@ CAMERA_PARALLEL_SCALE = 9.0
 
 
 def _persisted_state(camera):
-    """A real PersistedViewerStateV1 carrying *camera*, or no camera at all.
-
-    One constructor, one varying argument: the camera-bearing and camera-free
-    cases differ in nothing else, which is what makes the pair a discriminator
-    rather than two unrelated tests.
-    """
+    """A real PersistedViewerStateV1 carrying *camera*."""
     return PersistedViewerStateV1.from_components(
         ui_state=PersistedUIState(dark_theme=False),
         unit="m",
@@ -1539,23 +1564,6 @@ def test_apply_state_projects_the_camera_onto_the_pipeline(scene):
     camera.SetParallelProjection.assert_called_once_with(CAMERA_PARALLEL_PROJECTION)
     camera.SetViewAngle.assert_called_once_with(CAMERA_VIEW_ANGLE)
     camera.SetParallelScale.assert_called_once_with(CAMERA_PARALLEL_SCALE)
-
-
-def test_apply_state_without_a_camera_leaves_the_record_untouched(scene):
-    """Absent says nothing: a camera-free file does not reset the record.
-
-    The negative twin of the two tests above -- same constructor, one
-    argument changed -- so a failure here against a pass there isolates the
-    guard, and a failure in both isolates the unstubbed path instead.
-    """
-    seeded = _persisted_camera()
-    scene._renderer.sync_camera(seeded)
-    scene._renderer._vtk_renderer.GetActiveCamera.return_value.reset_mock()
-
-    scene.apply_state(_persisted_state(None))
-
-    assert scene._renderer.get_camera_state() is seeded
-    scene._renderer._vtk_renderer.GetActiveCamera.return_value.SetPosition.assert_not_called()
 
 
 def test_apply_state_syncs_the_camera_under_the_lock_before_the_render_step(scene):
@@ -2126,9 +2134,11 @@ class _ToggleSpyRenderer:
 
     ``update_bounds``, ``update_actor_count`` and ``render`` are the scene
     surface ``apply_state`` reaches through its ``finalize_scene`` call, and
-    are the only three names added for it: with a toggle-only state the part
+    ``get_camera_state`` and ``get_cross_section_plane`` are the two record
+    reads of its current-state snapshot; those five are the only names added
+    beyond the toggles: with a toggle-only state the part
     loop makes no renderer call, the cross-section and camera restores are
-    both guarded off, and ``skip_reset_camera=True`` keeps ``reset_camera``
+    both skipped on ``None`` records, and ``skip_reset_camera=True`` keeps ``reset_camera``
     out.  Anything else is still an AttributeError, which is the point of the
     double.  They record into ``scene_calls`` rather than ``calls`` so that
     the toggle assertions keep their exact meaning; nothing asserts
@@ -2164,6 +2174,15 @@ class _ToggleSpyRenderer:
 
     def render(self):
         self.scene_calls.append("render")
+
+    def get_camera_state(self):
+        """``apply_state`` snapshots the current records before overlaying; there are none."""
+        self.scene_calls.append("get_camera_state")
+        return None
+
+    def get_cross_section_plane(self):
+        self.scene_calls.append("get_cross_section_plane")
+        return None
 
 
 class _SceneDetailsRenderer:
@@ -2343,14 +2362,8 @@ def test_get_state_takes_the_toggles_from_the_store(scene):
 # ---------------------------------------------------------------------------
 
 def _toggle_runtime_state(**toggles):
-    """A real RuntimeAppState carrying only the toggles named."""
-    return RuntimeAppState.from_components(
-        ui=PersistedUIState(dark_theme=False),
-        unit="m",
-        dataset_states={},
-        **toggles,
-        variable_states={},
-    )
+    """A real, fully resolved RuntimeAppState with the toggles named; the others are False."""
+    return _app_state(**toggles)
 
 
 def test_apply_state_writes_the_toggles_to_the_store(scene):
@@ -2390,42 +2403,85 @@ def test_apply_state_applies_the_toggles_to_the_renderer(scene):
     ]
 
 
-def test_apply_state_absent_toggles_leave_the_store_untouched(scene):
-    """Absent says nothing: a state with no toggles is not a state of False.
-
-    The guard belongs to this path and not to get_state, and this is the test
-    that says so.  The store is seeded to ``True`` first, so a body that wrote
-    the model's own ``None`` default through would be caught.
-    """
-    scene.set_cross_section_visibility(TOGGLE_ON)
-    scene.set_edges_visible(TOGGLE_ON)
-    scene.set_bounding_box_visibility(TOGGLE_ON)
-    spy = _ToggleSpyRenderer(scene)
-    scene._renderer = spy
-
-    _apply(scene, _toggle_runtime_state())
-
-    assert scene._cross_section_enabled is True
-    assert scene._edges_enabled is True
-    assert scene._bounding_box_enabled is True
-    assert spy.calls == []
-
-
 def test_apply_state_ignores_orthographic_enabled(scene):
     """The persisted projection toggle is emitted, never read back.
 
     Two independent fields writing one camera property is the divergence this
     story removes; projection arrives on the camera and nowhere else.  Pinned
     so that a later session does not restore the read as a bug fix: nothing on
-    the scene stores it, and a state carrying only that field changes nothing.
+    the scene stores it, and a file whose flag says parallel over a perspective
+    camera loads as perspective.
     """
-    spy = _ToggleSpyRenderer(scene)
-    scene._renderer = spy
+    pushed = []
+    scene._push_runtime_state = pushed.append
 
-    _apply(scene, _toggle_runtime_state(orthographic_enabled=True))
+    scene.apply_state(
+        _loaded_file(scene={"orthographic_enabled": True, "camera": _persisted_camera()})
+    )
 
-    assert spy.calls == []
+    assert pushed[0].scene.orthographic_enabled is False
+    assert scene._renderer.get_camera_state().parallel_projection is False
     assert not hasattr(scene, "_orthographic_enabled")
+
+
+# ---------------------------------------------------------------------------
+# apply_state -- a loaded file is overlaid onto the server's current state
+# ---------------------------------------------------------------------------
+
+def _loaded_file(scene=None, ui=None) -> PersistedViewerStateV1:
+    """A real loaded file naming exactly the scene and UI keys given."""
+    return PersistedViewerStateV1.model_validate({"ui": ui or {}, "scene": scene or {}})
+
+
+def test_absent_toggle_keeps_a_non_default_store_value(scene):
+    """Unnamed keeps the current value; named takes the file's."""
+    scene.set_cross_section_visibility(TOGGLE_ON)
+    scene.set_edges_visible(TOGGLE_ON)
+    scene.set_bounding_box_visibility(TOGGLE_ON)
+
+    scene.apply_state(_loaded_file(scene={"edges_enabled": False}))
+
+    assert scene._cross_section_enabled is True
+    assert scene._edges_enabled is False
+    assert scene._bounding_box_enabled is True
+
+
+def test_null_unit_and_null_toggle_resolve_to_the_defaults(scene):
+    """Named as null takes the scene default: an empty unit, a toggle off."""
+    scene._dataset_registry.set_unit("mm")
+    scene.set_edges_visible(TOGGLE_ON)
+
+    scene.apply_state(_loaded_file(scene={"unit": None, "edges_enabled": None}))
+
+    assert scene._dataset_registry.unit == ""
+    assert scene._edges_enabled is False
+
+
+def test_null_theme_resolves_to_the_constructor_theme(renderer, registry):
+    """A null UI field takes the value the scene was built with, not the model's."""
+    s = _ConcreteScene(MagicMock(name="server"), dark_mode=True, renderer=renderer)
+    s._dataset_registry = registry
+    s._renderer.flush_wasm_state = MagicMock(name="flush_wasm_state")
+    s.dark_mode = False
+    s._ui_state.panel_top_right_tab_index = 2
+
+    s.apply_state(_loaded_file(ui={"dark_theme": None, "panel_top_right_tab_index": None}))
+
+    assert s.dark_mode is True
+    assert s._ui_state.panel_top_right_tab_index == 0
+
+
+def test_null_camera_leaves_the_camera_record_unchanged(scene):
+    """A null camera or plane leaves the renderer's record as it is; neither has a default."""
+    scene.sync_camera(_record_camera())
+    scene.sync_cross_section_plane(RECORD_CROSS_SECTION_ORIGIN, RECORD_CROSS_SECTION_NORMAL)
+
+    scene.apply_state(_loaded_file(scene={"camera": None, "cross_section": None}))
+
+    assert scene._renderer.get_camera_state() == _record_camera()
+    plane = scene._renderer.get_cross_section_plane()
+    assert plane.origin == RECORD_CROSS_SECTION_ORIGIN
+    assert plane.normal == RECORD_CROSS_SECTION_NORMAL
 
 
 # ---------------------------------------------------------------------------
@@ -2452,7 +2508,7 @@ def test_get_scene_details_delivers_the_four_widget_keywords(scene):
     double = _SceneDetailsRenderer(_delivered_camera())
     scene._renderer = double
 
-    delivered = scene.get_scene_details().app_state.scene
+    delivered = scene.get_scene_details().scene
 
     assert delivered.cross_section_enabled is True
     assert delivered.edges_enabled is True
@@ -2475,7 +2531,7 @@ def test_get_scene_details_delivers_no_orthographic_flag_when_the_camera_record_
     scene._dataset_registry = VisorDatasetRegistry()
     scene._renderer = _SceneDetailsRenderer(None)
 
-    delivered = scene.get_scene_details().app_state.scene
+    delivered = scene.get_scene_details().scene
 
     assert delivered.orthographic_enabled is None
     assert delivered.edges_enabled is True
@@ -2976,13 +3032,8 @@ def _ui_save_scene(scene):
 
 
 def _panel_runtime_state(ui):
-    """A real RuntimeAppState carrying only the UI record named."""
-    return RuntimeAppState.from_components(
-        ui=ui,
-        unit="m",
-        dataset_states={},
-        variable_states={},
-    )
+    """A real, fully resolved RuntimeAppState carrying the UI record named."""
+    return _app_state(ui=ui)
 
 
 # ---------------------------------------------------------------------------
@@ -3089,8 +3140,7 @@ def test_apply_state_restores_the_ui_panel_state_to_the_store(scene):
     _apply(
         scene,
         _panel_runtime_state(
-            PersistedUIState(
-                dark_theme=False,
+            _ui_record(
                 panel_top_left_panel_collapsed=PANEL_COLLAPSED,
                 panel_top_right_panel_collapsed=PANEL_COLLAPSED,
                 panel_top_right_legend_collapsed=PANEL_COLLAPSED,
@@ -3106,19 +3156,18 @@ def test_apply_state_restores_the_ui_panel_state_to_the_store(scene):
 
 
 def test_apply_state_leaves_an_absent_ui_panel_field_alone(scene):
-    """Absent says nothing: a state with no panel fields is not a state of defaults.
+    """Absent says nothing: a file with no panel fields is not a file of defaults.
 
-    The guard belongs to this path and not to get_state, and this is the test
-    that says so.  The store is seeded through the coordinators first, so a
-    body that wrote the model's own ``None`` default through would be caught;
-    a file written before this record existed carries exactly this shape.
+    The store is seeded through the coordinators first, so a resolution that
+    based the overlay on the defaults rather than the current record would be
+    caught; a file written before this record existed carries exactly this shape.
     """
     scene.set_panel_top_left_panel_collapsed(PANEL_COLLAPSED)
     scene.set_panel_top_right_panel_collapsed(PANEL_COLLAPSED)
     scene.set_panel_top_right_legend_collapsed(PANEL_COLLAPSED)
     scene.set_panel_top_right_tab_index(PANEL_TAB_INDEX)
 
-    _apply(scene, _panel_runtime_state(PersistedUIState(dark_theme=False)))
+    scene.apply_state(_loaded_file(ui={"darkTheme": False}))
 
     assert scene._ui_state.panel_top_left_panel_collapsed is True
     assert scene._ui_state.panel_top_right_panel_collapsed is True
