@@ -31,23 +31,21 @@ def test_parts_key_types_preserved():
 
 # --- Serialization: undefined-vs-null contract ---
 
-def test_variable_id_null_always_serialized():
-    """variable_id=None must appear in the output as null (not be omitted).
-
-    Frontend distinguishes null ("remove variable") from absent ("pass-through").
-    The wire format uses the camelCase alias ``variableId``.
-    """
+def test_no_color_variable_dumps_as_null():
+    """A record with no reference dumps ``colorVariable`` as null, not omitted."""
     p = _record(1, color_variable=None)
     data = p.model_dump(by_alias=True)
-    assert "variableId" in data
-    assert data["variableId"] is None
+    assert "colorVariable" in data
+    assert data["colorVariable"] is None
 
 
-def test_variable_id_value_serialized():
-    """variable_id with a real value must be present."""
-    p = _record(1, color_variable=VariableReference(variable_id="pressure", variable_component=0))
+def test_part_record_dumps_the_nested_color_variable():
+    """A reference dumps nested under ``colorVariable``; no flat keys are emitted."""
+    p = _record(1, color_variable=VariableReference(variable_id="POINT::pressure::1", variable_component=2))
     data = p.model_dump(by_alias=True)
-    assert data["variableId"] == "pressure"
+    assert data["colorVariable"] == {"variableId": "POINT::pressure::1", "variableComponent": 2}
+    assert "variableId" not in data
+    assert "variableComponent" not in data
 
 
 def test_optional_fields_present_when_set():
@@ -61,21 +59,20 @@ def test_optional_fields_present_when_set():
     assert data["opacity"] == 0.5
     assert data["visible"] is True
     assert data["selected"] is False
-    assert data["variableComponent"] == 2
     assert data["diffuseRgb"] == [0.1, 0.2, 0.3]
 
 
 def test_clear_variable_round_trip():
-    """A part with variable_id=None serializes correctly and round-trips through PartProperties."""
+    """A part with no reference serializes correctly and round-trips through PartProperties."""
     from ansys.visor.viewer.models.common.part_properties import PartProperties
 
     props = PartProperties(color_by=None)
     p = RuntimePartProperties.from_part_properties(id=42, props=props)
     data = p.model_dump(by_alias=True)
 
-    # variableId must be present and null so the frontend removes the variable
-    assert "variableId" in data
-    assert data["variableId"] is None
+    # colorVariable must be present and null: the resolved "not coloured"
+    assert "colorVariable" in data
+    assert data["colorVariable"] is None
 
     # Round-trip back to PartProperties
     back = p.to_part_properties()

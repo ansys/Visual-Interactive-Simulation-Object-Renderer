@@ -405,7 +405,7 @@ class VisorSceneBase(ABC):
 
     def get_scene_details_json(self) -> str:
         """Return the VisorVtkPipelineState as JSON string."""
-        return json.dumps(self.get_scene_details().model_dump(exclude_none=True, by_alias=True))
+        return json.dumps(self.get_scene_details().model_dump(by_alias=True))
 
     def clear(self):
         """Remove all actors from the renderer and reset the scene.

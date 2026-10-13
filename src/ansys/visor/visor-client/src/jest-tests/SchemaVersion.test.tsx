@@ -26,6 +26,43 @@ describe('SchemaVersion', () => {
         expect(error.expectedVersion).toBe(SCENE_DETAILS_SCHEMA_VERSION);
     });
 
+    test('scene details at schema version 3 are rejected', () => {
+        let thrown: unknown = null;
+        try {
+            new VisorSceneDetails({ schemaVersion: 3, appState: undefined, vtkInfo: undefined });
+        } catch (err) {
+            thrown = err;
+        }
+        expect(thrown).toBeInstanceOf(SchemaVersionMismatchError);
+        const error = thrown as SchemaVersionMismatchError;
+        expect(error.payloadVersion).toBe(3);
+        expect(error.expectedVersion).toBe(4);
+    });
+
+    test('scene details with a null orthographicEnabled parse and leave it undefined', () => {
+        const details = new VisorSceneDetails({
+            schemaVersion: 4,
+            ui: {},
+            scene: { unit: '', orthographicEnabled: null },
+            vtkInfo: {
+                sceneGraph: {
+                    id: 0,
+                    dataArrays: [],
+                    name: '',
+                    isGroupNode: true,
+                    isActorNode: false,
+                    nodeType: 'root',
+                    diffuseColor: [1, 1, 1],
+                    bounds: [],
+                    children: [],
+                },
+                rendererAnnotation: null,
+            },
+        });
+
+        expect(details.appState.scene.orthographicEnabled).toBeUndefined();
+    });
+
     test('parseRendererAnnotation returns null for a null or undefined annotation', () => {
         expect(parseRendererAnnotation(null)).toBeNull();
         expect(parseRendererAnnotation(undefined)).toBeNull();

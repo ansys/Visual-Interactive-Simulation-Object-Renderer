@@ -307,8 +307,8 @@ def _find_wasm_id_keys(obj, path: str = "") -> list:
 def test_payload_splits_scene_graph_and_renderer_annotation_with_no_wasm_ids_under_scene_graph():
     scene = _build_scene(_sphere_polydata())
     # Call the real production payload path -- get_scene_details_json() itself
-    # does `json.dumps(self.get_scene_details().model_dump(exclude_none=True,
-    # by_alias=True))` (vtk/scene/base.py) -- so a later change to those dump
+    # does `json.dumps(self.get_scene_details().model_dump(by_alias=True))`
+    # (vtk/scene/base.py) -- so a later change to those dump
     # kwargs is caught here rather than in a re-derived copy.
     payload = json.loads(scene.get_scene_details_json())
 
@@ -397,13 +397,89 @@ def _scene_with_two_datasets_sharing_pressure():
     return scene
 
 
+def _null_paths(obj, path: str = "") -> list:
+    """Every path in a JSON-shaped structure whose value is null."""
+    hits = []
+    if isinstance(obj, dict):
+        for key, value in obj.items():
+            key_path = f"{path}.{key}" if path else key
+            if value is None:
+                hits.append(key_path)
+            else:
+                hits.extend(_null_paths(value, key_path))
+    elif isinstance(obj, list):
+        for i, item in enumerate(obj):
+            hits.extend(_null_paths(item, f"{path}[{i}]"))
+    return hits
+
+
 def test_scene_details_json_carries_every_record_key_and_no_null():
-    """#17: every record key for every variable, no null, on two datasets sharing one variable."""
+    """Every record key is present at schema version 4, and the only null is a part's colorVariable.
+
+    The scene has a camera record, so ``orthographicEnabled`` resolves; part 11
+    is coloured and part 12 is not.
+    """
+    from ansys.visor.viewer.models.common.visor_camera_state import VisorCameraState
+    from ansys.visor.viewer.models.runtime.dataset.runtime_dataset_state import (
+        RuntimePartProperties,
+        VariableReference,
+    )
     scene = _scene_with_two_datasets_sharing_pressure()
+    camera = VisorCameraState(
+        position=[1.0, 2.0, 3.0], focal_point=[0.0, 0.0, 0.0], view_up=[0.0, 0.0, 1.0],
+        clipping_range=[0.1, 10.0], parallel_projection=False, view_angle=30.0, parallel_scale=1.0,
+    )
+    scene._renderer.get_camera_state = lambda: camera
+    scene._dataset_registry.datasets[1].state.part_states = {
+        11: RuntimePartProperties(
+            id=11, opacity=1.0, visible=True, selected=False, diffuse_rgb=[0.8, 0.8, 0.8],
+            color_variable=VariableReference(variable_id="POINT::pressure::1", variable_component=-1),
+        ),
+        12: RuntimePartProperties(
+            id=12, opacity=0.5, visible=False, selected=True, diffuse_rgb=[0.1, 0.2, 0.3], color_variable=None,
+        ),
+    }
 
     payload = json.loads(scene.get_scene_details_json())
 
-    assert payload["appState"]["scene"]["variableStates"] == {
+    assert set(payload) == {"schemaVersion", "ui", "scene", "vtkInfo"}
+    assert payload["schemaVersion"] == 4
+    assert set(payload["ui"]) == {
+        "darkTheme",
+        "panelTopLeftPanelCollapsed",
+        "panelTopRightPanelCollapsed",
+        "panelTopRightLegendCollapsed",
+        "panelTopRightTabIndex",
+    }
+    assert set(payload["scene"]) == {
+        "unit",
+        "orthographicEnabled",
+        "crossSectionEnabled",
+        "edgesEnabled",
+        "boundingBoxEnabled",
+        "datasetStates",
+        "variableStates",
+    }
+    assert payload["scene"]["orthographicEnabled"] is False
+    parts = payload["scene"]["datasetStates"]["1"]["partStates"]
+    assert parts["11"] == {
+        "id": 11,
+        "opacity": 1.0,
+        "visible": True,
+        "selected": False,
+        "diffuseRgb": [0.8, 0.8, 0.8],
+        "colorVariable": {"variableId": "POINT::pressure::1", "variableComponent": -1},
+    }
+    assert parts["12"] == {
+        "id": 12,
+        "opacity": 0.5,
+        "visible": False,
+        "selected": True,
+        "diffuseRgb": [0.1, 0.2, 0.3],
+        "colorVariable": None,
+    }
+    assert _null_paths(payload) == ["scene.datasetStates.1.partStates.12.colorVariable"]
+    assert payload["scene"]["variableStates"] == {
         "POINT::pressure::1": {
             "id": "POINT::pressure::1",
             "arrayName": "pressure",

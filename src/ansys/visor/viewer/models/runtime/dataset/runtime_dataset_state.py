@@ -2,15 +2,7 @@
 
 from typing import Any, Dict, List
 
-from pydantic import (
-    BaseModel,
-    ConfigDict,
-    Field,
-    SerializationInfo,
-    SerializerFunctionWrapHandler,
-    field_validator,
-    model_serializer,
-)
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from ansys.visor.viewer.core.visor_colors import VisorPartDefaults
 from ansys.visor.viewer.core.visor_logging import VisorDefaultLogger
@@ -34,10 +26,9 @@ class RuntimePartProperties(BaseModel):
     No field holds ``None`` except ``color_variable``, whose ``None`` is the
     resolved value "not coloured by a variable".
 
-    The wire carries the reference flat, as ``variableId`` and
-    ``variableComponent``.  With no reference, ``variableId`` is ``null`` and
-    ``variableComponent`` is absent; under ``exclude_none`` ``variableId`` is
-    absent too.  Callers pass ``by_alias=True`` so the keys stay camelCase.
+    The wire carries the reference nested, as ``colorVariable`` holding
+    ``variableId`` and ``variableComponent``, or ``null`` with no reference.
+    Callers pass ``by_alias=True`` so the keys stay camelCase.
 
     id: The part's scene-graph node ID.
     opacity: Between 0.0 (fully transparent) and 1.0 (fully opaque).
@@ -53,23 +44,7 @@ class RuntimePartProperties(BaseModel):
     visible: bool
     selected: bool
     diffuse_rgb: List[float] = Field(alias="diffuseRgb")
-    color_variable: VariableReference | None
-
-    @model_serializer(mode="wrap")
-    def _serialize(self, handler: SerializerFunctionWrapHandler, info: SerializationInfo) -> dict:
-        """Emit the reference flat as variableId/variableComponent; with none, variableId is null unless
-        exclude_none."""
-        data: dict = handler(self)
-        data.pop("color_variable", None)
-        id_key = "variableId" if info.by_alias else "variable_id"
-        component_key = "variableComponent" if info.by_alias else "variable_component"
-        reference = self.color_variable
-        if reference is not None:
-            data[id_key] = reference.variable_id
-            data[component_key] = reference.variable_component
-        elif not info.exclude_none:
-            data[id_key] = None
-        return data
+    color_variable: VariableReference | None = Field(alias="colorVariable")
 
     @classmethod
     def default_for(cls, part_id: int) -> "RuntimePartProperties":

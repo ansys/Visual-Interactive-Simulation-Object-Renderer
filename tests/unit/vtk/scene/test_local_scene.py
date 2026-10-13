@@ -538,21 +538,20 @@ def test_get_scene_details_json_is_valid(pipeline_instance):
     payload = json.loads(pipeline_instance.get_scene_details_json())
 
     # Top-level fields
-    assert payload["appState"]["scene"]["unit"] == "m"
-    assert payload["appState"]["ui"]["darkTheme"] == pipeline_instance.dark_mode
+    assert payload["scene"]["unit"] == "m"
+    assert payload["ui"]["darkTheme"] == pipeline_instance.dark_mode
 
-    # The four panel keys, at the client's own mount defaults.  The gate for
-    # the push path: this dump is ``exclude_none=True``, so a store left at
-    # ``None`` would omit these keys entirely, the client would skip all four
-    # of its apply branches, and a refresh would show the panels' own
+    # The four panel keys, at the client's own mount defaults.  A store left
+    # at ``None`` would push null for these keys, the client would skip all
+    # four of its apply branches, and a refresh would show the panels' own
     # defaults -- which is indistinguishable from working at a glance.  The
     # expected values are hand-written literals, so a store initialised to
-    # ``None`` fails here on presence and a store initialised to the wrong
-    # values fails on value.
-    assert payload["appState"]["ui"]["panelTopLeftPanelCollapsed"] is False
-    assert payload["appState"]["ui"]["panelTopRightPanelCollapsed"] is False
-    assert payload["appState"]["ui"]["panelTopRightLegendCollapsed"] is False
-    assert payload["appState"]["ui"]["panelTopRightTabIndex"] == 0
+    # ``None`` fails here on value, as does a store initialised to the wrong
+    # values.
+    assert payload["ui"]["panelTopLeftPanelCollapsed"] is False
+    assert payload["ui"]["panelTopRightPanelCollapsed"] is False
+    assert payload["ui"]["panelTopRightLegendCollapsed"] is False
+    assert payload["ui"]["panelTopRightTabIndex"] == 0
 
     # Widget IDs are ints, now under rendererAnnotation.widgets
     widgets = payload["vtkInfo"]["rendererAnnotation"]["widgets"]
@@ -566,7 +565,7 @@ def test_get_scene_details_json_is_valid(pipeline_instance):
 
     # Scene graph and state presence
     assert "sceneGraph" in payload["vtkInfo"]
-    dataset_dictionaries = payload["appState"]["scene"]["datasetStates"]
+    dataset_dictionaries = payload["scene"]["datasetStates"]
     assert dataset_dictionaries == {}
 
 

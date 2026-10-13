@@ -57,8 +57,8 @@ def test_set_state_sends_js_call(monkeypatch):
     assert server.calls[0][2] == {"id": 123}
 
 
-def test_load_push_carries_camera_and_plane_under_the_scene():
-    """The real request, dumped by the real bridge call: camera and plane sit in appState.scene, no view key."""
+def test_load_push_carries_camera_and_plane_under_the_view():
+    """The real request, dumped by the real bridge call: camera and plane sit in appState.view, not the scene."""
     state = RuntimeAppState(
         ui=RuntimeUIState(
             dark_theme=True,
@@ -92,8 +92,9 @@ def test_load_push_carries_camera_and_plane_under_the_scene():
     VisorFrontendBridge(server, "visor-frontend-ref").set_state(state)
 
     app_state = server.calls[0][2]["appState"]
-    assert "view" not in app_state
-    assert app_state["scene"]["camera"] == {
+    assert "camera" not in app_state["scene"]
+    assert "crossSection" not in app_state["scene"]
+    assert app_state["view"]["camera"] == {
         "position": [1.0, 2.0, 3.0],
         "focalPoint": [4.0, 5.0, 6.0],
         "viewUp": [0.0, 0.0, 1.0],
@@ -102,4 +103,4 @@ def test_load_push_carries_camera_and_plane_under_the_scene():
         "viewAngle": 30.0,
         "parallelScale": 9.0,
     }
-    assert app_state["scene"]["crossSection"] == {"origin": [0.5, 0.5, 0.5], "normal": [0.0, 1.0, 0.0]}
+    assert app_state["view"]["crossSection"] == {"origin": [0.5, 0.5, 0.5], "normal": [0.0, 1.0, 0.0]}
