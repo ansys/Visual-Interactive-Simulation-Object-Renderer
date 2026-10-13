@@ -14,6 +14,9 @@ export default class VisorVariableState {
     private _arrayName: string = '';
     private _type: FieldAssociation | undefined = undefined;
     private _numComponents: number = 0;
+    private _partIds: number[] | undefined = undefined;
+    private _defaultMagnitudeRange: number[] | undefined = undefined;
+    private _defaultRanges: (number[] | undefined)[] | undefined = undefined;
     private _magnitudeRange: number[] | undefined = undefined;
     private _ranges: (number[] | undefined)[] = [];
 
@@ -62,6 +65,69 @@ export default class VisorVariableState {
         if (val != null) {
             this._numComponents = ensureNumber(val, 'val');
         }
+    }
+
+    /** Ids of the parts that carry this variable's data array. */
+    get partIds(): number[] | undefined {
+        return this._partIds;
+    }
+
+    /** Sets the carrying part ids; `undefined` clears them only when `replace` is set. */
+    setPartIds(val: number[] | undefined, replace = false): void {
+        if (val === undefined) {
+            if (replace) {
+                this._partIds = undefined;
+            }
+        } else {
+            ensureNumberArray(val, 'val');
+            this._partIds = [...val];
+        }
+    }
+
+    /** Magnitude range computed from the data, before any custom range is applied. */
+    get defaultMagnitudeRange(): number[] | undefined {
+        return this._defaultMagnitudeRange;
+    }
+
+    /** Sets the default magnitude range; `undefined` clears it only when `replace` is set. */
+    setDefaultMagnitudeRange(val: number[] | undefined, replace = false): void {
+        if (val === undefined) {
+            if (replace) {
+                this._defaultMagnitudeRange = undefined;
+            }
+        } else {
+            ensureNumberArray(val, 'val', 2);
+            this._defaultMagnitudeRange = val;
+        }
+    }
+
+    /** Per-component ranges computed from the data, before any custom range is applied. */
+    get defaultRanges(): (number[] | undefined)[] | undefined {
+        return this._defaultRanges;
+    }
+
+    /** Sets the per-component default ranges; `undefined` clears them only when `replace` is set. */
+    setDefaultRanges(val: (number[] | undefined)[] | undefined, replace = false): void {
+        if (val === undefined) {
+            if (replace) {
+                this._defaultRanges = undefined;
+            }
+            return;
+        }
+        ensureArray(val, 'val');
+        const defaultRanges = this._defaultRanges ?? [];
+        for (let i = 0; i < val.length; i++) {
+            const minmax = val[i];
+            if (minmax == undefined) {
+                if (replace) {
+                    defaultRanges[i] = minmax;
+                }
+            } else {
+                ensureNumberArray(minmax, 'minmax', 2);
+                defaultRanges[i] = minmax;
+            }
+        }
+        this._defaultRanges = defaultRanges;
     }
 
     get magnitudeRange(): number[] | undefined {
@@ -124,6 +190,17 @@ export default class VisorVariableState {
             this.setNumComponents(
                 data.numComponents === undefined ? this._numComponents : data.numComponents
             );
+            this.setPartIds(data.partIds === undefined ? this._partIds : data.partIds, replace);
+            this.setDefaultMagnitudeRange(
+                data.defaultMagnitudeRange === undefined
+                    ? this._defaultMagnitudeRange
+                    : data.defaultMagnitudeRange,
+                replace
+            );
+            this.setDefaultRanges(
+                data.defaultRanges === undefined ? this._defaultRanges : data.defaultRanges,
+                replace
+            );
             this.setMagnitudeRange(
                 data.magnitudeRange === undefined ? this._magnitudeRange : data.magnitudeRange,
                 replace
@@ -143,6 +220,9 @@ export default class VisorVariableState {
             arrayName: this.arrayName,
             type: this.type,
             numComponents: this.numComponents,
+            partIds: this.partIds,
+            defaultMagnitudeRange: this.defaultMagnitudeRange,
+            defaultRanges: this.defaultRanges,
             magnitudeRange: this.magnitudeRange,
             ranges: this.ranges,
         };

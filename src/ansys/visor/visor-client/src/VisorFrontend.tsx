@@ -4,7 +4,6 @@ import { getPromiseResolver } from './utils/JsHelpers';
 import VisorAppState from './state/appstate/VisorAppState.tsx';
 import VisorDatasetState from './state/appstate/VisorDatasetState.tsx';
 import VisorPartState from './state/appstate/VisorPartState.tsx';
-import VisorVariableState from './state/appstate/VisorVariableState.tsx';
 import { TreeViewUtil } from './treeview/TreeView.tsx';
 import { StateInput } from './state/appstate/VisorStateCommon.tsx';
 import VisorVtkSceneNode from './state/appstate/vtkInfo/VisorVtkSceneNode.tsx';
@@ -66,7 +65,6 @@ export class VisorFrontend {
         // Respect base path prefix set by the Dash component (for reverse-proxy deployments).
         const bp: string = ((window as any).__visorArgs?.basePath ?? '').replace(/\/$/, '');
 
-        const self = this;
         this.globalVariableCollection = variableManager.globalVariableCollection;
         this.#unit = '';
         this.darkMode = darkMode;
@@ -100,6 +98,18 @@ export class VisorFrontend {
             remover?.();
         };
         this.defaultActorColor = [];
+        // Reports one variable slot's range; errors are logged, not rethrown,
+        // since the client already applied the range locally.
+        this.sendVariableRangeAsync = async (variableId, component, min, max) => {
+            try {
+                await triggerSender('set_variable_range', { variableId, component, min, max });
+            } catch (err) {
+                console.error(
+                    `[VISOR] variable range trigger send failed: variableId='${variableId}' component=${component}`,
+                    err
+                );
+            }
+        };
         this.setVariableRangeAsync = async (variableId, component, min, max) => {
             const variable = variableManager.globalVariableCollection.getVariable(variableId);
             if (variable == null) {
@@ -114,6 +124,7 @@ export class VisorFrontend {
                     await actorNode.setScalarRangeAsync(min, max);
                 }
             }
+            await this.sendVariableRangeAsync(variableId, component, min, max);
         };
         this.addCameraChangedListener = (callback) => {
             return renderer.addCameraChangedListener(callback);
@@ -305,29 +316,9 @@ export class VisorFrontend {
                 }
                 sceneState.copyDataset(datasetState);
             }
-            const variableInfos = variableManager.globalVariableCollection;
-            for (const variableInfo of variableInfos.array) {
-                const variableState = new VisorVariableState();
-                variableState.setId(variableInfo.id.toString());
-                variableState.setArrayName(variableInfo.name);
-                variableState.setType(variableInfo.type);
-                variableState.setNumComponents(variableInfo.numComponents);
-                const magnitudeRange = variableInfo.getRangeInfo(-1);
-                if (magnitudeRange == null) {
-                    throw new Error(`range at component ${-1} not found`);
-                }
-                variableState.setMagnitudeRange(magnitudeRange.customRange);
-                const ranges: number[][] = [];
-                for (let i = 0; i < variableInfo.numComponents; i++) {
-                    const range = variableInfo.getRangeInfo(i);
-                    if (range == null) {
-                        throw new Error(`range at component ${i} not found`);
-                    }
-                    ranges.push(range.customRange);
-                }
-                variableState.setRanges(ranges);
-                sceneState.copyVariable(variableState);
-            }
+            // No variable block: the server owns the variable records and
+            // delivers them on every push.  Carrying a copy across a rebuild
+            // would replace the delivered records with this one.
             return appState;
         };
         this.setAppStateAsync = async (state, updateUI) => {
@@ -460,6 +451,13 @@ export class VisorFrontend {
                 const promise = renderer.setCrossSectionNormalAsync(crossSectionState.normal);
                 promises.push(promise);
             }
+            // Held before the part loop: a part coloured below reads its
+            // range from these records.  Guarded on presence, so a state with
+            // no variable block leaves the held records alone, while an empty
+            // block clears them.
+            if (sceneState.hasVariableStates) {
+                variableManager.setRecords(sceneState.getVariableStates());
+            }
             for (const dataset_state of sceneState.getDatasetStates()) {
                 for (const part_state of dataset_state.getPartStates()) {
                     let node;
@@ -522,24 +520,7 @@ export class VisorFrontend {
                     }
                 }
             }
-            // wait for all the parts to be updated before updating the variable ranges
-            await Promise.all(promises);
-            promises.length = 0;
-            for (const variable_state of sceneState.getVariableStates()) {
-                const idStr = variable_state.id;
-                if (variable_state.magnitudeRange !== undefined) {
-                    const range = variable_state.magnitudeRange;
-                    const promise = self.setVariableRangeAsync(idStr, -1, range[0], range[1]);
-                    promises.push(promise);
-                }
-                for (let i = 0; i < variable_state.ranges.length; i++) {
-                    const range = variable_state.ranges[i];
-                    if (range !== undefined) {
-                        const promise = self.setVariableRangeAsync(idStr, i, range[0], range[1]);
-                        promises.push(promise);
-                    }
-                }
-            }
+            // Every part is applied before the tree and the panel re-read them.
             await Promise.all(promises);
             if (updateUI) {
                 await panelTopRightUtilPromise;
@@ -548,6 +529,13 @@ export class VisorFrontend {
                 // Selection and visibility are both applied to the nodes
                 // above; the tree derives its rows from them here.
                 treeViewUtil.synchronize();
+            }
+            // After the tree has taken the delivered selection, so the panel
+            // re-reads that selection's ranges from the records just held.
+            // Skipped until the panel exists; its mount reads them itself.
+            if (isPanelTopRightUtilSet()) {
+                const panelTopRight = await panelTopRightUtilPromise;
+                await panelTopRight.refreshSelectionAsync();
             }
             await renderer.resizeAsync();
         };
@@ -587,6 +575,14 @@ export class VisorFrontend {
     toggleFullScreenAsync: () => Promise<void>;
     addCameraChangedListener: (callback: (cameraState: VisorCameraState) => void) => () => void;
     globalVariableCollection: VisorVariableCollection;
+    /** Reports one variable slot's range to the server, -1 being the magnitude; a failed send is logged, not rethrown. */
+    sendVariableRangeAsync: (
+        variableId: string,
+        component: number,
+        min: number,
+        max: number
+    ) => Promise<void>;
+    /** Writes a variable slot's range to the held record, applies it to every part coloured by that slot, then reports it to the server. */
     setVariableRangeAsync: (
         variableId: string,
         component: number,
