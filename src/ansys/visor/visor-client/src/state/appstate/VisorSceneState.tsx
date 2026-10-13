@@ -201,9 +201,6 @@ export default class VisorSceneState {
                 data = parseState(state)!;
             }
 
-            this._camera.copy(data.camera, replace);
-
-            this._crossSection.copy(data.crossSection, replace);
 
             this.setUnit(data.unit === undefined ? this._unit : data.unit, replace);
             this.setCrossSectionEnabled(
@@ -222,8 +219,9 @@ export default class VisorSceneState {
                 data.edgesEnabled === undefined ? this._edgesEnabled : data.edgesEnabled,
                 replace
             );
+            // A null orthographicEnabled means no camera record exists yet: not delivered.
             this.setOrthographicEnabled(
-                data.orthographicEnabled === undefined
+                data.orthographicEnabled == null
                     ? this._orthographicEnabled
                     : data.orthographicEnabled,
                 replace
@@ -281,8 +279,6 @@ export default class VisorSceneState {
         }
         return {
             unit: this.unit,
-            camera: this.camera.toDict(),
-            crossSection: this.crossSection.toDict(),
             orthographicEnabled: this.orthographicEnabled,
             crossSectionEnabled: this.crossSectionEnabled,
             edgesEnabled: this.edgesEnabled,

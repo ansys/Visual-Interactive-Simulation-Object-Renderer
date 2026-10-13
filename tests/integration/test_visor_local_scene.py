@@ -87,9 +87,9 @@ def test_get_scene_details_and_json(pipeline_instance):
     details = pipeline_instance.get_scene_details()
     assert details.scene.unit == "mm"
     payload = json.loads(pipeline_instance.get_scene_details_json())
-    assert payload["appState"]["scene"]["unit"] == "mm"
+    assert payload["scene"]["unit"] == "mm"
     assert "vtkInfo" in payload
-    assert "appState" in payload
+    assert "ui" in payload
 
 
 def test_clear_resets_registry_and_graph(pipeline_instance):
