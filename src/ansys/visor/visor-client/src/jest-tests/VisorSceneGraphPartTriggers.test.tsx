@@ -3,6 +3,7 @@ import { getVariableManager } from '../state/VisorVariableManager.tsx';
 import VisorVariableState from '../state/appstate/VisorVariableState.tsx';
 import VisorVtkDataArray from '../state/appstate/vtkInfo/VisorVtkDataArray.tsx';
 import type { IRenderer } from '../renderer/IRenderer';
+import { deliveredPart, deliveredScene } from './deliveredSceneFixture.ts';
 
 /**
  * The scene graph's six user actions, each of which must now do two things:
@@ -80,7 +81,10 @@ function makeRendererDouble() {
 
 type RendererDouble = ReturnType<typeof makeRendererDouble>;
 
-function makeGraph(renderer: RendererDouble): VisorSceneNodeExtended {
+function makeGraph(
+    renderer: RendererDouble,
+    partAOverrides: Record<string, unknown>
+): VisorSceneNodeExtended {
     const variableManager = getVariableManager();
     variableManager.setRecords([makePressureRecord()]);
     return CreateVisorSceneGraph(
@@ -118,14 +122,18 @@ function makeGraph(renderer: RendererDouble): VisorSceneNodeExtended {
                 },
             ],
         },
+        deliveredScene(deliveredPart(PART_A_ID, partAOverrides), deliveredPart(PART_B_ID)),
         variableManager,
         renderer as unknown as IRenderer
     );
 }
 
-function setUp() {
+/** Part A delivered coloured by the pressure variable, so a clear has something to remove. */
+const PART_A_COLOURED = { colorVariable: { variableId: VARIABLE_ID, variableComponent: 0 } };
+
+function setUp(partAOverrides: Record<string, unknown> = {}) {
     const renderer = makeRendererDouble();
-    const graph = makeGraph(renderer);
+    const graph = makeGraph(renderer, partAOverrides);
     const partA = graph.descendantActorNodesOrSelfDictionary[PART_A_ID];
     return { renderer, graph, partA };
 }
@@ -263,7 +271,7 @@ describe('colour by variable', () => {
 
 describe('clear colour by variable', () => {
     test('sends clear_part_color_variable for the part', async () => {
-        const { renderer, partA } = setUp();
+        const { renderer, partA } = setUp(PART_A_COLOURED);
 
         await partA.clearColorVariableAsync();
 
@@ -271,7 +279,7 @@ describe('clear colour by variable', () => {
     });
 
     test('still clears the colour variable on the client renderer', async () => {
-        const { renderer, partA } = setUp();
+        const { renderer, partA } = setUp(PART_A_COLOURED);
 
         await partA.clearColorVariableAsync();
 

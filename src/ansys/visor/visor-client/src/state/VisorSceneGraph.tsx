@@ -5,6 +5,7 @@ import {
     VisorVariableManager,
 } from './VisorVariableManager.tsx';
 import VisorVtkDataArray from './appstate/vtkInfo/VisorVtkDataArray.tsx';
+import VisorSceneState from './appstate/VisorSceneState.tsx';
 import { IRenderer } from '../renderer/IRenderer';
 
 export type VisorSceneNodeSimple = Readonly<{
@@ -44,6 +45,13 @@ export type VisorSceneNodeExtended = Readonly<{
     setVisibilityAsync: (visible: boolean) => Promise<void>;
     setSelectedAsync: (selected: boolean) => Promise<void>;
     setOpacityAsync: (opacity: number) => Promise<void>;
+    /**
+     * Removes the part's colour variable.  A part is always coloured by its
+     * diffuse colour, and a colour variable overrides it while set; clearing
+     * the variable only removes the override, so the part shows the diffuse
+     * colour its property already holds.  Does nothing on a part with no
+     * colour variable.
+     */
     clearColorVariableAsync: () => Promise<void>;
     /** Colours the part by a variable slot at its held range; on the slot already applied, re-applies only a changed range and sends nothing. */
     setColorVariableAsync: (id: string, component?: number | null) => Promise<void>;
@@ -68,6 +76,7 @@ export type VisorSceneNodeExtended = Readonly<{
 export const CreateVisorSceneGraph = (() => {
     return (
         string_or_object: string | VisorSceneNodeSimple,
+        deliveredScene: VisorSceneState,
         variableManager?: VisorVariableManager,
         renderer?: IRenderer
     ) => {
@@ -79,14 +88,30 @@ export const CreateVisorSceneGraph = (() => {
         }
         const localVariableManager = variableManager == null;
         variableManager ??= getVariableManager();
-        const rootNode = extendSimpleNode(simpleState, variableManager, null, null, renderer);
+        const rootNode = extendSimpleNode(
+            simpleState,
+            variableManager,
+            deliveredScene,
+            null,
+            null,
+            renderer
+        );
         localVariableManager && variableManager.finishAddingDataArrayMetadata();
         return rootNode;
     };
 
+    /** A delivered field of a part's record; throws naming the part and field when the delivery omits it. */
+    function requireDelivered<T>(value: T | undefined, partId: number, field: string): T {
+        if (value === undefined) {
+            throw new Error(`Part ${partId} was delivered without '${field}'`);
+        }
+        return value;
+    }
+
     function extendSimpleNode(
         simpleNode: VisorSceneNodeSimple,
         variableManager: VisorVariableManager,
+        deliveredScene: VisorSceneState,
         rootNodeSimple?: VisorSceneNodeSimple | null,
         rootNodeExtended?: VisorSceneNodeExtended | null,
         renderer?: IRenderer
@@ -97,6 +122,9 @@ export const CreateVisorSceneGraph = (() => {
         } else if (rootNodeSimple.nodeType !== 'root') {
             throw new Error(`rootNodeSimple.nodeType must be 'root'`);
         }
+        const nodeId = simpleNode.id;
+        // A group node's values are fan-out caches for its own guards; an
+        // actor node's are overwritten below from its delivered record.
         let _visible: boolean = true;
         let _selected: boolean = false;
         let _opacity: number = 1;
@@ -113,9 +141,31 @@ export const CreateVisorSceneGraph = (() => {
                 simpleNode.diffuseColor[2],
                 true
             );
-            customDiffuseColor.setHex(defaultDiffuseColor.hex);
+            // An actor node is built from its delivered record, so a delivery
+            // that matches it changes nothing and sends nothing.
+            const record = deliveredScene.findPartState(nodeId, simpleNode.name);
+            if (record == null) {
+                throw new Error(`Part ${nodeId} '${simpleNode.name}' has no delivered record`);
+            }
+            _visible = requireDelivered(record.visible, nodeId, 'visible');
+            _selected = requireDelivered(record.selected, nodeId, 'selected');
+            _opacity = requireDelivered(record.opacity, nodeId, 'opacity');
+            const [r, g, b] = requireDelivered(record.diffuseRgb, nodeId, 'diffuseRgb');
+            customDiffuseColor.setRgb(r, g, b, true);
+            _variableId = requireDelivered(record.variableId, nodeId, 'colorVariable');
+            if (_variableId !== null) {
+                _variableComponent = requireDelivered(
+                    record.variableComponent,
+                    nodeId,
+                    'colorVariable.variableComponent'
+                );
+            }
         }
-        const nodeId = simpleNode.id;
+        const warnVariableNotHeld = (id: string) => {
+            console.warn(
+                `Part ${nodeId} references variable '${id}', which is not held; the part is not coloured by it`
+            );
+        };
 
         // A live view: the node is frozen, and the records it reads are
         // replaced on every delivery.
@@ -176,6 +226,10 @@ export const CreateVisorSceneGraph = (() => {
                 await renderer!.sendPartDiffuseColorAsync(nodeId, rgbNormalized);
             },
             async setDiffuseColorRgbAsync(r, g, b) {
+                const current = customDiffuseColor.rgbNormalized;
+                if (current[0] === r && current[1] === g && current[2] === b) {
+                    return;
+                }
                 customDiffuseColor.setRgb(r, g, b);
                 const rgbNormalized = customDiffuseColor.rgbNormalized;
                 await renderer!.setDiffuseColorRgbAsync(
@@ -188,6 +242,9 @@ export const CreateVisorSceneGraph = (() => {
                 await renderer!.sendPartDiffuseColorAsync(nodeId, rgbNormalized);
             },
             async clearColorVariableAsync() {
+                if (_variableId === null) {
+                    return;
+                }
                 _variableId = null;
                 _variableComponent = -1;
                 _variableMin = -1;
@@ -201,6 +258,9 @@ export const CreateVisorSceneGraph = (() => {
                     // differs from the one last applied reaches the actor.
                     const held = variableCollection.getVariable(id)?.getRangeInfo(component);
                     if (held == null) {
+                        if (variableCollection.getVariable(id) == null) {
+                            warnVariableNotHeld(id);
+                        }
                         return;
                     }
                     const [heldMin, heldMax] = held.customRange;
@@ -213,6 +273,11 @@ export const CreateVisorSceneGraph = (() => {
                 }
                 const variable = variableCollection.getVariable(id);
                 if (variable == null) {
+                    // The reference is held so the node reports what was
+                    // delivered; the part keeps whatever the scene shows.
+                    _variableId = id;
+                    _variableComponent = component;
+                    warnVariableNotHeld(id);
                     return;
                 }
                 const rangeInfo = variable.getRangeInfo(component);
@@ -338,6 +403,7 @@ export const CreateVisorSceneGraph = (() => {
             const extendedChild = extendSimpleNode(
                 simpleChild,
                 variableManager,
+                deliveredScene,
                 rootNodeSimple,
                 rootNodeExtended,
                 renderer

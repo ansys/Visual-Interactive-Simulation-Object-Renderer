@@ -1,4 +1,5 @@
 import VisorDatasetState from './VisorDatasetState.tsx';
+import VisorPartState from './VisorPartState.tsx';
 import {
     ensureBoolean,
     ensureString,
@@ -87,6 +88,25 @@ export default class VisorSceneState {
 
     removeDataset(idStr: string): boolean {
         return delete this._datasetStates[idStr];
+    }
+
+    /**
+     * The delivered record for a part: matched by id, or by name for a
+     * name-keyed record; null when the delivery carries none.
+     */
+    findPartState(partId: number, partName: string): VisorPartState | null {
+        const idStr = partId.toString();
+        for (const datasetState of this.getDatasetStates()) {
+            for (const partState of datasetState.getPartStates()) {
+                const matches = partState.keyedByName
+                    ? partState.name === partName
+                    : partState.id === idStr;
+                if (matches) {
+                    return partState;
+                }
+            }
+        }
+        return null;
     }
 
     /**

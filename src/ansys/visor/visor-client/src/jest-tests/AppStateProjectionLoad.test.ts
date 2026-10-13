@@ -1,6 +1,7 @@
 import { VisorFrontend } from '../VisorFrontend';
 import type { IRenderer } from '../renderer/IRenderer';
 import type VisorVtkSceneNode from '../state/appstate/vtkInfo/VisorVtkSceneNode.tsx';
+import { deliveredScene } from './deliveredSceneFixture.ts';
 
 /**
  * The projection load path: `setAppStateAsync` applies projection from
@@ -97,6 +98,7 @@ function makeFrontend(): { frontend: VisorFrontend; renderer: RendererDouble } {
     const frontend = new VisorFrontend(
         renderer as unknown as IRenderer,
         makeSceneGraphNode() as unknown as VisorVtkSceneNode,
+        deliveredScene(),
         jest.fn(async () => undefined)
     );
     return { frontend, renderer };

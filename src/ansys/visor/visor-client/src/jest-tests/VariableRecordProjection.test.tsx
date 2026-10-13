@@ -9,6 +9,7 @@ import type { VisorSceneNodeExtended } from '../state/VisorSceneGraph.tsx';
 import type { TreeViewUtil } from '../treeview/TreeView.tsx';
 import type { IRenderer } from '../renderer/IRenderer';
 import type VisorVtkSceneNode from '../state/appstate/vtkInfo/VisorVtkSceneNode.tsx';
+import { deliveredPart, deliveredScene } from './deliveredSceneFixture.ts';
 
 /**
  * The client as a projection of server-owned variable records.
@@ -205,6 +206,7 @@ function makeFrontend(): {
     const frontend = new VisorFrontend(
         renderer as unknown as IRenderer,
         makeSceneGraphNode() as unknown as VisorVtkSceneNode,
+        deliveredScene(deliveredPart(PART_A_ID)),
         triggerSender
     );
     return { frontend, renderer, triggerSender };

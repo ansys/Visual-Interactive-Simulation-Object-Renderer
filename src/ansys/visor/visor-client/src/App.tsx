@@ -140,6 +140,7 @@ function App() {
             newFrontend = new VisorFrontend(
                 renderer,
                 sceneDetails.vtkInfo.sceneGraph,
+                sceneDetails.appState.scene,
                 wasmView.current.trameTriggerAsync
             );
             // Release the frontend being replaced, here and not later: the
