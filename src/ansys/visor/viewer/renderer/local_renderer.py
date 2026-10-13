@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Optional
 
 from trame_server import Server
 from trame_vtklocal.widgets.vtklocal import LocalView
+from vtkmodules.vtkCommonCore import vtkObject
 from vtkmodules.vtkCommonDataModel import vtkDataObject
 from vtkmodules.vtkInteractionStyle import vtkInteractorStyleTrackballCamera
 from vtkmodules.vtkRenderingCore import (
@@ -59,8 +60,8 @@ class VisorLocalRenderer(IRenderer):
     _orientation_widget: VisorOrientationWidget
     _cross_section_widget: VisorCrossSectionWidget
     _bounding_box_widget: VisorBoundingBox
-    # Registered pipelines keyed by scene-graph node id.  Sole owner as of
-    # Increment I5; mutated exclusively via register_node / deregister_node.
+    # Registered pipelines keyed by scene-graph node id.  Sole owner;
+    # mutated exclusively via register_node / deregister_node.
     _pipelines: dict[int, VtkNodePipeline]
     _last_camera_state: Optional["VisorCameraState"]
     _last_cross_section_state: Optional["VisorCrossSectionState"]
@@ -166,6 +167,10 @@ class VisorLocalRenderer(IRenderer):
         Resolves the pipeline and delegates to
         :meth:`VtkNodePipeline.set_visibility`.  An unknown *node_id* is a
         logged no-op, never a raise.
+
+        Ends with :meth:`_serialize_vtk_object` on the actor, after the
+        write, so the state served to the client carries the new visibility.
+        Does not notify the client.
         """
         pipe = self._pipelines.get(node_id)
         if pipe is None:
@@ -174,6 +179,7 @@ class VisorLocalRenderer(IRenderer):
             )
             return
         pipe.set_visibility(visible)
+        self._serialize_vtk_object(pipe.actor)
 
     def apply_opacity(self, node_id: int, opacity: float) -> None:
         """See :meth:`IRenderer.apply_opacity`.
@@ -181,6 +187,10 @@ class VisorLocalRenderer(IRenderer):
         Resolves the pipeline and delegates to
         :meth:`VtkNodePipeline.set_opacity`.  An unknown *node_id* is a
         logged no-op, never a raise.
+
+        Ends with :meth:`_serialize_vtk_object` on the actor's property,
+        after the write, so the state served to the client carries the new
+        opacity.  Does not notify the client.
         """
         pipe = self._pipelines.get(node_id)
         if pipe is None:
@@ -189,6 +199,7 @@ class VisorLocalRenderer(IRenderer):
             )
             return
         pipe.set_opacity(opacity)
+        self._serialize_vtk_object(pipe.actor.GetProperty())
 
     def apply_diffuse_color(
         self, node_id: int, r: float, g: float, b: float
@@ -198,6 +209,10 @@ class VisorLocalRenderer(IRenderer):
         Resolves the pipeline and delegates to
         :meth:`VtkNodePipeline.set_diffuse_color`.  An unknown *node_id*
         is a logged no-op, never a raise.
+
+        Ends with :meth:`_serialize_vtk_object` on the actor's property,
+        after the write, so the state served to the client carries the new
+        colour.  Does not notify the client.
         """
         pipe = self._pipelines.get(node_id)
         if pipe is None:
@@ -206,6 +221,7 @@ class VisorLocalRenderer(IRenderer):
             )
             return
         pipe.set_diffuse_color(r, g, b)
+        self._serialize_vtk_object(pipe.actor.GetProperty())
 
     def apply_selected(
         self, node_id: int, selected: bool, diffuse_rgb: list
@@ -217,6 +233,10 @@ class VisorLocalRenderer(IRenderer):
         through as given; supplying a default when the part has no stored
         colour is the coordinator's job, not the renderer's.  An unknown
         *node_id* is a logged no-op, never a raise.
+
+        Ends with :meth:`_serialize_vtk_object` on the actor's property,
+        after the write, so the state served to the client carries the new
+        lighting terms and colour.  Does not notify the client.
         """
         pipe = self._pipelines.get(node_id)
         if pipe is None:
@@ -225,6 +245,7 @@ class VisorLocalRenderer(IRenderer):
             )
             return
         pipe.set_selected(selected, diffuse_rgb)
+        self._serialize_vtk_object(pipe.actor.GetProperty())
 
     def apply_color_variable(
         self,
@@ -289,10 +310,8 @@ class VisorLocalRenderer(IRenderer):
         *node_id* is a logged no-op.
 
         Names the mapper's id alone, derived with ``GetId`` on the object as
-        :meth:`serialize_camera_state` derives the camera's.  An id of ``0``
-        is one the store has never held (the ROOT sentinel); naming it
-        degrades to an error-logged no-op in VTK, so it is skipped here with
-        a debug line and the next full serialization carries the mapper.
+        :meth:`_serialize_camera_state` derives the camera's; the id lookup
+        and the unregistered-object skip are :meth:`_serialize_vtk_object`'s.
         """
         pipe = self._pipelines.get(node_id)
         if pipe is None:
@@ -300,23 +319,44 @@ class VisorLocalRenderer(IRenderer):
                 "_serialize_part_state: no pipeline for node %s; skipping.", node_id
             )
             return
-        mapper_id = self._object_manager.GetId(pipe.mapper)
-        if mapper_id == 0:
+        self._serialize_vtk_object(pipe.mapper)
+
+    def _serialize_vtk_object(self, vtk_object: vtkObject) -> None:
+        """Re-serialize one VTK object into the state served to the client.
+
+        ``vtklocal`` advertises each object's modification time off the live
+        object but serves its content from a serialization cache, so a write
+        without this publishes a new version number against the old content.
+        **Serialize only; do not notify.**
+
+        An id of ``0`` is one the store has never held (the ROOT sentinel);
+        naming it degrades to an error-logged no-op in VTK, so it is skipped
+        here with a debug line and the next full serialization carries the
+        object.
+        """
+        object_id = self._object_manager.GetId(vtk_object)
+        if object_id == 0:
             logger.debug(
-                "_serialize_part_state: mapper of node %s is not registered yet; skipping.",
-                node_id,
+                "_serialize_vtk_object: %s is not registered yet; skipping.",
+                vtk_object.GetClassName(),
             )
             return
-        self._object_manager.UpdateStateFromObject(mapper_id)
+        self._object_manager.UpdateStateFromObject(object_id)
 
     # ------------------------------------------------------------------
     # IRenderer: camera
     # ------------------------------------------------------------------
 
     def reset_camera(self, bounds: list[float]) -> None:
-        """See :meth:`IRenderer.reset_camera`."""
+        """See :meth:`IRenderer.reset_camera`.
+
+        Ends with :meth:`_serialize_camera_state`, after the reset, so the
+        state served to the client carries the reset camera.  Does not
+        notify the client.
+        """
         self._vtk_renderer.ResetCamera(bounds)
         self._last_camera_state = self._read_pipeline_camera()
+        self._serialize_camera_state()
 
     def get_camera_state(self) -> Optional["VisorCameraState"]:
         """See :meth:`IRenderer.get_camera_state`."""
@@ -326,16 +366,20 @@ class VisorLocalRenderer(IRenderer):
         """See :meth:`IRenderer.sync_camera`.
 
         Stores before projecting, so a raising VTK setter still leaves the
-        record holding what the earlier caller asked for.
+        record holding what the earlier caller asked for.  Ends with
+        :meth:`_serialize_camera_state`, after the projection.  Does not
+        notify the client.
         """
         self._last_camera_state = camera_state
         self._apply_to_pipeline_camera(camera_state)
+        self._serialize_camera_state()
 
     def set_projection(self, parallel: bool) -> None:
         """See :meth:`IRenderer.set_projection`.
 
         Record first, pipeline second, for the reason :meth:`sync_camera`
-        gives.
+        gives.  Ends with :meth:`_serialize_camera_state`, after the pipeline
+        write.  Does not notify the client.
         """
         if self._last_camera_state is not None:
             self._last_camera_state.parallel_projection = parallel
@@ -344,9 +388,10 @@ class VisorLocalRenderer(IRenderer):
                 "set_projection: no camera record; applying to the pipeline only."
             )
         self._vtk_renderer.GetActiveCamera().SetParallelProjection(parallel)
+        self._serialize_camera_state()
 
-    def serialize_camera_state(self) -> None:
-        """See :meth:`IRenderer.serialize_camera_state`.
+    def _serialize_camera_state(self) -> None:
+        """Make the state served to the client current for the camera.
 
         ``vtklocal`` advertises each object's modification time off the live
         VTK object but serves state out of a serialization cache, so a write
@@ -423,9 +468,15 @@ class VisorLocalRenderer(IRenderer):
         Fans out over every registered pipeline.  Scene-wide, so there is no
         node id to resolve and no logged-no-op branch: a scene with no
         pipelines is a no-op by iteration, not by guard.
+
+        Each pipeline's property is re-serialized with
+        :meth:`_serialize_vtk_object` right after its own write, so the state
+        served to the client carries the new edge flag on every part.  Does
+        not notify the client.
         """
         for pipe in self._pipelines.values():
             pipe.set_edge_visibility(visible)
+            self._serialize_vtk_object(pipe.actor.GetProperty())
 
     def set_cross_section_visibility(self, visible: bool) -> None:
         """No-op in Story 1.2. Phase 3 populates."""
@@ -439,22 +490,27 @@ class VisorLocalRenderer(IRenderer):
         ``set_normal`` each write the plane *and* the representation, so the
         clip function and the draggable handle cannot diverge on this path --
         which is the defect the client's own set/get asymmetry has.
+
+        Ends with :meth:`_serialize_cross_section_state`, after both writes,
+        so the state served to the client carries the new plane.  Does not
+        notify the client.
         """
         self._last_cross_section_state = VisorCrossSectionState(
             origin=list(origin), normal=list(normal)
         )
         self._cross_section_widget.set_origin(origin)
         self._cross_section_widget.set_normal(normal)
+        self._serialize_cross_section_state()
 
     def get_cross_section_plane(self) -> Optional["VisorCrossSectionState"]:
         """See :meth:`IRenderer.get_cross_section_plane`."""
         return self._last_cross_section_state
 
-    def serialize_cross_section_state(self) -> None:
-        """See :meth:`IRenderer.serialize_cross_section_state`.
+    def _serialize_cross_section_state(self) -> None:
+        """Make the state served to the client current for the plane.
 
         Two ids, named one at a time, each derived the way
-        :meth:`serialize_camera_state` derives the camera's: ``GetId`` on the
+        :meth:`_serialize_camera_state` derives the camera's: ``GetId`` on the
         object itself, not the id ``register_vtk_object`` returned.  Deriving
         it this way means the equivalence of those two id spaces never has to
         be established.
@@ -466,7 +522,7 @@ class VisorLocalRenderer(IRenderer):
 
         The widget id is deliberately not named: ``set_origin`` and
         ``set_normal`` do not write the widget, whose changing state is
-        enablement.  See MC-6.
+        enablement.
         """
         self._object_manager.UpdateStateFromObject(
             self._object_manager.GetId(self._cross_section_widget.plane)
