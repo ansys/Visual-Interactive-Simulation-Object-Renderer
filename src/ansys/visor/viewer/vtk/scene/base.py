@@ -652,7 +652,6 @@ class VisorSceneBase(ABC):
                 return
 
             self._renderer.reset_camera(self._scene_graph.bounds)
-            self._renderer.serialize_camera_state()
 
     def sync_camera(self, camera_state: VisorCameraState) -> None:
         """Record a camera the frontend reported, and project it.
@@ -662,14 +661,13 @@ class VisorSceneBase(ABC):
         trame's daemon thread and must route through a method that takes
         ``_vtk_lock``, never call the renderer directly.
 
-        Both halves run in one critical section, and the re-serialisation is
-        part of the write rather than an afterthought.  The backend advertises
-        a version number read from the live VTK object while serving content
-        from a cache, so a write with no re-serialise publishes a new version
-        against old content: the client then fetches the *pre*-gesture camera
-        and applies it over the one the user just set, and a refresh shows the
-        framing they moved away from.  The load path proved this in
-        Increment 2b; the trigger path has the same gap for the same reason.
+        The renderer's write runs in one critical section and, on return,
+        leaves the state it serves current.  The backend advertises a version
+        number read from the live VTK object while serving content from a
+        cache, so a write that left the cache stale would publish a new
+        version against old content: the client would then fetch the
+        *pre*-gesture camera and apply it over the one the user just set, and
+        a refresh would show the framing they moved away from.
 
         What this method deliberately does **not** do is notify.  No
         ``render()``, no ``flush_wasm_state()``, no ``set_state``.  A push here
@@ -681,23 +679,21 @@ class VisorSceneBase(ABC):
         """
         with self._vtk_lock:
             self._renderer.sync_camera(camera_state)
-            self._renderer.serialize_camera_state()
 
     def sync_cross_section_plane(
         self, origin: list[float], normal: list[float]
     ) -> None:
         """Record a cross-section plane the frontend reported, and project it.
 
-        Both halves in one critical section, re-serialisation part of the
-        write, no notify -- for the reasons :meth:`sync_camera` gives.  The
-        plane has exactly one delivery channel to a rebuilt or reconnecting
-        client, the wasm state fetch that follows this re-serialisation, so an
-        id that is not re-serialised here is simply not delivered and the
-        user's drag reappears where it started after a page reload.
+        One critical section, the served state current on return, no notify
+        -- for the reasons :meth:`sync_camera` gives.  The plane has exactly
+        one delivery channel to a rebuilt or reconnecting client, the wasm
+        state fetch, so a plane whose served state is stale is simply not
+        delivered and the user's drag reappears where it started after a page
+        reload.
         """
         with self._vtk_lock:
             self._renderer.sync_cross_section_plane(origin, normal)
-            self._renderer.serialize_cross_section_state()
 
     def pick_geometry(self, actor_wasm_id, cell_id, mode, world_x, world_y, world_z) -> dict:
         """
@@ -994,21 +990,16 @@ class VisorSceneBase(ABC):
         record and nowhere else, so ``get_state`` derives it rather than
         reading a second copy that could disagree.
 
-        Both halves run in one critical section and the re-serialisation is
-        part of the write, exactly as in :meth:`sync_camera`: the backend
-        advertises a version number read from the live VTK object while
-        serving content from a cache, so a write with no re-serialise
-        publishes a new version against old content and the client fetches
-        and re-applies the pre-write camera.  Because a projection flip is
-        visually obvious, omitting the re-serialise shows up as the view
-        snapping back.
+        The renderer's write runs in one critical section and, on return,
+        leaves the state it serves current, exactly as in
+        :meth:`sync_camera`.  Because a projection flip is visually obvious, a
+        stale served camera shows up as the view snapping back.
 
         No notify.  No ``render()``, no ``flush_wasm_state()``, no
         ``set_state``.
         """
         with self._vtk_lock:
             self._renderer.set_projection(parallel)
-            self._renderer.serialize_camera_state()
 
     # =========================================================================
     # UI panel layout — coordinator surface
@@ -1078,16 +1069,15 @@ class VisorSceneBase(ABC):
         Restore the camera state from a runtime app state, on the load path.
 
         Write the loaded camera to the record and the pipeline camera, so a client rebuilt
-        from server state (refresh) gets it.  Must precede the render step.  The re-serialize
-        is required: the server advertises the camera's live MTime but serves its cached state,
-        so without it a client fetches the pre-load camera.  A state with no camera leaves both
-        alone.
+        from server state (refresh) gets it.  Must precede the render step.  The renderer's
+        ``sync_camera`` leaves the served state current on return: the server advertises the
+        camera's live MTime but serves its cached state, so a stale cache would hand a client
+        the pre-load camera.  A state with no camera leaves both alone.
 
         Callers must hold ``_vtk_lock``.
         """
         if runtime_app_state.scene.camera is not None:
             self._renderer.sync_camera(runtime_app_state.scene.camera)
-            self._renderer.serialize_camera_state()
 
     def _restore_widget_state(self, runtime_app_state: "RuntimeAppState") -> None:
         """
@@ -1108,10 +1098,11 @@ class VisorSceneBase(ABC):
         The cross-section plane is restored here too, and both-or-neither:
         ``sync_cross_section_plane`` takes an origin and a normal together
         and the model allows either to be absent, so a half-plane says
-        nothing rather than half-applying.  The re-serialisation follows the
-        write for the reason :meth:`sync_cross_section_plane` gives -- a
-        loaded plane that is written but not re-serialised leaves the client
-        fetching the pre-load one.
+        nothing rather than half-applying.  The renderer's
+        ``sync_cross_section_plane`` leaves the served state current on
+        return, for the reason :meth:`sync_cross_section_plane` gives -- a
+        loaded plane whose served state is stale leaves the client fetching
+        the pre-load one.
 
         Callers must hold ``_vtk_lock``.
         """
@@ -1129,7 +1120,6 @@ class VisorSceneBase(ABC):
             cs = scene.cross_section
             if cs.origin is not None and cs.normal is not None:
                 self._renderer.sync_cross_section_plane(cs.origin, cs.normal)
-                self._renderer.serialize_cross_section_state()
 
     def _restore_ui_state(self, runtime_app_state: "RuntimeAppState") -> None:
         """

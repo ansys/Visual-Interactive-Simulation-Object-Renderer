@@ -143,12 +143,6 @@ class NullRenderer(IRenderer):
                 "set_projection: no camera record; nothing to write."
             )
 
-    def serialize_camera_state(self) -> None:
-        """See :meth:`IRenderer.serialize_camera_state`.
-
-        No-op: this renderer serves the client no VTK object state.
-        """
-
 
     # ------------------------------------------------------------------
     # Widget control (cross-section, bounding box, edges)
@@ -180,11 +174,6 @@ class NullRenderer(IRenderer):
         """
         return self._last_cross_section_state
 
-    def serialize_cross_section_state(self) -> None:
-        """See :meth:`IRenderer.serialize_cross_section_state`.
-
-        No-op: this renderer serves the client no VTK object state.
-        """
 
     def set_bounding_box_visibility(self, visible: bool) -> None:
         pass
