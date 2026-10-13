@@ -130,9 +130,13 @@ class RuntimePartProperties(BaseModel):
         )
 
     @staticmethod
-    def _overlaid(current: Any, props: PartProperties, field: str, default: Any) -> Any:
+    def _overlaid(current: Any, props: BaseModel, field: str, default: Any) -> Any:
         """The current value where the entry does not name the field; else the entry's value, or the default
-        where null."""
+        where null.
+
+        *props* is any persisted model whose field names match the record being resolved; the part,
+        scene and UI records all resolve through this one rule.
+        """
         if field not in props.model_fields_set:
             return current
         value = getattr(props, field)

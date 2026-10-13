@@ -1,65 +1,20 @@
 """Model for the runtime application state for a Visor visualizer instance."""
 
-from typing import Dict
+from pydantic import BaseModel, ConfigDict
 
-from pydantic import BaseModel, ConfigDict, Field
-
-from ansys.visor.viewer.models.common.visor_camera_state import VisorCameraState
-from ansys.visor.viewer.models.common.visor_cross_section_state import VisorCrossSectionState
-from ansys.visor.viewer.models.persist.visor_ui_state import PersistedUIState
-from ansys.visor.viewer.models.common.visor_variable_record import VisorVariableRecord
-from ansys.visor.viewer.models.runtime.dataset.runtime_dataset_state import RuntimeDatasetState
 from ansys.visor.viewer.models.runtime.scene.runtime_scene_state import RuntimeSceneState
+from ansys.visor.viewer.models.runtime.scene.runtime_ui_state import RuntimeUIState
+from ansys.visor.viewer.models.runtime.scene.runtime_view_state import RuntimeViewState
 
 
 class RuntimeAppState(BaseModel):
-    """
-    Represents the runtime, in-memory state of a Visor visualization,
-    including properties for individual parts.
+    """The save and load carrier: ui, scene, view.
 
-    The part dictionary is keyed by internal dataset IDs.
-
-    This class is for serialization of the runtime state that is sent
-    to the frontend viewer.
+    Each record has one owner on the server: the UI record and the scene
+    record are the scene coordinator's, the view records are the renderer's.
     """
     model_config = ConfigDict(arbitrary_types_allowed=True, populate_by_name=True)
 
-    ui: PersistedUIState = Field(default_factory=PersistedUIState)
-    scene: RuntimeSceneState = Field(default_factory=RuntimeSceneState)
-
-    @classmethod
-    def from_components(
-            cls,
-            ui: PersistedUIState,
-            unit: str | None,
-            dataset_states: Dict[int, RuntimeDatasetState],
-            orthographic_enabled: bool | None = None,
-            cross_section_enabled: bool | None = None,
-            edges_enabled: bool | None = None,
-            bounding_box_enabled: bool | None = None,
-            cross_section: VisorCrossSectionState | None = None,
-            camera: VisorCameraState | None = None,
-            *,
-            variable_states: Dict[str, VisorVariableRecord],
-    ) -> "RuntimeAppState":
-        """Construct a RuntimeAppState from the given components.
-
-        ``ui`` is taken whole and stored as-is: the server owns every one of
-        its fields (theme plus the four panel-layout fields) and assembles
-        them in one place, so this constructor never reaches into it.
-        """
-        runtime_scene_state = RuntimeSceneState(
-            unit=unit,
-            camera=camera,
-            cross_section=cross_section,
-            orthographic_enabled=orthographic_enabled,
-            cross_section_enabled=cross_section_enabled,
-            edges_enabled=edges_enabled,
-            bounding_box_enabled=bounding_box_enabled,
-            dataset_states=dataset_states,
-            variable_states=variable_states,
-        )
-        return cls(
-            ui=ui,
-            scene=runtime_scene_state,
-        )
+    ui: RuntimeUIState
+    view: RuntimeViewState
+    scene: RuntimeSceneState
