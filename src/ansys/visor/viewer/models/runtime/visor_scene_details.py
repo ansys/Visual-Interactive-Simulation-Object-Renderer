@@ -5,6 +5,7 @@ from typing import Dict
 from pydantic import BaseModel, ConfigDict, Field
 
 from ansys.visor.viewer.models.common.visor_ui_state import VisorUIState
+from ansys.visor.viewer.models.common.visor_variable_record import VisorVariableRecord
 from ansys.visor.viewer.models.runtime.dataset.runtime_dataset_state import RuntimeDatasetState
 from ansys.visor.viewer.models.runtime.scene.runtime_app_state import RuntimeAppState
 from ansys.visor.viewer.models.runtime.vtk.renderer_annotation import RendererAnnotation
@@ -36,6 +37,8 @@ class VisorSceneDetails(BaseModel):
             cross_section_enabled: bool | None = None,
             edges_enabled: bool | None = None,
             bounding_box_enabled: bool | None = None,
+            *,
+            variable_states: Dict[str, VisorVariableRecord],
     ) -> "VisorSceneDetails":
         """Construct an instance from components.
 
@@ -55,6 +58,7 @@ class VisorSceneDetails(BaseModel):
             cross_section_enabled=cross_section_enabled,
             edges_enabled=edges_enabled,
             bounding_box_enabled=bounding_box_enabled,
+            variable_states=variable_states,
         )
         return cls(
             app_state=app_state,

@@ -36,6 +36,7 @@ import pytest
 
 from ansys.visor.viewer.app.trame.local_app import LocalApp
 from ansys.visor.viewer.core.visor_enums import VisorVtkVariableType
+from ansys.visor.viewer.models.runtime.requests.variable_range_payload import SetVariableRangePayload
 
 TRIGGER_NAMES = [
     "set_part_visibility",
@@ -172,7 +173,11 @@ def test_set_part_selected_carries_no_colour(app, api):
 
 
 def test_set_part_color_variable_delegates_payload_values(app, api):
-    """Every colour-variable field reaches the coordinator in contract order."""
+    """Every colour-variable field but the range reaches the coordinator in contract order.
+
+    ``min`` and ``max`` are still required on the wire but are not forwarded:
+    the server applies its own record's range.
+    """
     app.set_part_color_variable(
         {
             "nodeId": 7,
@@ -186,7 +191,7 @@ def test_set_part_color_variable_delegates_payload_values(app, api):
     )
 
     api.set_part_color_variable.assert_called_once_with(
-        7, "POINT::pressure::1", VisorVtkVariableType.POINT, "pressure", 0, 0.0, 49.0
+        7, "POINT::pressure::1", VisorVtkVariableType.POINT, "pressure", 0
     )
 
 
@@ -452,5 +457,43 @@ def test_missing_coordinator_logs_debug_and_not_warning(app_without_api, name):
 
     assert mock_logger.debug.call_count == 2
     assert mock_logger.warning.call_count == 0
+
+
+# ===========================================================================
+# set_variable_range
+# ===========================================================================
+
+def test_set_variable_range_payload_parses_wire_aliases():
+    """variableId, min and max arrive under their snake_case fields."""
+    parsed = SetVariableRangePayload.model_validate(
+        {"variableId": "POINT::pressure::1", "component": -1, "min": 2.5, "max": 7.5}
+    )
+
+    assert parsed.variable_id == "POINT::pressure::1"
+    assert parsed.component == -1
+    assert parsed.min_val == 2.5
+    assert parsed.max_val == 7.5
+
+
+def test_set_variable_range_registered_trigger_delegates_payload_values(app, api, mock_server):
+    """The registered callable parses the raw dict and forwards all four values."""
+    registered = _registered_triggers(mock_server)
+
+    registered["set_variable_range"](
+        {"variableId": "POINT::pressure::1", "component": -1, "min": 2.5, "max": 7.5}
+    )
+
+    api.set_variable_range.assert_called_once_with("POINT::pressure::1", -1, 2.5, 7.5)
+
+
+def test_set_variable_range_invalid_payload_is_a_logged_no_op(app, api):
+    """A payload with no max delegates nothing and warns once."""
+    with patch("ansys.visor.viewer.app.trame.local_app.logger") as mock_logger:
+        assert app.set_variable_range(
+            {"variableId": "POINT::pressure::1", "component": 0, "min": 2.5}
+        ) is None
+
+    api.set_variable_range.assert_not_called()
+    assert mock_logger.warning.call_count == 1
 
 

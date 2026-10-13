@@ -41,7 +41,8 @@ class PersistedViewerStateV1(BaseModel):
                         datasets: Dict[str, PersistedDatasetState],
                         camera: VisorCameraState | None = None,
                         cross_section: VisorCrossSectionState | None = None,
-                        variable_states: Dict[str, "VisorVariableState"] | None = None,
+                        *,
+                        variable_states: Dict[str, "VisorVariableState"],
                         ) -> "PersistedViewerStateV1":
         """
         Create a PersistedViewerStateV1 instance from UI settings and dataset states.
@@ -51,7 +52,8 @@ class PersistedViewerStateV1(BaseModel):
             unit (str | None): Scene unit (or None).
             datasets (Dict[str, PersistedDatasetState]): Dataset states keyed by dataset name.
             camera (VisorCameraState | None): Camera state (or None).
-            variable_states (Dict[str, VisorVariableState] | None): Variable states keyed by variable identifier (or None).
+            variable_states (Dict[str, VisorVariableState]): Variable states keyed by variable identifier.
+                Keyword-only and required; pass ``{}`` for none.
         Returns:
             PersistedViewerStateV1: The constructed viewer state.
         """
@@ -64,6 +66,6 @@ class PersistedViewerStateV1(BaseModel):
             edges_enabled=edges_enabled,
             bounding_box_enabled=bounding_box_enabled,
             dataset_states=datasets,
-            variable_states=variable_states or {},
+            variable_states=variable_states,
         )
         return cls(ui=ui_state, scene=scene_state)

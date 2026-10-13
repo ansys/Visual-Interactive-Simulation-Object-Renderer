@@ -6,7 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from ansys.visor.viewer.models.common.visor_camera_state import VisorCameraState
 from ansys.visor.viewer.models.common.visor_cross_section_state import VisorCrossSectionState
-from ansys.visor.viewer.models.common.visor_variable_state import VisorVariableState
+from ansys.visor.viewer.models.common.visor_variable_record import VisorVariableRecord
 from ansys.visor.viewer.models.runtime.dataset.runtime_dataset_state import RuntimeDatasetState
 
 
@@ -28,7 +28,8 @@ class RuntimeSceneState(BaseModel):
     edges_enabled: bool | None = Field(default=None, alias="edgesEnabled")
     bounding_box_enabled: bool | None = Field(default=None, alias="boundingBoxEnabled")
     dataset_states: Dict[int, "RuntimeDatasetState"] = Field(default_factory=dict, alias="datasetStates")
-    variable_states: Dict[str, "VisorVariableState"] = Field(default_factory=dict, alias="variableStates")
+    # The server's variable records (see VisorSceneBase._variable_records); never taken from the browser.
+    variable_states: Dict[str, "VisorVariableRecord"] = Field(default_factory=dict, alias="variableStates")
 
     @field_validator("dataset_states", mode="before")
     @classmethod

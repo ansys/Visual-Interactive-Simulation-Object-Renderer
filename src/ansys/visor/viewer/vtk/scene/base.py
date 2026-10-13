@@ -1,9 +1,11 @@
 """VTK scene management for Visor Viewer."""
 
 import json
+import math
 import threading
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, List
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Dict, List
 
 from trame_server import Server
 
@@ -15,7 +17,13 @@ from ansys.visor.viewer.core.visor_logging import VisorDefaultLogger
 from ansys.visor.viewer.core.visor_types import VisorDatasetType
 from ansys.visor.viewer.models.common.visor_camera_state import VisorCameraState
 from ansys.visor.viewer.models.common.visor_ui_state import VisorUIState
+from ansys.visor.viewer.models.common.visor_variable_record import (
+    VisorVariableRecord,
+    VisorVariableRecords,
+)
+from ansys.visor.viewer.models.common.visor_variable_state import VisorVariableState
 from ansys.visor.viewer.models.persist.persisted_viewer_state import PersistedViewerStateV1
+from ansys.visor.viewer.models.runtime.dataset.runtime_dataset_state import RuntimePartProperties
 from ansys.visor.viewer.models.runtime.visor_scene_details import VisorSceneDetails
 from ansys.visor.viewer.renderer.base import IRenderer
 from ansys.visor.viewer.vtk.datasets.visor_dataset import VisorDataset
@@ -30,6 +38,34 @@ if TYPE_CHECKING:
     from ansys.visor.viewer.models.runtime.scene.runtime_app_state import RuntimeAppState
 
 logger = VisorDefaultLogger(__name__)
+
+
+@dataclass(frozen=True)
+class _ColorVariableBinding:
+    """A part's resolved color-variable reference: the record, the slot, and that slot's effective range."""
+
+    part_id: int
+    record: VisorVariableRecord
+    component: int
+    min_val: float
+    max_val: float
+
+    def matches(self, association: VisorVtkVariableType, array_name: str) -> bool:
+        """Return whether *association* and *array_name* name this binding's array."""
+        return association is self.record.type and array_name == self.record.array_name
+
+    def apply_to(self, renderer: IRenderer) -> None:
+        """Configure the part's mapper at this range and re-serialize it; caller holds ``_vtk_lock``."""
+        renderer.apply_color_variable(
+            self.part_id,
+            self.record.id,
+            self.record.type,
+            self.record.array_name,
+            self.component,
+            self.min_val,
+            self.max_val,
+        )
+
 
 class VisorSceneBase(ABC):
     """
@@ -69,6 +105,7 @@ class VisorSceneBase(ABC):
     _edges_enabled: bool
     _bounding_box_enabled: bool
     _ui_state: VisorUIState
+    _variable_records: VisorVariableRecords
 
     def __init__(
             self,
@@ -101,6 +138,14 @@ class VisorSceneBase(ABC):
             panel_top_right_legend_collapsed=False,
             panel_top_right_tab_index=0,
         )
+
+        # The server's variable records, keyed by composed identifier.  Created once
+        # here and never rebound.  Written only by _rebuild_variable_records_from_registry
+        # and _load_variable_records, under _vtk_lock, by assigning a new dict
+        # (copy-on-write) so the unlocked reader in
+        # get_scene_details never sees a dict change size.  Handed out only as
+        # model_copy(deep=True): a shallow copy would share the dict and its entries.
+        self._variable_records = VisorVariableRecords()
 
         # Server-tracked widget toggles.  Absolute values, never toggles.
         # Initialised to the client widgets' own constructor defaults so a
@@ -261,6 +306,9 @@ class VisorSceneBase(ABC):
             runtime_state.scene.edges_enabled = self._edges_enabled
             runtime_state.scene.bounding_box_enabled = self._bounding_box_enabled
             runtime_state.ui = self._ui_state.model_copy()
+            # Variables and unit are the server's, never the browser's reply.
+            runtime_state.scene.variable_states = self._variable_records.model_copy(deep=True).variables
+            runtime_state.scene.unit = self._dataset_registry.unit
         runtime_state.scene.dataset_states = registry_dataset_states
 
         persisted = self._state_mapper.runtime_to_persisted(runtime_state)
@@ -283,12 +331,17 @@ class VisorSceneBase(ABC):
             # Transform the frontend PersistedViewerStateV1 -> RuntimeAppState
             runtime_app_state = self._state_mapper.persisted_to_runtime(state)
 
+            # Variable records: rebuilt from the registry and overlaid with the file's
+            # ranges, then placed on the runtime state for the push, all before
+            # _restore_part_states, which resolves each colored part against the held record.
+            self._load_variable_records(state.scene.variable_states)
+            runtime_app_state.scene.variable_states = self._variable_records.model_copy(deep=True).variables
+
             # One call per state class: updates the server's stored state and its VTK objects.
             self._restore_part_states(runtime_app_state)
             self._restore_widget_state(runtime_app_state)
             self._restore_ui_state(runtime_app_state)
             self._restore_camera_state(runtime_app_state)
-            # TODO: restore variable states when they are synced back to the server.
 
             # Finalize here, not on the load path.  On a cold load -- viewer started with no dataset,
             # then a state loaded -- load_state adds the datasets and only then calls apply_state, so a
@@ -337,6 +390,10 @@ class VisorSceneBase(ABC):
         The UI record is passed as a copy and never as the instance, for the
         reason :meth:`get_state` gives: a panel trigger landing after this
         call would otherwise mutate a payload already served.
+
+        The variable records are passed as a deep copy of the holder, also
+        without the lock: writers rebind ``variables`` to a new dict, so this
+        read sees either the old dict or the new one, never one in flux.
         """
         if self._scene_graph is None:
             self._initialize_scene_graph()
@@ -355,6 +412,7 @@ class VisorSceneBase(ABC):
             cross_section_enabled=self._cross_section_enabled,
             edges_enabled=self._edges_enabled,
             bounding_box_enabled=self._bounding_box_enabled,
+            variable_states=self._variable_records.model_copy(deep=True).variables,
         )
 
     def get_scene_details_json(self) -> str:
@@ -375,6 +433,7 @@ class VisorSceneBase(ABC):
                 self._renderer.deregister_all()
             self._dataset_registry.clear()
             self._scene_graph = None
+            self._rebuild_variable_records_from_registry()
 
     def populate_scene(self):
         """Update widgets to reflect the current scene contents.
@@ -460,6 +519,7 @@ class VisorSceneBase(ABC):
                 node_ids = [leaf.id for leaf in part_nodes]
 
             self._dataset_registry.add(dataset_id, dataset_name, input, node_ids, metadata)
+            self._rebuild_variable_records_from_registry()
 
             return dataset_id
 
@@ -491,6 +551,7 @@ class VisorSceneBase(ABC):
 
             # Unregister the dataset
             self._dataset_registry.remove(dataset_id)
+            self._rebuild_variable_records_from_registry()
 
     def list_variables_for_dataset(self, dataset_id: int) -> List[VisorPartVariables]:
         return self._dataset_registry.list_variables(dataset_id)
@@ -515,10 +576,80 @@ class VisorSceneBase(ABC):
             with timer.phase("update_descendant_parts"):
                 dataset_node.refresh_descendant_variable_metadata(include_self=True)
 
+            # After the reload and the metadata refresh: a width change changes the id.
+            self._rebuild_variable_records_from_registry()
+
             with timer.phase("render"):
                 self.render()
 
             timer.log()
+
+    def _rebuild_variable_records_from_registry(self) -> None:
+        """Rebuild the held records from the registry, carrying custom ranges, then reconcile part references;
+        under ``_vtk_lock``.
+
+        Used at add, remove, clear and update.  Assigns a new dict to the holder
+        (copy-on-write); never mutates the live dict or its entries, so the dict
+        it replaces is still intact when it is handed to
+        :meth:`_reconcile_part_color_variables` as the previous records.
+        """
+        with self._vtk_lock:
+            previous = self._variable_records.variables
+            records = VisorVariableRecords.from_registry(self._dataset_registry, self._variable_records).variables
+            self._variable_records.variables = records
+            logger.debug("variable records rebuilt from registry: %d records", len(records))
+            self._reconcile_part_color_variables(previous)
+
+    def _reconcile_part_color_variables(self, previous: Dict[str, VisorVariableRecord]) -> None:
+        """Re-apply or clear each part's color variable against the current records, skipping a part whose
+        effective range is unchanged from *previous*.  Caller holds the scene lock.
+
+        Only a part whose variable id and component are both set is reconciled;
+        a half-set reference is left as it is.  A reference that resolves is
+        re-applied through :meth:`_ColorVariableBinding.apply_to`, unless the
+        part participated in the same record in *previous* at the same range.
+        A reference that no longer resolves is cleared through
+        :meth:`clear_part_color_variable`, which clears the store, resets the
+        mapper and re-serializes it.
+        """
+        references = [
+            (part_id, part_state.variable_id, part_state.variable_component)
+            for dataset in list(self._dataset_registry.datasets.values())
+            for part_id, part_state in list(dataset.state.part_states.items())
+            if part_state.variable_id is not None and part_state.variable_component is not None
+        ]
+        for part_id, variable_id, component in references:
+            binding = self._resolve_color_variable(part_id, variable_id, component)
+            if binding is None:
+                self.clear_part_color_variable(part_id)
+                logger.debug(
+                    "reconcile: part %s cleared; '%s' component %s no longer resolves.",
+                    part_id, variable_id, component
+                )
+                continue
+            old_record = previous.get(variable_id)
+            if (
+                    old_record is not None
+                    and part_id in old_record.part_ids
+                    and old_record.range_for(component) == (binding.min_val, binding.max_val)
+            ):
+                continue
+            binding.apply_to(self._renderer)
+            logger.debug(
+                "reconcile: part %s re-applied at '%s' component %s [%g, %g].",
+                part_id, variable_id, component, binding.min_val, binding.max_val
+            )
+
+    def _load_variable_records(self, file_states: Dict[str, VisorVariableState]) -> None:
+        """Build the held records fresh from the registry and overlay the file's ranges; under ``_vtk_lock``.
+
+        Used at load.  Assigns a new dict to the holder (copy-on-write); never
+        mutates the live dict or its entries.
+        """
+        with self._vtk_lock:
+            records = VisorVariableRecords.from_file(self._dataset_registry, file_states).variables
+            self._variable_records.variables = records
+            logger.debug("variable records loaded from file: %d records", len(records))
 
     def render(self):
         """Delegate to the renderer backend.
@@ -691,32 +822,136 @@ class VisorSceneBase(ABC):
             association: VisorVtkVariableType,
             array_name: str,
             component: int,
-            min_val: float,
-            max_val: float,
-    ) -> None:
+    ) -> bool:
         """
-        Colour the part identified by *node_id* by a scalar variable.
+        Colour one part at the record's effective range; False, writing nothing, when refused.
 
-        *variable_id* is stored opaquely and is never parsed here; the
-        association and array name arrive as explicit arguments.  *association*
-        is already a :class:`VisorVtkVariableType` — it is parsed at the
-        trigger boundary, never derived from a string here.  The range travels
-        as a parameter only and is not persisted per part.
+        *variable_id* is stored opaquely and is never parsed here.  It is
+        resolved against the held records: the part must participate in it
+        and *component* must name one of its slots.  *association* and
+        *array_name* must name the record's array.  The range applied is the
+        record's, never the caller's.  A refusal logs one WARNING and leaves
+        both the registry and the mapper untouched.
         """
         with self._vtk_lock:
+            binding = self._resolve_color_variable(node_id, variable_id, component)
+            if binding is None:
+                return False
+            if not binding.matches(association, array_name):
+                logger.warning(
+                    "set_part_color_variable: %s '%s' does not name the array of '%s' "
+                    "(part %s); refused.", association, array_name, variable_id, node_id
+                )
+                return False
             if not self._dataset_registry.set_part_color_variable(node_id, variable_id, component):
                 logger.debug("set_part_color_variable: no dataset owns node %s; skipping.", node_id)
-                return
-            self._renderer.apply_color_variable(
-                node_id, variable_id, association, array_name, component, min_val, max_val
+                return False
+            binding.apply_to(self._renderer)
+            return True
+
+    def set_variable_range(
+            self, variable_id: str, component: int, min_val: float, max_val: float
+    ) -> bool:
+        """
+        Store one slot's effective range and apply it to every part referencing that slot; False, writing
+        nothing, when refused.
+
+        Refused, with a WARNING, for an unknown id, a component outside
+        ``[-1, num_components)``, a non-finite value, or ``min > max``.  The
+        entry is replaced by copy-on-write and ``variables`` is rebound, so
+        the unlocked reader never sees the live dict change.  Each applied
+        mapper is re-serialized inside the lock.  Nothing is pushed: the
+        client applied the range before it sent.
+        """
+        with self._vtk_lock:
+            record = self._variable_records.variables.get(variable_id)
+            if record is None:
+                logger.warning("set_variable_range: no record for '%s'; refused.", variable_id)
+                return False
+            if not -1 <= component < record.num_components:
+                logger.warning(
+                    "set_variable_range: component %s is outside [-1, %s) for '%s'; refused.",
+                    component, record.num_components, variable_id
+                )
+                return False
+            if not (math.isfinite(min_val) and math.isfinite(max_val)):
+                logger.warning(
+                    "set_variable_range: non-finite range [%s, %s] for '%s'; refused.",
+                    min_val, max_val, variable_id
+                )
+                return False
+            if min_val > max_val:
+                logger.warning(
+                    "set_variable_range: min %s is above max %s for '%s'; refused.",
+                    min_val, max_val, variable_id
+                )
+                return False
+
+            variables = dict(self._variable_records.variables)
+            variables[variable_id] = record.with_range(component, (min_val, max_val))
+            self._variable_records.variables = variables
+            logger.debug(
+                "variable range stored: %s component %d [%g, %g]",
+                variable_id, component, min_val, max_val
             )
+
+            for part_id in variables[variable_id].part_ids:
+                part_state = self._dataset_registry.get_part_state(part_id)
+                if part_state is None:
+                    continue
+                if part_state.variable_id != variable_id or part_state.variable_component != component:
+                    continue
+                binding = self._resolve_color_variable(part_id, variable_id, component)
+                if binding is not None:
+                    binding.apply_to(self._renderer)
+            return True
+
+    def _resolve_color_variable(
+            self, part_id: int, variable_id: str, component: int
+    ) -> _ColorVariableBinding | None:
+        """
+        Resolve a part's reference against the held records; None, with one WARNING, when refused.
+
+        Refused when the id has no record, the part does not participate in
+        it, or *component* names no slot.  The id encodes association, name
+        and width, so a same-named array of another width is another record
+        and fails participation.  Caller holds ``_vtk_lock``.
+        """
+        record = self._variable_records.variables.get(variable_id)
+        if record is None:
+            logger.warning(
+                "_resolve_color_variable: no record for '%s' (part %s); refused.", variable_id, part_id
+            )
+            return None
+        if part_id not in record.part_ids:
+            logger.warning(
+                "_resolve_color_variable: part %s does not participate in '%s'; refused.",
+                part_id, variable_id
+            )
+            return None
+        value_range = record.range_for(component)
+        if value_range is None:
+            logger.warning(
+                "_resolve_color_variable: component %s names no slot of '%s' (%s components, part %s); "
+                "refused.", component, variable_id, record.num_components, part_id
+            )
+            return None
+        return _ColorVariableBinding(
+            part_id=part_id,
+            record=record,
+            component=component,
+            min_val=value_range[0],
+            max_val=value_range[1],
+        )
 
     def clear_part_color_variable(self, node_id: int) -> None:
         """
         Stop colouring the part identified by *node_id* by a scalar variable.
 
         The variable reference is cleared atomically in the store (id and
-        component together), matching the atomic set.
+        component together), matching the atomic set.  The renderer's clear
+        then re-serializes the mapper inside the lock, as its apply does, so
+        the state served to the client is current.
         """
         with self._vtk_lock:
             if not self._dataset_registry.clear_part_color_variable(node_id):
@@ -841,7 +1076,6 @@ class VisorSceneBase(ABC):
         Callers must hold ``_vtk_lock``.
         """
         dataset_states = runtime_app_state.scene.dataset_states or {}
-        variable_states = runtime_app_state.scene.variable_states or {}
 
         self._dataset_registry.replace_part_states(dataset_states)
 
@@ -854,16 +1088,8 @@ class VisorSceneBase(ABC):
                 )
                 continue
 
-            # Per-part variable metadata, keyed by part id: one entry per
-            # non-empty leaf.  Built once per dataset rather than per part.
-            variables_by_part = {
-                entry.part_id: entry.variables for entry in dataset.list_variables()
-            }
-
             for part_id, part_state in dataset_state.part_states.items():
-                self._restore_one_part_state(
-                    part_id, part_state, variable_states, variables_by_part.get(part_id)
-                )
+                self._restore_one_part_state(part_id, part_state)
 
     def _restore_camera_state(self, runtime_app_state: "RuntimeAppState") -> None:
         """
@@ -947,13 +1173,7 @@ class VisorSceneBase(ABC):
         if ui.panel_top_right_tab_index is not None:
             self._ui_state.panel_top_right_tab_index = ui.panel_top_right_tab_index
 
-    def _restore_one_part_state(
-            self,
-            part_id: int,
-            part_state,
-            variable_states: dict,
-            part_variables,
-    ) -> None:
+    def _restore_one_part_state(self, part_id: int, part_state: RuntimePartProperties) -> None:
         """
         Apply one restored part record to the pipeline.
 
@@ -992,28 +1212,19 @@ class VisorSceneBase(ABC):
             )
             self._renderer.apply_selected(part_id, part_state.selected, selection_rgb)
 
-        self._restore_part_color_variable(part_id, part_state, variable_states, part_variables)
+        self._restore_part_color_variable(part_id, part_state)
 
-    def _restore_part_color_variable(
-            self,
-            part_id: int,
-            part_state,
-            variable_states: dict,
-            part_variables,
-    ) -> None:
+    def _restore_part_color_variable(self, part_id: int, part_state: RuntimePartProperties) -> None:
         """
-        Restore one part's color-variable reference, or clear it.
+        Restore one part's color-variable reference through the resolve helper, or clear it.
 
         The reference is a compound value, set and cleared as a unit, so if
         either the identifier or component is missing, it is a logged no-op.
 
-        A stored component of ``-1`` reads ``magnitude_range``; 0 or greater
-        reads ``ranges[component]``.  Any other value is refused.
-
-        The array is resolved against the server's per-part variable metadata,
-        and its width is checked against the stored component count: two parts
-        can carry same-named arrays of different widths, which the application
-        treats as different quantities.
+        Otherwise the reference resolves against the held records, which the
+        load path has rebuilt and overlaid with the file's ranges before this
+        runs.  A refused reference is a logged no-op; the mapper is re-serialized
+        after an applied or cleared one.
         """
         variable_id = part_state.variable_id
         component = part_state.variable_component
@@ -1035,81 +1246,10 @@ class VisorSceneBase(ABC):
             )
             return
 
-        variable_state = variable_states.get(variable_id)
-        if variable_state is None:
-            logger.warning(
-                "_restore_part_color_variable: no variable entry for '%s' (part %s); skipping.",
-                variable_id, part_id
-            )
+        binding = self._resolve_color_variable(part_id, variable_id, component)
+        if binding is None:
             return
-
-        if component == -1:
-            value_range = variable_state.magnitude_range
-        elif component >= 0:
-            if component >= len(variable_state.ranges):
-                logger.warning(
-                    "_restore_part_color_variable: component %s is outside the %s stored ranges "
-                    "for '%s' (part %s); skipping.",
-                    component, len(variable_state.ranges), variable_id, part_id
-                )
-                return
-            value_range = variable_state.ranges[component]
-        else:
-            logger.warning(
-                "_restore_part_color_variable: component %s for '%s' (part %s) is neither the "
-                "magnitude sentinel (-1) nor a component index; skipping.",
-                component, variable_id, part_id
-            )
-            return
-
-        if value_range is None:
-            logger.warning(
-                "_restore_part_color_variable: no stored range for component %s of '%s' "
-                "(part %s); skipping.", component, variable_id, part_id
-            )
-            return
-
-        if part_variables is None:
-            logger.warning(
-                "_restore_part_color_variable: no variable metadata for part %s; skipping.",
-                part_id
-            )
-            return
-
-        resolved = next(
-            (
-                variable for variable in part_variables
-                if variable.name == variable_state.array_name
-                and variable.type is variable_state.type
-            ),
-            None,
-        )
-        if resolved is None:
-            logger.warning(
-                "_restore_part_color_variable: array '%s' (%s) not found on part %s; skipping.",
-                variable_state.array_name, variable_state.type, part_id
-            )
-            return
-
-        if resolved.num_components != variable_state.num_components:
-            logger.warning(
-                "_restore_part_color_variable: array '%s' on part %s has %s components, the "
-                "stored variable has %s; the part does not participate in this variable.",
-                variable_state.array_name, part_id,
-                resolved.num_components, variable_state.num_components
-            )
-            return
-
-        min_val, max_val = value_range
-        self._renderer.apply_color_variable(
-            part_id,
-            variable_id,
-            variable_state.type,
-            variable_state.array_name,
-            component,
-            min_val,
-            max_val,
-        )
+        binding.apply_to(self._renderer)
 
     # ------------------------------------------------------------------
     # Internal helpers

@@ -21,8 +21,10 @@ class VisorVariableState(BaseModel):
     explicitly (rather than only opaquely inside ``id``) so a consumer can act on them without parsing the
     client-built identifier.
 
-    In the future, the backend can own this, but for now we can treat this as passthrough data,
-    as the id value is stable across sessions.
+    This is the persisted entry: the identity plus the effective ranges at save time.  The backend owns
+    the variables as :class:`VisorVariableRecord` (``visor_variable_record.py``), and this model is that
+    record's persisted projection (``VisorVariableRecord.to_variable_state``).  The id value is stable
+    across sessions.
     """
     model_config = ConfigDict(populate_by_name=True)
 

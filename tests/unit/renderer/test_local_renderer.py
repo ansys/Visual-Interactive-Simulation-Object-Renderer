@@ -21,12 +21,15 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import pytest
+from vtkmodules.vtkCommonCore import vtkFloatArray
+from vtkmodules.vtkFiltersSources import vtkSphereSource
 
 from ansys.visor.viewer.core.visor_enums import VisorVtkVariableType
 from ansys.visor.viewer.models.common.visor_camera_state import VisorCameraState
 from ansys.visor.viewer.renderer.base import IRenderer
 from ansys.visor.viewer.renderer.local_renderer import VisorLocalRenderer
 from ansys.visor.viewer.renderer.null_renderer import NullRenderer
+from ansys.visor.viewer.vtk.node_pipeline import VtkNodePipeline
 
 # ---------------------------------------------------------------------------
 # Lightweight VTK-data stubs (no real VTK objects required for pick tests)
@@ -642,6 +645,35 @@ class TestDelegatedApplyBodies:
         mock_logger.debug.assert_called_once()
         pipe.set_color_variable.assert_not_called()
 
+    def test_apply_color_variable_serializes_the_mapper_after_the_write(self, renderer):
+        """The mapper is re-serialized by its own id, once, with the new range already written."""
+        source = vtkSphereSource()
+        source.Update()
+        dataset = source.GetOutput()
+        pressure = vtkFloatArray()
+        pressure.SetName("pressure")
+        pressure.SetNumberOfComponents(1)
+        pressure.SetNumberOfTuples(dataset.GetNumberOfPoints())
+        for i in range(dataset.GetNumberOfPoints()):
+            pressure.SetTuple1(i, float(i))
+        dataset.GetPointData().AddArray(pressure)
+        pipe = VtkNodePipeline.from_dataset(dataset)
+        pipe.mapper.SetScalarRange(11.0, 22.0)
+        renderer._pipelines[4] = pipe
+        renderer._object_manager.GetId.side_effect = (
+            lambda obj: 8150003 if obj is pipe.mapper else WRONG_OBJECT_WASM_ID
+        )
+        recorded = []
+        renderer._object_manager.UpdateStateFromObject.side_effect = (
+            lambda object_id: recorded.append((object_id, tuple(pipe.mapper.GetScalarRange())))
+        )
+
+        renderer.apply_color_variable(
+            4, "sp-1", VisorVtkVariableType.POINT, "pressure", 0, 2.0, 8.0
+        )
+
+        assert recorded == [(8150003, (2.0, 8.0))]
+
     # ------------------------------------------------------------------
     # clear_color_variable
     # ------------------------------------------------------------------
@@ -666,6 +698,25 @@ class TestDelegatedApplyBodies:
 
         mock_logger.debug.assert_called_once()
         pipe.clear_color_variable.assert_not_called()
+
+    def test_clear_color_variable_serializes_the_mapper_after_the_write(self, renderer):
+        """The mapper is re-serialized by its own id, once, with scalar colouring already off."""
+        source = vtkSphereSource()
+        source.Update()
+        pipe = VtkNodePipeline.from_dataset(source.GetOutput())
+        pipe.mapper.SetScalarVisibility(True)
+        renderer._pipelines[4] = pipe
+        renderer._object_manager.GetId.side_effect = (
+            lambda obj: 8150003 if obj is pipe.mapper else WRONG_OBJECT_WASM_ID
+        )
+        recorded = []
+        renderer._object_manager.UpdateStateFromObject.side_effect = (
+            lambda object_id: recorded.append((object_id, pipe.mapper.GetScalarVisibility()))
+        )
+
+        renderer.clear_color_variable(4)
+
+        assert recorded == [(8150003, 0)]
 
 
 # ===========================================================================

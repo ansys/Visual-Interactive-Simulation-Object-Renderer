@@ -149,11 +149,18 @@ class IRenderer(ABC):
             Component index. ``-1`` means magnitude.
         min_val / max_val:
             Scalar display range.
+
+        On return, the state this renderer serves to the client reflects the
+        write, and the client is not notified.
         """
 
     @abstractmethod
     def clear_color_variable(self, node_id: int) -> None:
-        """Disable scalar colouring on *node_id*, reverting to solid diffuse."""
+        """Disable scalar colouring on *node_id*, reverting to solid diffuse.
+
+        On return, the state this renderer serves to the client reflects the
+        write, and the client is not notified.
+        """
 
     @abstractmethod
     def refresh_color_variable_range(
@@ -218,8 +225,7 @@ class IRenderer(ABC):
     def serialize_camera_state(self) -> None:
         """Make the state served to the client current for the camera.
 
-        The camera alone; the node pipelines are
-        :meth:`serialize_pipeline_states`'s job.  Writing the pipeline camera
+        The camera alone.  Writing the pipeline camera
         makes the server correct: it does not make the state the client is
         served correct, and the two are separate steps that can each silently
         do nothing.
