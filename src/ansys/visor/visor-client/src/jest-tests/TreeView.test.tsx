@@ -6,6 +6,7 @@ import {
     VisorSceneNodeSimple,
 } from '../state/VisorSceneGraph.tsx';
 import { NullRenderer } from '../renderer/NullRenderer.ts';
+import { deliveredPart, deliveredScene } from './deliveredSceneFixture.ts';
 
 describe('TreeView', () => {
     it('renders without a scene graph', () => {
@@ -131,11 +132,11 @@ function getSmallSceneGraph(): VisorSceneNodeExtended {
                 children: [],
             },
         ],
-    });
+    }, deliveredScene(deliveredPart(1)));
 }
 
 function getLargeSceneGraph(): VisorSceneNodeExtended {
-    return CreateVisorSceneGraph(getSceneNodeSimple());
+    return CreateVisorSceneGraph(getSceneNodeSimple(), getLargeDeliveredScene());
 }
 
 /**
@@ -143,7 +144,23 @@ function getLargeSceneGraph(): VisorSceneNodeExtended {
  * setVisibilityAsync/setSelectedAsync can run in a test.
  */
 function getLargeSceneGraphWithRenderer(): VisorSceneNodeExtended {
-    return CreateVisorSceneGraph(getSceneNodeSimple(), undefined, new NullRenderer());
+    return CreateVisorSceneGraph(
+        getSceneNodeSimple(),
+        getLargeDeliveredScene(),
+        undefined,
+        new NullRenderer()
+    );
+}
+
+/** The delivered records for the large graph's five parts. */
+function getLargeDeliveredScene() {
+    return deliveredScene(
+        deliveredPart(3),
+        deliveredPart(4),
+        deliveredPart(5),
+        deliveredPart(6),
+        deliveredPart(7)
+    );
 }
 
 function getSceneNodeSimple(): VisorSceneNodeSimple {

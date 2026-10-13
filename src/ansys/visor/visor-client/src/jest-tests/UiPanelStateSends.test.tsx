@@ -7,6 +7,7 @@ import type { IRenderer } from '../renderer/IRenderer';
 import type VisorVtkSceneNode from '../state/appstate/vtkInfo/VisorVtkSceneNode.tsx';
 import type { Panel_TopLeft_Util } from '../components/ui-panels/Panel_TopLeft_Util.tsx';
 import type { Panel_TopRight_Util } from '../components/ui-panels/Panel_TopRight_Util.tsx';
+import { deliveredPart, deliveredScene } from './deliveredSceneFixture.ts';
 
 /**
  * The client half of server-owned UI panel state: the four `VisorFrontend`
@@ -108,6 +109,7 @@ function makeFrontend(): {
     const frontend = new VisorFrontend(
         makeRendererDouble() as unknown as IRenderer,
         makeSceneGraphNode() as unknown as VisorVtkSceneNode,
+        deliveredScene(),
         triggerSender
     );
     return { frontend, triggerSender };
@@ -156,6 +158,7 @@ function makeSceneGraph(renderer?: IRenderer): VisorSceneNodeExtended {
                 },
             ],
         },
+        deliveredScene(deliveredPart(1)),
         undefined,
         renderer
     );
