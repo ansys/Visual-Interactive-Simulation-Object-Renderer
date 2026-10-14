@@ -65,6 +65,45 @@ def test_add_dataset_none_input(pipeline_instance):
         pipeline_instance.add_dataset(None, ExtendedMetadata(name="test", unit="m"))
 
 
+def test_add_dataset_normalizes_long_arrays_before_pipelines(pipeline_instance):
+    """add_dataset hands the renderer fixed-width arrays in place of vtkLongArray (wasm32 workaround)."""
+    from vtkmodules.vtkCommonCore import vtkLongArray, vtkPoints
+    from vtkmodules.vtkCommonDataModel import vtkCellArray, vtkPolyData
+
+    def long_array(name, values):
+        array = vtkLongArray()
+        array.SetName(name)
+        for value in values:
+            array.InsertNextValue(value)
+        return array
+
+    points = vtkPoints()
+    for p in ((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0)):
+        points.InsertNextPoint(p)
+    cells = vtkCellArray()
+    cells.SetData(long_array(None, (0, 3)), long_array(None, (0, 1, 2)))
+    dataset = vtkPolyData()
+    dataset.SetPoints(points)
+    dataset.SetPolys(cells)
+    dataset.GetPointData().AddArray(long_array("pid", (7, 8, 9)))
+
+    dataset_id = pipeline_instance.add_dataset(dataset, ExtendedMetadata(name="long_arrays", unit="m"))
+    pipeline_instance.populate_scene()
+    pipeline_instance.render()
+
+    assert dataset.GetPolys().GetConnectivityArray().GetClassName() == "vtkTypeInt64Array"
+    dataset_node = pipeline_instance._scene_graph.get_descendant_node(dataset_id)
+    mapper_inputs = [
+        pipeline_instance._renderer._pipelines[part.id].actor.GetMapper().GetInputDataObject(0, 0)
+        for part in dataset_node.get_descendant_part_nodes(include_self=True)
+        if part.id in pipeline_instance._renderer._pipelines
+    ]
+    assert len(mapper_inputs) == 1
+    pid = mapper_inputs[0].GetPointData().GetArray("pid")
+    assert pid.GetClassName() == "vtkTypeInt64Array"
+    assert [pid.GetValue(i) for i in range(3)] == [7, 8, 9]
+
+
 def test_list_dataset_state_info(pipeline_instance):
     """Test that list_dataset_state_info works."""
     file = get_test_file()
