@@ -7,10 +7,10 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from ansys.visor.viewer.models.common.visor_camera_state import VisorCameraState
 from ansys.visor.viewer.models.common.visor_cross_section_state import VisorCrossSectionState
-from ansys.visor.viewer.models.persist.visor_ui_state import PersistedUIState
 from ansys.visor.viewer.models.common.visor_variable_state import VisorVariableState
 from ansys.visor.viewer.models.persist.dataset.persisted_dataset_state import PersistedDatasetState
 from ansys.visor.viewer.models.persist.scene.persisted_scene_state import PersistedSceneState
+from ansys.visor.viewer.models.persist.visor_ui_state import PersistedUIState
 
 
 class PersistedViewerStateV1(BaseModel):

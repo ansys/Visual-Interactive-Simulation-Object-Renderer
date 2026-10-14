@@ -333,8 +333,8 @@ class TestFileHandleReleased:
         so that save_state can delete it as a stale snapshot."""
         import shutil
 
-        from ansys.visor.viewer.models.persist.visor_ui_state import PersistedUIState
         from ansys.visor.viewer.models.persist.persisted_viewer_state import PersistedViewerStateV1
+        from ansys.visor.viewer.models.persist.visor_ui_state import PersistedUIState
 
         src = _vtkhdf_multiblock_path()
         copy = tmp_path / "mb_copy.vtkhdf"
