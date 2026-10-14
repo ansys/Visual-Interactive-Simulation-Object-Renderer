@@ -1,5 +1,5 @@
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 from pydantic import ValidationError
@@ -114,33 +114,8 @@ def test_model_dump_contains_fields(monkeypatch):
     assert "appState" in data
 
 
-def test_save_path_rejects_a_variable_state_missing_the_identity_fields():
-    """ The server owns the variable records, so the browser's ``variableStates`` is
-    discarded before validation.  An entry missing the identity fields (an old
-    client) therefore parses, and nothing of it reaches the model.
-    """
-    payload = {
-        "requestId": 1,
-        "appState": {
-            "scene": {
-                "variableStates": {
-                    "POINT::pressure::1": {
-                        "id": "POINT::pressure::1",
-                        "magnitudeRange": [0.0, 1.0],
-                        "ranges": [[0.0, 1.0]],
-                    }
-                }
-            }
-        },
-    }
-
-    resp = VisorSaveStateResponse.model_validate(payload)
-
-    assert resp.app_state.scene.variable_states == {}
-
-
 def test_save_path_accepts_a_variable_state_carrying_the_identity_fields():
-    """ The server owns the variable records, so the browser's ``variableStates`` is discarded before validation."""
+    """A browser ``variableStates`` entry in the record's shape reaches the model unaltered."""
     payload = {
         "requestId": 1,
         "appState": {
@@ -151,6 +126,9 @@ def test_save_path_accepts_a_variable_state_carrying_the_identity_fields():
                         "arrayName": "pressure",
                         "type": "POINT",
                         "numComponents": 1,
+                        "partIds": [1],
+                        "defaultMagnitudeRange": [0.0, 1.0],
+                        "defaultRanges": [[0.0, 1.0]],
                         "magnitudeRange": [0.0, 1.0],
                         "ranges": [[0.0, 1.0]],
                     }
@@ -161,35 +139,5 @@ def test_save_path_accepts_a_variable_state_carrying_the_identity_fields():
 
     resp = VisorSaveStateResponse.model_validate(payload)
 
-    assert resp.app_state.scene.variable_states == {}
-
-
-def test_save_response_discards_browser_variable_states_from_a_json_string_app_state():
-    """#21: the discard also runs when appState arrives as a JSON string, and logs one DEBUG line.
-
-    The entry lacks the record's default fields (partIds, defaultMagnitudeRange,
-    defaultRanges), so without the discard it would fail validation against the record.
-    """
-    app_state = json.dumps({
-        "scene": {
-            "unit": "mm",
-            "variableStates": {
-                "POINT::pressure::1": {
-                    "id": "POINT::pressure::1",
-                    "arrayName": "pressure",
-                    "type": "POINT",
-                    "numComponents": 1,
-                    "magnitudeRange": [0.0, 1.0],
-                    "ranges": [[0.0, 1.0]],
-                }
-            },
-        }
-    })
-
-    with patch("ansys.visor.viewer.models.runtime.requests.visor_save_state_response.logger") as mock_logger:
-        resp = VisorSaveStateResponse.model_validate({"requestId": 7, "appState": app_state})
-
-    assert resp.app_state.scene.variable_states == {}
-    assert resp.app_state.scene.unit == "mm"
-    mock_logger.debug.assert_called_once_with("browser variableStates discarded")
+    assert resp.app_state.scene.variable_states["POINT::pressure::1"].array_name == "pressure"
 

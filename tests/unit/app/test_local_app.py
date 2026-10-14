@@ -175,8 +175,7 @@ def test_set_part_selected_carries_no_colour(app, api):
 def test_set_part_color_variable_delegates_payload_values(app, api):
     """Every colour-variable field but the range reaches the coordinator in contract order.
 
-    ``min`` and ``max`` are still required on the wire but are not forwarded:
-    the server applies its own record's range.
+    A payload still carrying ``min`` and ``max`` parses; neither is forwarded.
     """
     app.set_part_color_variable(
         {
@@ -187,6 +186,23 @@ def test_set_part_color_variable_delegates_payload_values(app, api):
             "component": 0,
             "min": 0.0,
             "max": 49.0,
+        }
+    )
+
+    api.set_part_color_variable.assert_called_once_with(
+        7, "POINT::pressure::1", VisorVtkVariableType.POINT, "pressure", 0
+    )
+
+
+def test_set_part_color_variable_delegates_without_min_and_max(app, api):
+    """A payload with no range delegates once, with the five identity arguments."""
+    app.set_part_color_variable(
+        {
+            "nodeId": 7,
+            "variableId": "POINT::pressure::1",
+            "association": "POINT",
+            "arrayName": "pressure",
+            "component": 0,
         }
     )
 

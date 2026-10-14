@@ -383,6 +383,7 @@ export class WasmRenderer implements IRenderer {
         await wasmProperty.SetOpacity(opacity);
     }
 
+    /** Configure the part's mapper to colour by the descriptor's array; it maps through the table served with the mapper. */
     async setColorVariableAsync(
         nodeId: NodeId,
         descriptor: ColorVariableDescriptor
@@ -401,11 +402,6 @@ export class WasmRenderer implements IRenderer {
         await wasmMapper.SetColorModeToMapScalars();
         await wasmMapper.ColorByArrayComponent(descriptor.variableName, descriptor.component);
         await wasmMapper.SetScalarVisibility(1);
-        // Force creation of LUT if not already done. (Alternatively, after 9.5.20250802.dev0, you can call mapper.SetLookupTable(null))
-        await wasmMapper.CreateDefaultLookupTable();
-        const lut = await wasmMapper.GetLookupTable();
-        await lut.SetHueRange(0.667, 0.0);
-        await lut.SetVectorModeToMagnitude();
     }
 
     async clearColorVariableAsync(nodeId: NodeId): Promise<void> {
@@ -527,15 +523,14 @@ export class WasmRenderer implements IRenderer {
         // `variableId` is the client-built opaque token, forwarded verbatim;
         // nothing on either side parses it. The association travels as its own
         // typed 'POINT'|'CELL' field, and the array name as its own field,
-        // precisely so that no one has to.
+        // precisely so that no one has to. The range is not sent: the server
+        // applies its own record's range for the referenced slot.
         await this.#sendTriggerAsync('set_part_color_variable', nodeId, {
             nodeId,
             variableId: descriptor.variableId,
             association: descriptor.variableType,
             arrayName: descriptor.variableName,
             component: descriptor.component,
-            min: descriptor.min,
-            max: descriptor.max,
         });
     }
 

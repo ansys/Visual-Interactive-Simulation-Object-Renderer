@@ -233,9 +233,15 @@ describe('WasmRenderer per-part sends: trigger name and payload', () => {
             association: 'POINT',
             arrayName: 'pressure',
             component: 0,
-            min: 2,
-            max: 8,
         });
+        const payload = sender.mock.calls[0][1] as Record<string, unknown>;
+        expect(Object.keys(payload).sort()).toEqual([
+            'arrayName',
+            'association',
+            'component',
+            'nodeId',
+            'variableId',
+        ]);
     });
 
     test('sendPartColorVariableAsync sends CELL as the association for a cell array', async () => {
@@ -257,9 +263,15 @@ describe('WasmRenderer per-part sends: trigger name and payload', () => {
             association: 'CELL',
             arrayName: 'temperature',
             component: -1,
-            min: -1.5,
-            max: 4.5,
         });
+        const payload = sender.mock.calls[0][1] as Record<string, unknown>;
+        expect(Object.keys(payload).sort()).toEqual([
+            'arrayName',
+            'association',
+            'component',
+            'nodeId',
+            'variableId',
+        ]);
     });
 
     test('sendPartColorVariableAsync forwards variableId verbatim without parsing it', async () => {
@@ -332,7 +344,7 @@ describe('WasmRenderer per-part applies still mutate their wasm objects', () => 
         expect(property.SetDiffuseColor).toHaveBeenCalledWith(1, 0, 0);
     });
 
-    test('setColorVariableAsync still configures the mapper and the default table', async () => {
+    test('setColorVariableAsync configures the mapper and authors no table', async () => {
         const { renderer, mapper, lut } = await makeRenderer(makeSender());
 
         await renderer.setColorVariableAsync(NODE_ID, {
@@ -349,9 +361,10 @@ describe('WasmRenderer per-part applies still mutate their wasm objects', () => 
         expect(mapper.SetColorModeToMapScalars).toHaveBeenCalled();
         expect(mapper.ColorByArrayComponent).toHaveBeenCalledWith('pressure', 0);
         expect(mapper.SetScalarVisibility).toHaveBeenCalledWith(1);
-        expect(mapper.CreateDefaultLookupTable).toHaveBeenCalled();
-        expect(lut.SetHueRange).toHaveBeenCalledWith(0.667, 0.0);
-        expect(lut.SetVectorModeToMagnitude).toHaveBeenCalled();
+        expect(mapper.CreateDefaultLookupTable).not.toHaveBeenCalled();
+        expect(mapper.GetLookupTable).not.toHaveBeenCalled();
+        expect(lut.SetHueRange).not.toHaveBeenCalled();
+        expect(lut.SetVectorModeToMagnitude).not.toHaveBeenCalled();
     });
 
     test('clearColorVariableAsync still turns scalar visibility off', async () => {

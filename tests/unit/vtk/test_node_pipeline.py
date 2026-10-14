@@ -1,5 +1,6 @@
 """Unit tests for VtkNodePipeline."""
 
+import json
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -9,6 +10,7 @@ from vtkmodules.vtkFiltersCore import vtkAppendPolyData
 from vtkmodules.vtkFiltersGeometry import vtkGeometryFilter
 from vtkmodules.vtkFiltersSources import vtkSphereSource
 from vtkmodules.vtkRenderingCore import vtkActor, vtkPolyDataMapper
+from vtkmodules.vtkSerializationManager import vtkObjectManager
 
 from ansys.visor.viewer.core.visor_colors import VisorColors
 from ansys.visor.viewer.core.visor_enums import VisorVtkVariableType
@@ -60,6 +62,24 @@ def array_dataset() -> vtkPolyData:
     return dataset
 
 
+@pytest.fixture
+def vector_dataset() -> vtkPolyData:
+    """Sphere output carrying a 3-component point array, every tuple (0, 10, 3)."""
+    src = vtkSphereSource()
+    src.Update()
+    dataset = src.GetOutput()
+
+    velocity = vtkFloatArray()
+    velocity.SetName("velocity")
+    velocity.SetNumberOfComponents(3)
+    velocity.SetNumberOfTuples(dataset.GetNumberOfPoints())
+    for i in range(dataset.GetNumberOfPoints()):
+        velocity.SetTuple3(i, 0.0, 10.0, 3.0)
+    dataset.GetPointData().AddArray(velocity)
+
+    return dataset
+
+
 # ---------------------------------------------------------------------------
 # from_dataset
 # ---------------------------------------------------------------------------
@@ -97,13 +117,37 @@ def test_from_dataset_unsupported_type_raises():
         VtkNodePipeline.from_dataset(object())
 
 
+def test_from_dataset_serves_a_built_lookup_table(poly_dataset):
+    """The first serialize ships the mapper's table, built and in magnitude mode.
+
+    A table that was never built serves 0 tuples; a built one serves 256.
+    VectorMode 0 is MAGNITUDE.
+    """
+    pipe = VtkNodePipeline.from_dataset(poly_dataset)
+    manager = vtkObjectManager()
+    manager.Initialize()
+    manager.RegisterObject(pipe.actor)
+
+    manager.UpdateStatesFromObjects()
+
+    mapper_state = json.loads(manager.GetState(manager.GetId(pipe.mapper)))
+    table_id = manager.GetId(pipe.lookup_table)
+    table_state = json.loads(manager.GetState(table_id))
+    array_state = json.loads(manager.GetState(table_state["Table"]["Id"]))
+    assert mapper_state["LookupTable"]["Id"] == table_id
+    assert array_state["NumberOfTuples"] == 256
+    assert table_state["VectorMode"] == 0
+
+
 # ---------------------------------------------------------------------------
 # set_clipping_plane
 # ---------------------------------------------------------------------------
 
 def test_set_clipping_plane_none_clears_planes():
     mapper = MagicMock()
-    pipe = VtkNodePipeline(actor=MagicMock(), mapper=mapper, base_algorithm=MagicMock())
+    pipe = VtkNodePipeline(
+        actor=MagicMock(), mapper=mapper, base_algorithm=MagicMock(), lookup_table=MagicMock()
+    )
 
     pipe.set_clipping_plane(None)
 
@@ -113,7 +157,9 @@ def test_set_clipping_plane_none_clears_planes():
 
 def test_set_clipping_plane_with_plane_adds_it():
     mapper = MagicMock()
-    pipe = VtkNodePipeline(actor=MagicMock(), mapper=mapper, base_algorithm=MagicMock())
+    pipe = VtkNodePipeline(
+        actor=MagicMock(), mapper=mapper, base_algorithm=MagicMock(), lookup_table=MagicMock()
+    )
     plane = vtkPlane()
 
     pipe.set_clipping_plane(plane)
@@ -386,11 +432,34 @@ def test_set_color_variable_sets_exact_scalar_range(array_dataset):
     the lookup table and the range read back would not be what was passed.
     """
     pipe = VtkNodePipeline.from_dataset(array_dataset)
+    # Seeded: deferring to the table's range, so the call has to turn it off.
+    pipe.mapper.SetUseLookupTableScalarRange(1)
 
     pipe.set_color_variable(VisorVtkVariableType.POINT, "pressure", 0, 0.0, 7.5)
 
     assert pipe.mapper.GetScalarRange() == pytest.approx((0.0, 7.5))
     assert pipe.mapper.GetUseLookupTableScalarRange() == 0
+
+
+def test_mapped_colors_follow_magnitude_for_minus_one_and_the_mapper_component_otherwise(
+    vector_dataset,
+):
+    """Every tuple is (0, 10, 3) over the range (0, 20).
+
+    For -1 the table maps the magnitude (about 10.44); for 2 the mapper's
+    component selects 3.  The expected RGBA literals are the hue range
+    (0.667, 0.0) read at those two values.
+    """
+    magnitude = VtkNodePipeline.from_dataset(vector_dataset)
+    magnitude.set_color_variable(VisorVtkVariableType.POINT, "velocity", -1, 0.0, 20.0)
+    magnitude.mapper.Update()
+
+    component = VtkNodePipeline.from_dataset(vector_dataset)
+    component.set_color_variable(VisorVtkVariableType.POINT, "velocity", 2, 0.0, 20.0)
+    component.mapper.Update()
+
+    assert magnitude.mapper.MapScalars(1.0).GetTuple4(0) == (4, 255, 0, 255)
+    assert component.mapper.MapScalars(1.0).GetTuple4(0) == (0, 164, 255, 255)
 
 
 def test_set_color_variable_enables_scalar_visibility_and_map_scalars(array_dataset):
