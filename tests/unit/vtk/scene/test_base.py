@@ -23,7 +23,9 @@ import pytest
 from vtkmodules.vtkCommonCore import vtkFloatArray
 from vtkmodules.vtkCommonDataModel import vtkPolyData
 from vtkmodules.vtkFiltersSources import vtkSphereSource
+from vtkmodules.vtkRenderingCore import vtkActor
 
+from ansys.visor.viewer.core.metadata import ExtendedMetadata
 from ansys.visor.viewer.core.visor_colors import VisorColors
 from ansys.visor.viewer.core.visor_enums import VisorVtkVariableType
 from ansys.visor.viewer.models.common.visor_camera_state import VisorCameraState
@@ -3642,3 +3644,109 @@ def test_get_state_takes_the_unit_from_the_registry(scene, registry):
     scene.get_state()
 
     assert captured["runtime_state"].scene.unit == "mm"
+
+
+# ---------------------------------------------------------------------------
+# add_dataset applies each part's record to its pipeline
+#
+# A real registry and scene graph, so the record is the one the metadata
+# seeds at construction and the pipeline is the one register_node builds.
+# The dataset is non-composite, so its single part takes the dataset name.
+# ---------------------------------------------------------------------------
+
+ADDED_ACTOR_WASM_ID = 8150004
+
+
+@pytest.fixture
+def add_scene(renderer):
+    """Scene with the real renderer, a real registry and a real scene graph, holding no dataset."""
+    # A MagicMock plane would reach mapper.AddClippingPlane in register_node.
+    renderer._cross_section_widget.plane = None
+    return _ConcreteScene(MagicMock(name="server"), dark_mode=False, renderer=renderer)
+
+
+def _add_sphere(scene, dataset, parts):
+    """add_dataset *dataset* named "sphere" with *parts* as its metadata part entries; return its pipeline."""
+    metadata = ExtendedMetadata(name="sphere", unit="m", state={"parts": parts})
+    dataset_id = scene.add_dataset(dataset, metadata)
+    part_id = scene.datasets[dataset_id].part_index.part_ids[0]
+    return scene._renderer._pipelines[part_id]
+
+
+def _record_served_actor_visibility(renderer):
+    """Record the actor's visibility at each re-serialization of an actor, from here on."""
+    other_ids = renderer._object_manager.GetId.side_effect
+    actors = {}
+
+    def _get_id(obj):
+        if isinstance(obj, vtkActor):
+            actors[ADDED_ACTOR_WASM_ID] = obj
+            return ADDED_ACTOR_WASM_ID
+        return other_ids(obj)
+
+    served = []
+    renderer._object_manager.GetId.side_effect = _get_id
+    renderer._object_manager.UpdateStateFromObject.side_effect = lambda object_id: (
+        served.append(actors[object_id].GetVisibility()) if object_id == ADDED_ACTOR_WASM_ID else None
+    )
+    return served
+
+
+def test_add_dataset_applies_metadata_visibility_to_the_actor(add_scene, array_dataset):
+    """Metadata hides the part: the actor is hidden, and the actor is served hidden."""
+    served = _record_served_actor_visibility(add_scene._renderer)
+
+    pipe = _add_sphere(add_scene, array_dataset, {"sphere": {"visible": False}})
+
+    assert pipe.actor.GetVisibility() == 0
+    assert served == [0]
+
+
+def test_add_dataset_applies_metadata_opacity_and_color_to_the_property(add_scene, array_dataset):
+    """Metadata opacity and diffuse colour reach the actor's property."""
+    pipe = _add_sphere(
+        add_scene, array_dataset, {"sphere": {"opacity": 0.25, "diffuse_rgb": [0.75, 0.5, 0.25]}}
+    )
+
+    prop = pipe.actor.GetProperty()
+    assert prop.GetOpacity() == pytest.approx(0.25)
+    assert prop.GetDiffuseColor() == pytest.approx((0.75, 0.5, 0.25))
+
+
+def test_add_dataset_applies_selection_lighting_before_color(add_scene, array_dataset):
+    """A part selected with a custom colour: lighting terms, ambient colour and diffuse colour are all set."""
+    pipe = _add_sphere(
+        add_scene, array_dataset, {"sphere": {"selected": True, "diffuse_rgb": [0.75, 0.5, 0.25]}}
+    )
+
+    prop = pipe.actor.GetProperty()
+    assert prop.GetDiffuse() == pytest.approx(0.5)
+    assert prop.GetAmbient() == pytest.approx(0.5)
+    assert prop.GetAmbientColor() == pytest.approx((0.0, 0.2431372549, 0.4352941176))
+    assert prop.GetDiffuseColor() == pytest.approx((0.75, 0.5, 0.25))
+
+
+def test_add_dataset_without_metadata_leaves_the_record_applied(add_scene, array_dataset):
+    """No part entries: the default record is written over a pipeline built with other values."""
+    real_from_dataset = VtkNodePipeline.from_dataset
+
+    def _dirtied(dataset):
+        pipe = real_from_dataset(dataset)
+        pipe.actor.SetVisibility(0)
+        prop = pipe.actor.GetProperty()
+        prop.SetOpacity(0.3)
+        prop.SetDiffuse(0.4)
+        prop.SetAmbient(0.6)
+        prop.SetDiffuseColor(0.1, 0.2, 0.3)
+        return pipe
+
+    with patch.object(VtkNodePipeline, "from_dataset", side_effect=_dirtied):
+        pipe = _add_sphere(add_scene, array_dataset, {})
+
+    prop = pipe.actor.GetProperty()
+    assert pipe.actor.GetVisibility() == 1
+    assert prop.GetOpacity() == pytest.approx(1.0)
+    assert prop.GetDiffuse() == pytest.approx(1.0)
+    assert prop.GetAmbient() == pytest.approx(0.0)
+    assert prop.GetDiffuseColor() == pytest.approx((0.8, 0.8, 0.8))
+

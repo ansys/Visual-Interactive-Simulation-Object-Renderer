@@ -468,6 +468,12 @@ class VisorSceneBase(ABC):
     def add_dataset(self, input: VisorDatasetType, metadata: ExtendedMetadata) -> int:
         """Set the input dataset and metadata for the scene graph.
 
+        Each part's record, seeded from the metadata when the dataset is
+        registered, is applied to that part's pipeline through
+        :meth:`_apply_part_state` once the variable records are rebuilt, so a
+        colour reference resolves.  Each apply re-serializes the object it
+        wrote; nothing is pushed from here.
+
         Holds ``_vtk_lock``: node registration attaches actors to the VTK
         renderer.
         """
@@ -504,6 +510,15 @@ class VisorSceneBase(ABC):
 
             self._dataset_registry.add(dataset_id, dataset_name, input, node_ids, metadata)
             self._rebuild_variable_records_from_registry()
+
+            dataset = self._dataset_registry.datasets.get(dataset_id)
+            if dataset is None:
+                logger.warning(
+                    "add_dataset: dataset %s is not registered; its part state was not applied.", dataset_id
+                )
+            else:
+                for part_id, part_state in dataset.state.part_states.items():
+                    self._apply_part_state(part_id, part_state)
 
             return dataset_id
 
@@ -1066,7 +1081,7 @@ class VisorSceneBase(ABC):
                 continue
 
             for part_id, part_state in dataset_state.part_states.items():
-                self._restore_one_part_state(part_id, part_state)
+                self._apply_part_state(part_id, part_state)
 
     def _restore_scene_state(self, scene: RuntimeSceneState) -> None:
         """
@@ -1123,9 +1138,9 @@ class VisorSceneBase(ABC):
         """
         self._ui_state = ui.model_copy()
 
-    def _restore_one_part_state(self, part_id: int, part_state: RuntimePartProperties) -> None:
+    def _apply_part_state(self, part_id: int, part_state: RuntimePartProperties) -> None:
         """
-        Apply one restored part record to the pipeline, every field.
+        Apply one part record to the pipeline, every field; caller holds ``_vtk_lock``.
         """
         self._renderer.apply_visibility(part_id, part_state.visible)
         self._renderer.apply_opacity(part_id, part_state.opacity)
@@ -1134,16 +1149,16 @@ class VisorSceneBase(ABC):
         self._renderer.apply_diffuse_color(part_id, rgb[0], rgb[1], rgb[2])
         self._renderer.apply_selected(part_id, part_state.selected, rgb)
 
-        self._restore_part_color_variable(part_id, part_state)
+        self._apply_part_color_variable(part_id, part_state)
 
-    def _restore_part_color_variable(self, part_id: int, part_state: RuntimePartProperties) -> None:
+    def _apply_part_color_variable(self, part_id: int, part_state: RuntimePartProperties) -> None:
         """
-        Restore one part's color-variable reference through the resolve helper, or clear it.
+        Apply one part's color-variable reference through the resolve helper, or clear it.
 
         No reference clears the mapper.  A reference resolves against the
-        held records, which the load path has rebuilt and overlaid with the
-        file's ranges before this runs.  A refused reference is a logged
-        no-op; the mapper is re-serialized after an applied or cleared one.
+        held records, which must already be current when this runs.  A
+        refused reference is a logged no-op; the mapper is re-serialized
+        after an applied or cleared one.
         """
         reference = part_state.color_variable
         if reference is None:

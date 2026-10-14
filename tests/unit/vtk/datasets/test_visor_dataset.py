@@ -109,9 +109,9 @@ def dataset_factory(mock_data_object):
 
         # Cleanup function to stop patches
         def _cleanup():
-            is_comp_ctx.stop()
-            tv_ctx.stop()
-            pi_ctx.stop()
+            is_comp_patch.stop()
+            tv_patch.stop()
+            pi_patch.stop()
 
         return ds, variables_instance, _cleanup
 
@@ -238,9 +238,9 @@ def test_update_variables_on_composite_broadcast_applies_to_all_matching_parts(d
         mock_vars_0.reload.assert_called_once()
         mock_vars_1.reload.assert_called_once()
     finally:
-        is_comp_ctx.stop()
-        tv_ctx.stop()
-        pi_ctx.stop()
+        is_comp_patch.stop()
+        tv_patch.stop()
+        pi_patch.stop()
 
 
 def test_update_variables_on_composite_broadcast_skips_non_matching_parts(dataset_factory):
@@ -298,9 +298,9 @@ def test_update_variables_on_composite_broadcast_skips_non_matching_parts(datase
         mock_vars_ok.reload.assert_called_once()
         mock_vars_bad.reload.assert_not_called()
     finally:
-        is_comp_ctx.stop()
-        tv_ctx.stop()
-        pi_ctx.stop()
+        is_comp_patch.stop()
+        tv_patch.stop()
+        pi_patch.stop()
 
 
 def test_update_variables_validation_failure_raises(dataset_factory):
@@ -325,24 +325,30 @@ def test_update_variables_happy_path_calls_reload_and_modifies(dataset_factory, 
     mock_update = MagicMock()
 
     # Patch the internal `_update_variable` to avoid touching private behavior but ensure it gets invoked via public API
-    with patch.object(ds, "_update_variable") as upd:
-        ds.update_variables(variable_list=[mock_update, mock_update])
-        variables.validate_new_variables.assert_called_once_with([mock_update, mock_update])
-        assert upd.call_count == 2
-        variables.reload.assert_called_once_with(mock_data_object)
-        # Note: The implementation no longer calls data.Modified() after reload.
-        mock_data_object.Modified.assert_not_called()
+    try:
+        with patch.object(ds, "_update_variable") as upd:
+            ds.update_variables(variable_list=[mock_update, mock_update])
+            variables.validate_new_variables.assert_called_once_with([mock_update, mock_update])
+            assert upd.call_count == 2
+            variables.reload.assert_called_once_with(mock_data_object)
+            # Note: The implementation no longer calls data.Modified() after reload.
+            mock_data_object.Modified.assert_not_called()
+    finally:
+        cleanup()
 
 
 def test_update_variables_empty_list_validates_and_reloads(dataset_factory, mock_data_object):
     """Test that updating variables empty list validates and reloads."""
     ds, variables, cleanup = dataset_factory(is_composite=False)
     variables.validate_new_variables.return_value = True
-    with patch.object(ds, "_update_variable") as upd:
-        ds.update_variables(variable_list=[])
-        variables.validate_new_variables.assert_called_once_with([])
-        upd.assert_not_called()
-        variables.reload.assert_called_once_with(mock_data_object)
+    try:
+        with patch.object(ds, "_update_variable") as upd:
+            ds.update_variables(variable_list=[])
+            variables.validate_new_variables.assert_called_once_with([])
+            upd.assert_not_called()
+            variables.reload.assert_called_once_with(mock_data_object)
+    finally:
+        cleanup()
 
 
 @pytest.fixture
@@ -430,9 +436,9 @@ def dataset_with_variables(mock_data_object):
     )
 
     def _cleanup():
-        is_comp_ctx.stop()
-        tv_ctx.stop()
-        pi_ctx.stop()
+        is_comp_patch.stop()
+        tv_patch.stop()
+        pi_patch.stop()
 
     return ds, variables, _cleanup
 
