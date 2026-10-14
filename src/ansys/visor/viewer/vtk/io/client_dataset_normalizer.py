@@ -16,8 +16,6 @@ in place.  In-memory datasets supplied by a caller are deliberately not
 converted (that would mutate objects the caller still holds); long-backed
 in-memory data remains affected by the upstream defect.
 
-Upstream issue: https://gitlab.kitware.com/vtk/vtk/-/issues/XXXXX (placeholder)
-
 Remove this module, and its call in ``file_to_dataset``, once the VTK version
 Visor depends on serializes platform-width arrays with a fixed element width.
 """
