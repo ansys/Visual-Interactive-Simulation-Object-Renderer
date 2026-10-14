@@ -12,9 +12,9 @@ from ansys.visor.viewer.app.visor_vtk import (
 )
 from ansys.visor.viewer.core.errors import ServerNotStartedError
 from ansys.visor.viewer.core.metadata import ExtendedMetadata
-from ansys.visor.viewer.models.persist.visor_ui_state import PersistedUIState
 from ansys.visor.viewer.models.persist.dataset.persisted_dataset_state import PersistedDatasetState
 from ansys.visor.viewer.models.persist.persisted_viewer_state import PersistedViewerStateV1
+from ansys.visor.viewer.models.persist.visor_ui_state import PersistedUIState
 
 
 @pytest.fixture

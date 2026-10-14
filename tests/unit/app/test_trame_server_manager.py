@@ -5,6 +5,7 @@ import pytest
 
 from ansys.visor.viewer.app.trame.trame_server_manager import TrameServerManager
 
+
 class DummyServer:
     def __init__(self, running=True, controller=True):
         self.running = running

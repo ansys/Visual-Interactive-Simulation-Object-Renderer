@@ -45,10 +45,10 @@ from ansys.visor.viewer.core.metadata import ExtendedMetadata
 from ansys.visor.viewer.core.visor_enums import VisorVtkVariableType
 from ansys.visor.viewer.models.common.part_properties import PartProperties
 from ansys.visor.viewer.models.common.visor_camera_state import VisorCameraState
-from ansys.visor.viewer.models.persist.visor_ui_state import PersistedUIState
 from ansys.visor.viewer.models.common.visor_variable_state import VisorVariableState
 from ansys.visor.viewer.models.persist.dataset.persisted_dataset_state import PersistedDatasetState
 from ansys.visor.viewer.models.persist.persisted_viewer_state import PersistedViewerStateV1
+from ansys.visor.viewer.models.persist.visor_ui_state import PersistedUIState
 from ansys.visor.viewer.vtk.io.file_to_dataset import file_to_dataset
 from ansys.visor.viewer.vtk.io.visor_file_io import VisorFileIO
 
