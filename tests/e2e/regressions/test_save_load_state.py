@@ -11,7 +11,6 @@ AsyncRunner. load_state is sync and can be called directly.
 """
 
 import json
-import sys
 from pathlib import Path
 
 import pytest
@@ -39,6 +38,21 @@ def _save_state_sync(visor, state_dir: str, force_snapshot: bool = False) -> Non
             dataset.is_dirty = True
     runner = visor._server_manager._async_runner
     runner.run_coroutine_block(visor.save_state(state_dir), False)
+
+
+def _served_connectivity_states(visor) -> list[dict]:
+    """Return the serialized state of each pipeline's polygon connectivity array.
+
+    This is the state the wasm client receives.  A ``vtkLongArray`` here is
+    misread by the wasm32 client on LP64 servers (#122).
+    """
+    renderer = visor._scene._renderer
+    object_manager = renderer._object_manager
+    states = []
+    for pipe in renderer._pipelines.values():
+        connectivity = pipe.mapper.GetInput().GetPolys().GetConnectivityArray()
+        states.append(json.loads(object_manager.GetState(object_manager.GetId(connectivity))))
+    return states
 
 
 @pytest.mark.regression
@@ -143,14 +157,6 @@ class TestSaveLoadState:
                 f"Dataset '{name}' has empty serialized_dataset_path"
             )
 
-    @pytest.mark.xfail(
-        sys.platform != "win32",
-        run=False,
-        reason="#122: load_state into an empty scene does not render on "
-        "Linux, and the shared server is not recoverable afterwards, "
-        "so stopping this test from running there.  The post-load checks "
-        "pass on the failing state, which is why this was not caught earlier."
-    )
     def test_load_state_into_empty_scene(self, visor_server, page, tmp_path):
         """Loading state into an empty scene should restore datasets from snapshots.
 
@@ -159,6 +165,9 @@ class TestSaveLoadState:
         """
         state_dir = str(tmp_path / "state")
         Path(state_dir).mkdir()
+
+        console_errors = []
+        page.on("console", lambda msg: console_errors.append(msg.text) if msg.type == "error" else None)
 
         # Frontend must be connected for save_state
         goto_and_wait(page, visor_server.url)
@@ -188,3 +197,12 @@ class TestSaveLoadState:
         wait_for_canvas(page)
         wait_for_webgl(page, timeout_ms=15_000)
         assert_canvas_alive(page, "after load_state into empty scene")
+
+        # The canvas checks above also pass on an empty canvas (#122), so check
+        # that geometry reached the client in a type wasm32 reads correctly.
+        served = _served_connectivity_states(visor_server)
+        assert len(served) > 0, "No pipelines after load_state into empty scene"
+        for state in served:
+            assert state["ClassName"] not in ("vtkLongArray", "vtkUnsignedLongArray"), state
+            assert state["NumberOfTuples"] > 0, state
+        assert [e for e in console_errors if "bad_alloc" in e] == []

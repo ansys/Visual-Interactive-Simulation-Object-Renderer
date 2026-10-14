@@ -6,14 +6,20 @@ On an LP64 server (Linux, macOS) ``long`` is 8 bytes; in the wasm32
 vtkWebAssembly client it is 4 bytes, so the client rebuilds those arrays
 with the wrong element width and reads every 64-bit value as two 32-bit
 halves.  ``vtkHDFReader`` returns 64-bit integer data, including cell
-connectivity and offsets, as ``vtkLongArray`` on LP64 hosts, and numpy
-``int64`` arrays map to ``vtkLongArray`` there as well.
+connectivity and offsets, as ``vtkLongArray`` on LP64 hosts, so a dataset
+read back from VTKHDF (for example a ``load_state`` snapshot) renders empty
+or crashes the client with ``std::bad_alloc``.
+
+Scope: applied only to datasets Visor itself reads from VTKHDF, in
+``file_to_dataset``.  Those objects are owned by Visor, so they are converted
+in place.  In-memory datasets supplied by a caller are deliberately not
+converted (that would mutate objects the caller still holds); long-backed
+in-memory data remains affected by the upstream defect.
 
 Upstream issue: https://gitlab.kitware.com/vtk/vtk/-/issues/XXXXX (placeholder)
 
-Remove this module, and its call in ``VisorSceneBase.add_dataset``, once the
-VTK version Visor depends on serializes platform-width arrays with a fixed
-element width.
+Remove this module, and its call in ``file_to_dataset``, once the VTK version
+Visor depends on serializes platform-width arrays with a fixed element width.
 """
 
 from vtkmodules.vtkCommonCore import (

@@ -28,7 +28,6 @@ from ansys.visor.viewer.models.runtime.visor_scene_details import VisorSceneDeta
 from ansys.visor.viewer.renderer.base import IRenderer
 from ansys.visor.viewer.vtk.datasets.visor_dataset import VisorDataset
 from ansys.visor.viewer.vtk.datasets.visor_dataset_registry import VisorDatasetRegistry
-from ansys.visor.viewer.vtk.io.client_dataset_normalizer import ClientDatasetNormalizer
 from ansys.visor.viewer.vtk.scene.scene_graph_state_builder import SceneGraphStateBuilder
 from ansys.visor.viewer.vtk.scene.visor_state_mapper import VisorStateMapper
 from ansys.visor.viewer.vtk.scene_graph import VisorSceneGraph
@@ -496,18 +495,6 @@ class VisorSceneBase(ABC):
 
             # Ensure unique dataset name
             dataset_name = self._dataset_registry.get_sanitized_metadata_name(metadata)
-
-            # Workaround for an upstream VTK serialization defect: platform-width
-            # long arrays are misread by the wasm32 client.  Runs before the scene
-            # graph, pipelines and variables see the dataset.  Mutates *input* in
-            # place.  Remove with ClientDatasetNormalizer once fixed upstream.
-            replaced = ClientDatasetNormalizer.normalize_dataset_for_client(input)
-            if replaced:
-                logger.info(
-                    "Normalized %d array(s) of dataset '%s' to fixed-width types for the client.",
-                    replaced,
-                    dataset_name,
-                )
 
             # Initialize the scene graph if it does not exist
             if self._scene_graph is None:

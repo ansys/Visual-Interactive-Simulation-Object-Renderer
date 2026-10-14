@@ -1,7 +1,8 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
-from vtkmodules.vtkCommonDataModel import vtkPolyData
+from vtkmodules.vtkCommonCore import vtkLongArray, vtkPoints
+from vtkmodules.vtkCommonDataModel import vtkCellArray, vtkPolyData
 
 from ansys.visor.viewer.vtk.io.file_to_dataset import file_to_dataset
 
@@ -140,3 +141,49 @@ def test_file_to_dataset_vtkhdf_uses_hdf_reader_not_xml_reader():
         mock_xml_vtu.assert_not_called()
         mock_xml_vtm.assert_not_called()
 
+
+# ------------------------------------------------------------------ #
+# wasm32 long-array workaround (ClientDatasetNormalizer)
+# ------------------------------------------------------------------ #
+
+def _long_backed_triangle() -> vtkPolyData:
+    """Triangle whose cells and point data are vtkLongArray, as vtkHDFReader returns them on LP64."""
+    def long_array(name, values):
+        array = vtkLongArray()
+        array.SetName(name)
+        for value in values:
+            array.InsertNextValue(value)
+        return array
+
+    points = vtkPoints()
+    for point in ((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0)):
+        points.InsertNextPoint(point)
+    cells = vtkCellArray()
+    cells.SetData(long_array(None, (0, 3)), long_array(None, (0, 1, 2)))
+    dataset = vtkPolyData()
+    dataset.SetPoints(points)
+    dataset.SetPolys(cells)
+    dataset.GetPointData().AddArray(long_array("pid", (7, 8, 9)))
+    return dataset
+
+
+@pytest.mark.parametrize("ext,reader_cls,expected_class", [
+    ("vtkhdf", "vtkHDFReader", "vtkTypeInt64Array"),
+    ("vtp", "vtkXMLPolyDataReader", "vtkLongArray"),
+])
+def test_file_to_dataset_normalizes_long_arrays_only_for_vtkhdf(ext, reader_cls, expected_class):
+    """VTKHDF output is converted to fixed-width arrays; other formats are returned as read."""
+    with patch("os.path.exists", return_value=True), \
+         patch("os.path.basename", return_value=f"model.{ext}"), \
+         patch("os.path.splitext", return_value=("model", f".{ext}")), \
+         patch(f"ansys.visor.viewer.vtk.io.file_to_dataset.{reader_cls}") as mock_reader_cls:
+        mock_reader = MagicMock()
+        mock_reader.GetOutput.return_value = _long_backed_triangle()
+        mock_reader_cls.return_value = mock_reader
+        result = file_to_dataset(f"/tmp/model.{ext}")
+
+    connectivity = result.GetPolys().GetConnectivityArray()
+    pid = result.GetPointData().GetArray("pid")
+    assert (connectivity.GetClassName(), pid.GetClassName()) == (expected_class, expected_class)
+    assert [connectivity.GetValue(i) for i in range(3)] == [0, 1, 2]
+    assert [pid.GetValue(i) for i in range(3)] == [7, 8, 9]
