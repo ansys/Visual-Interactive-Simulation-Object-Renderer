@@ -1,0 +1,57 @@
+name: SAF Compatibility
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build wheel
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Load Visor env
+        uses: ./.github/actions/load-visor-env
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.MAIN_PYTHON_VERSION }}
+
+      - name: Install Poetry
+        run: pip install poetry==${{ env.POETRY_VERSION }}
+
+      - name: Build wheel
+        run: poetry build --format wheel
+
+      - name: Upload wheel
+        uses: actions/upload-artifact@v4
+        with:
+          name: visor-wheel
+          path: dist/*.whl
+          if-no-files-found: error
+
+  compatibility-scan:
+    name: Scan SAF compatibility
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Load Visor env
+        uses: ./.github/actions/load-visor-env
+
+      - name: Scan compatibility with SAF
+        uses: ansys/saf-devops/compatibility-scan@main
+        with:
+          python-version: ${{ env.MAIN_PYTHON_VERSION }}
+          wheel-artifact-name: visor-wheel
+          compatibility-packages: ansys-saf-cli
