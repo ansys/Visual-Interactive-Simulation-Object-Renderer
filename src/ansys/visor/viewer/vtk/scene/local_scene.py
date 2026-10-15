@@ -5,6 +5,7 @@ from ansys.visor.viewer.vtk.scene.base import VisorSceneBase
 
 if TYPE_CHECKING:
     from ansys.visor.viewer.models.runtime.scene.runtime_app_state import RuntimeAppState
+    from ansys.visor.viewer.renderer.local_renderer import VisorLocalRenderer
 
 logger = VisorDefaultLogger(__name__)
 
@@ -26,6 +27,8 @@ class VisorLocalScene(VisorSceneBase):
     :class:`~ansys.visor.viewer.app.visor_vtk_local.VisorVTKLocal`
     (``RenderingMode.LOCAL``).
     """
+
+    _renderer: "VisorLocalRenderer"
 
     def __init__(self, server: Server, dark_mode: bool = False):
         from ansys.visor.viewer.renderer.local_renderer import VisorLocalRenderer

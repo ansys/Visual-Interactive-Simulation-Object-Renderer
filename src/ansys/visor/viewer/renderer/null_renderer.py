@@ -192,20 +192,10 @@ class NullRenderer(IRenderer):
         return {}
 
     # ------------------------------------------------------------------
-    # Render / flush
+    # Render
     # ------------------------------------------------------------------
 
     def render(self) -> None:
         pass
 
-    def render_window_only(self) -> None:
-        pass
-
-    # ------------------------------------------------------------------
-    # Frontend addressing
-    # ------------------------------------------------------------------
-
-    @property
-    def frontend_ref_name(self) -> str:
-        return ""
 

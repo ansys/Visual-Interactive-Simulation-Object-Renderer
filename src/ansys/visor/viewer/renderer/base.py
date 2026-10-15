@@ -9,7 +9,7 @@ without touching scene coordination.
 
 Contract covers node lifecycle, per-part visual mutations,
 camera, widget control (cross-section, bounding box, edges), widget fan-out
-(scene bounds, actor count), picking, and render/flush.
+(scene bounds, actor count), picking, and render.
 
 """
 
@@ -322,35 +322,11 @@ class IRenderer(ABC):
         """
 
     # ------------------------------------------------------------------------
-    # Render / flush
+    # Render
     # ------------------------------------------------------------------------
 
     @abstractmethod
     def render(self) -> None:
         """Trigger a render and flush to the frontend."""
 
-    @abstractmethod
-    def render_window_only(self) -> None:
-        """Render the VTK window without flushing to the frontend."""
-
-    def flush_wasm_state(self) -> None:
-        """
-        Serialise current Python VTK object state and push it to the wasm
-        client without triggering a VTK pipeline re-render.
-
-        No-op default for non-wasm renderers. The local (wasm) renderer
-        overrides this to call ``local_view.update()``.
-        """
-
-    # ------------------------------------------------------------------------
-    # Frontend addressing
-    # ------------------------------------------------------------------------
-
-    @property
-    @abstractmethod
-    def frontend_ref_name(self) -> str:
-        """Name by which the frontend view is addressed in ``server.js_call``.
-
-        Empty string for renderers with no frontend view.
-        """
 
