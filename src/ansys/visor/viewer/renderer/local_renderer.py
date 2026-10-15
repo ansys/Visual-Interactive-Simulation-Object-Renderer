@@ -687,7 +687,7 @@ class VisorLocalRenderer(IRenderer):
         return {"found": False}
 
     # ------------------------------------------------------------------
-    # IRenderer: render / flush
+    # IRenderer: render
     # ------------------------------------------------------------------
 
     def render(self) -> None:
@@ -699,25 +699,21 @@ class VisorLocalRenderer(IRenderer):
             self._local_view.update()
         timer.log()
 
+    # ------------------------------------------------------------------
+    # Local-only: window render, wasm flush, frontend addressing
+    # ------------------------------------------------------------------
+
     def render_window_only(self) -> None:
-        """See :meth:`IRenderer.render_window_only`."""
+        """Render the VTK window without flushing to the frontend."""
         self._render_window.Render()
 
     def flush_wasm_state(self) -> None:
-        """See :meth:`IRenderer.flush_wasm_state`.
-
-        Local (wasm) backend override: pushes current Python VTK object
-        state to the wasm client via ``LocalView.update()``.
-        """
+        """Push current VTK object state to the wasm client via ``LocalView.update()`` without re-rendering."""
         self._local_view.update()
-
-    # ------------------------------------------------------------------
-    # IRenderer: frontend addressing
-    # ------------------------------------------------------------------
 
     @property
     def frontend_ref_name(self) -> str:
-        """See :meth:`IRenderer.frontend_ref_name`."""
+        """Name by which the LocalView is addressed in ``server.js_call``."""
         return self._local_view.ref_name
 
     # ------------------------------------------------------------------
