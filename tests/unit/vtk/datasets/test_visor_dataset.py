@@ -68,7 +68,7 @@ def dataset_factory(mock_data_object):
             "ansys.visor.viewer.vtk.datasets.visor_dataset.is_composite_dataset",
             return_value=is_composite,
         )
-        is_comp_ctx = is_comp_patch.start()
+        is_comp_patch.start()
 
         # Patch `VisorVariables` to return provided or mocked instance
         if variables_instance is None and not is_composite:
@@ -77,7 +77,7 @@ def dataset_factory(mock_data_object):
             "ansys.visor.viewer.vtk.datasets.visor_dataset.VisorVariables",
             return_value=variables_instance,
         )
-        tv_ctx = tv_patch.start()
+        tv_patch.start()
 
         # Patch PartIndex so it doesn't try to traverse the mock VTK object
         mock_part_index = MagicMock()
@@ -89,7 +89,7 @@ def dataset_factory(mock_data_object):
             "ansys.visor.viewer.vtk.datasets.visor_dataset.PartIndex",
             return_value=mock_part_index,
         )
-        pi_ctx = pi_patch.start()
+        pi_patch.start()
 
         # Create mock metadata with required structure
         mock_metadata = MagicMock()
@@ -193,7 +193,7 @@ def test_update_variables_on_composite_broadcast_applies_to_all_matching_parts(d
         "ansys.visor.viewer.vtk.datasets.visor_dataset.is_composite_dataset",
         return_value=True,
     )
-    is_comp_ctx = is_comp_patch.start()
+    is_comp_patch.start()
 
     part_id_0, part_id_1 = 111, 222
     mock_part_index = MagicMock()
@@ -206,7 +206,7 @@ def test_update_variables_on_composite_broadcast_applies_to_all_matching_parts(d
         "ansys.visor.viewer.vtk.datasets.visor_dataset.PartIndex",
         return_value=mock_part_index,
     )
-    pi_ctx = pi_patch.start()
+    pi_patch.start()
 
     call_count = [0]
     def fake_variables_factory(*args, **kwargs):
@@ -216,7 +216,7 @@ def test_update_variables_on_composite_broadcast_applies_to_all_matching_parts(d
         "ansys.visor.viewer.vtk.datasets.visor_dataset.VisorVariables",
         side_effect=fake_variables_factory,
     )
-    tv_ctx = tv_patch.start()
+    tv_patch.start()
 
     mock_metadata = MagicMock()
     mock_metadata.unit = "mm"
@@ -254,7 +254,7 @@ def test_update_variables_on_composite_broadcast_skips_non_matching_parts(datase
         "ansys.visor.viewer.vtk.datasets.visor_dataset.is_composite_dataset",
         return_value=True,
     )
-    is_comp_ctx = is_comp_patch.start()
+    is_comp_patch.start()
 
     part_id_ok, part_id_bad = 111, 222
     mock_part_index = MagicMock()
@@ -267,7 +267,7 @@ def test_update_variables_on_composite_broadcast_skips_non_matching_parts(datase
         "ansys.visor.viewer.vtk.datasets.visor_dataset.PartIndex",
         return_value=mock_part_index,
     )
-    pi_ctx = pi_patch.start()
+    pi_patch.start()
 
     call_count = [0]
     def fake_variables_factory(*args, **kwargs):
@@ -277,7 +277,7 @@ def test_update_variables_on_composite_broadcast_skips_non_matching_parts(datase
         "ansys.visor.viewer.vtk.datasets.visor_dataset.VisorVariables",
         side_effect=fake_variables_factory,
     )
-    tv_ctx = tv_patch.start()
+    tv_patch.start()
 
     mock_metadata = MagicMock()
     mock_metadata.unit = "mm"
@@ -398,7 +398,7 @@ def dataset_with_variables(mock_data_object):
         "ansys.visor.viewer.vtk.datasets.visor_dataset.is_composite_dataset",
         return_value=False,
     )
-    is_comp_ctx = is_comp_patch.start()
+    is_comp_patch.start()
 
     # Provide a VisorVariables mock
     variables = MagicMock()
@@ -406,7 +406,7 @@ def dataset_with_variables(mock_data_object):
         "ansys.visor.viewer.vtk.datasets.visor_dataset.VisorVariables",
         return_value=variables,
     )
-    tv_ctx = tv_patch.start()
+    tv_patch.start()
 
     # Patch PartIndex so it doesn't traverse the mock VTK object
     mock_part_index = MagicMock()
@@ -418,7 +418,7 @@ def dataset_with_variables(mock_data_object):
         "ansys.visor.viewer.vtk.datasets.visor_dataset.PartIndex",
         return_value=mock_part_index,
     )
-    pi_ctx = pi_patch.start()
+    pi_patch.start()
 
     # Create mock metadata
     mock_metadata = MagicMock()
