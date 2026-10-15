@@ -1,5 +1,4 @@
 import {
-    AppliedCameraState,
     CameraOrigin,
     ColorVariableDescriptor,
     GeometryPickMode,
@@ -14,7 +13,6 @@ import { WasmNodeHandles, WasmRendererAnnotation } from './RendererAnnotation';
 import { CrossSectionWidget } from '../widgets/crossSectionWidget.ts';
 import { BoundingBoxWidget } from '../widgets/boundingBoxWidget.ts';
 import { OrthographicWidget } from '../widgets/orthographicWidget.ts';
-import { FullscreenWidget } from '../widgets/fullscreenWidget.ts';
 import { EdgesWidget } from '../widgets/edgesWidget.ts';
 
 const SELECTION_TINT_RGB: Readonly<number[]> = [0 / 255, 62 / 255, 111 / 255];
@@ -54,7 +52,6 @@ export class WasmRenderer implements IRenderer {
             widgetWasmId: wasmPlaneWidgetId,
         });
         this.#orthographicWidget = new OrthographicWidget(vtkScene);
-        this.#fullscreenWidget = new FullscreenWidget();
         this.#boundingBoxWidget = new BoundingBoxWidget(vtkScene, {
             outlineActorId: annotation.widgets.boundingBoxOutlineActorId,
             axesActorId: annotation.widgets.boundingBoxAxesActorId,
@@ -151,7 +148,6 @@ export class WasmRenderer implements IRenderer {
     readonly #nodeIdToHandles = new Map<NodeId, WasmNodeHandles>();
     readonly #crossSectionWidget: CrossSectionWidget;
     readonly #orthographicWidget: OrthographicWidget;
-    readonly #fullscreenWidget: FullscreenWidget;
     readonly #boundingBoxWidget: BoundingBoxWidget;
     readonly #edgesWidget: EdgesWidget;
 
@@ -220,26 +216,6 @@ export class WasmRenderer implements IRenderer {
 
     async setCameraParallelScaleAsync(scale: number): Promise<void> {
         await this.#vtkScene.camera.setParallelScale(scale);
-    }
-
-    async setCameraStateAsync(state: AppliedCameraState): Promise<void> {
-        // Sequential, not Promise.all, to preserve the observable ordering of
-        // camera events any FPS/camera-changed listener sees (§11).
-        await this.setCameraPositionAsync(state.position);
-        await this.setCameraFocalPointAsync(state.focalPoint);
-        await this.setCameraViewUpAsync(state.viewUp);
-        await this.setCameraClippingRangeAsync(state.clippingRange);
-        await this.setCameraParallelProjectionAsync(state.parallelProjection);
-        await this.setCameraViewAngleAsync(state.viewAngle);
-        await this.setCameraParallelScaleAsync(state.parallelScale);
-    }
-
-    async resetCameraAsync(bounds?: readonly number[]): Promise<void> {
-        if (bounds != null) {
-            await this.#vtkScene.renderer.ResetCamera(bounds);
-        } else {
-            await this.#vtkScene.renderer.ResetCamera();
-        }
     }
 
     // ---- Subscriptions ----------------------------------------------------
@@ -607,10 +583,6 @@ export class WasmRenderer implements IRenderer {
 
     async applyEdgeVisibilityGlobalAsync(visible: boolean): Promise<void> {
         await this.#edgesWidget.setEdgesVisibleAsync(visible);
-    }
-
-    async toggleFullScreenAsync(): Promise<void> {
-        await this.#fullscreenWidget.setFullScreenAsync();
     }
 
     // ---- Picking ------------------------------------------------------------

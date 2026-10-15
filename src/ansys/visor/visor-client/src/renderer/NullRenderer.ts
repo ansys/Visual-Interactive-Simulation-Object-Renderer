@@ -1,5 +1,4 @@
 import {
-    AppliedCameraState,
     CameraOrigin,
     ColorVariableDescriptor,
     GeometryPickMode,
@@ -25,9 +24,7 @@ const NULL_CAMERA_STATE: VisorCameraState = {
 };
 
 /**
- * No-op implementation of IRenderer. Used to confirm the interface is
- * buildable and to serve as a placeholder renderer until a concrete one is
- * wired in. Nothing imports this yet.
+ * No-op renderer for tests that need an `IRenderer` with no wasm behind it.
  */
 export class NullRenderer implements IRenderer {
     readonly domElement: HTMLDivElement = document.createElement('div');
@@ -73,14 +70,6 @@ export class NullRenderer implements IRenderer {
     }
 
     async setCameraParallelScaleAsync(_scale: number): Promise<void> {
-        // no-op
-    }
-
-    async setCameraStateAsync(_state: AppliedCameraState): Promise<void> {
-        // no-op
-    }
-
-    async resetCameraAsync(_bounds?: readonly number[]): Promise<void> {
         // no-op
     }
 
@@ -261,10 +250,6 @@ export class NullRenderer implements IRenderer {
     }
 
     async applyEdgeVisibilityGlobalAsync(_visible: boolean): Promise<void> {
-        // no-op
-    }
-
-    async toggleFullScreenAsync(): Promise<void> {
         // no-op
     }
 
