@@ -62,7 +62,7 @@ export const Panel_BottomMiddle: FC<{
             await visorState.render();
         };
         wireFrameCell.onclick = async () => {
-            await visorState.setEdgeVisibilityAsync();
+            await visorState.setEdgeVisibilityGlobalAsync();
             await visorState.render();
         };
         getFullScreenCell.onclick = async () => {
