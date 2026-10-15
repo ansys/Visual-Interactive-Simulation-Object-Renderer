@@ -24,22 +24,22 @@ export const Panel_TopLeft: FC<{
         const treeViewContainer = document.getElementById(treeViewContainerId) as HTMLDivElement;
         treeViewUtil.current.addSelectionChangeListener((selectedNodes) => {
             (async () => {
+                // One call per part with its target value; a part whose value
+                // is unchanged sends nothing.
+                const selected = new Set(selectedNodes);
                 for (const node of visorState.sceneGraph.descendantActorNodesOrSelfArray) {
-                    await node.setSelectedAsync(false);
-                }
-                for (const node of selectedNodes) {
-                    await node.setSelectedAsync(true);
+                    await node.setSelectedAsync(selected.has(node));
                 }
                 await visorState.render();
             })();
         });
         treeViewUtil.current.addVisibilityChangeListener((visibleNodes) => {
             (async () => {
+                // One call per part with its target value; a part whose value
+                // is unchanged sends nothing.
+                const visible = new Set(visibleNodes);
                 for (const node of visorState.sceneGraph.descendantActorNodesOrSelfArray) {
-                    await node.setVisibilityAsync(false);
-                }
-                for (const node of visibleNodes) {
-                    await node.setVisibilityAsync(true);
+                    await node.setVisibilityAsync(visible.has(node));
                 }
                 // await visorState.updateBoundingBoxBoundsAsync();
                 await visorState.render();
