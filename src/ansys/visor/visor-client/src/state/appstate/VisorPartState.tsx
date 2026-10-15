@@ -9,6 +9,9 @@ import {
     StateInput,
 } from './VisorStateCommon.tsx';
 
+/** A delivered part's colour-variable reference. */
+export type ColorVariableReference = Readonly<{ variableId: string; variableComponent: number }>;
+
 export default class VisorPartState {
     private _id: string = '';
     private _keyedByName: boolean = false;
@@ -153,6 +156,11 @@ export default class VisorPartState {
         }
     }
 
+    /** The part's colour-variable reference: absent, null, or the reference. */
+    get colorVariable(): ColorVariableReference | null | undefined {
+        return VisorPartState.colorVariableOf(this._variableId, this._variableComponent);
+    }
+
     copy(
         state: StateInput<VisorPartState> = null,
         replace = false,
@@ -261,7 +269,7 @@ export default class VisorPartState {
     static colorVariableOf(
         variableId: string | null | undefined,
         variableComponent: number | undefined
-    ): JsonDict | null | undefined {
+    ): ColorVariableReference | null | undefined {
         if (variableId === null) {
             return null;
         }

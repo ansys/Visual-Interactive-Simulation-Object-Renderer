@@ -390,7 +390,7 @@ export class VisorFrontend {
                     panelTopRight.selectTab(uiState.panelTopRightTabIndex);
                 }
             })();
-            const promises: Promise<void>[] = [];
+            const promises: Promise<unknown>[] = [];
             const sceneState = appState.scene;
             if (sceneState.unit !== undefined) {
                 const unit = (this.#unit = sceneState.unit);
@@ -403,17 +403,17 @@ export class VisorFrontend {
             // projection's sole writer is the camera write below. See
             // AppStateProjectionLoad.test.ts for why.
             if (sceneState.crossSectionEnabled !== undefined) {
-                const promise = renderer.setCrossSectionVisibilityAsync(
+                const promise = renderer.applyCrossSectionVisibilityAsync(
                     sceneState.crossSectionEnabled
                 );
                 promises.push(promise);
             }
             if (sceneState.edgesEnabled !== undefined) {
-                const promise = renderer.setEdgeVisibilityGlobalAsync(sceneState.edgesEnabled);
+                const promise = renderer.applyEdgeVisibilityGlobalAsync(sceneState.edgesEnabled);
                 promises.push(promise);
             }
             if (sceneState.boundingBoxEnabled !== undefined) {
-                const promise = renderer.setBoundingBoxVisibilityAsync(
+                const promise = renderer.applyBoundingBoxVisibilityAsync(
                     sceneState.boundingBoxEnabled
                 );
                 promises.push(promise);
@@ -436,9 +436,9 @@ export class VisorFrontend {
                 promises.push(promise);
             }
             if (cameraState.parallelProjection !== undefined) {
-                // Routed through setOrthographicModeAsync, not setCameraParallelProjectionAsync: only
+                // Routed through applyOrthographicModeAsync, not setCameraParallelProjectionAsync: only
                 // the former also sets the widget flag, so the latter would leave it stale for the next save.
-                const promise = renderer.setOrthographicModeAsync(cameraState.parallelProjection);
+                const promise = renderer.applyOrthographicModeAsync(cameraState.parallelProjection);
                 promises.push(promise);
             }
             if (cameraState.viewAngle !== undefined) {
@@ -484,11 +484,11 @@ export class VisorFrontend {
                         // write this actor's ambient/diffuse properties with
                         // different values, so they must be sequenced for this
                         // node rather than raced as independent promises.
-                        let partPromise: Promise<void> = Promise.resolve();
+                        let partPromise: Promise<unknown> = Promise.resolve();
                         if (part_state.diffuseRgb !== undefined) {
                             const [r, g, b] = part_state.diffuseRgb;
                             partPromise = partPromise.then(() =>
-                                partNode.setDiffuseColorRgbAsync(r, g, b)
+                                partNode.applyDiffuseColorRgbAsync(r, g, b)
                             );
                         }
                         // `selected` is applied to the node, like every other
@@ -497,30 +497,22 @@ export class VisorFrontend {
                         if (part_state.selected !== undefined) {
                             const selected = part_state.selected;
                             partPromise = partPromise.then(() =>
-                                partNode.setSelectedAsync(selected)
+                                partNode.applySelectedAsync(selected)
                             );
                         }
                         promises.push(partPromise);
                         if (part_state.opacity !== undefined) {
-                            const promise = node.setOpacityAsync(part_state.opacity);
+                            const promise = node.applyOpacityAsync(part_state.opacity);
                             promises.push(promise);
                         }
                         if (part_state.visible !== undefined) {
-                            const promise = node.setVisibilityAsync(part_state.visible);
+                            const promise = node.applyVisibilityAsync(part_state.visible);
                             promises.push(promise);
                         }
-                        // A null reference is delivered without a component.
-                        if (part_state.variableId !== undefined) {
-                            let promise;
-                            if (part_state.variableId !== null) {
-                                promise = node.setColorVariableAsync(
-                                    part_state.variableId,
-                                    part_state.variableComponent
-                                );
-                            } else {
-                                promise = node.clearColorVariableAsync();
-                            }
-                            promises.push(promise);
+                        // A null reference clears the colouring; an absent one leaves it.
+                        const colorVariable = part_state.colorVariable;
+                        if (colorVariable !== undefined) {
+                            promises.push(node.applyColorVariableAsync(colorVariable));
                         }
                     }
                 }
