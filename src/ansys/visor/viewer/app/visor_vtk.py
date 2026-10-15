@@ -18,7 +18,6 @@ from ansys.visor.viewer.core.visor_logging import VisorDefaultLogger
 from ansys.visor.viewer.core.visor_types import VisorDatasetType
 from ansys.visor.viewer.models.persist.persisted_viewer_state import PersistedViewerStateV1
 from ansys.visor.viewer.vtk.io.visor_file_io import VisorFileIO
-from ansys.visor.viewer.vtk.scene.local_scene import VisorLocalScene
 from ansys.visor.viewer.vtk.variables.visor_part_variables import VisorPartVariables
 from ansys.visor.viewer.vtk.variables.visor_variable_update import VisorVariableUpdate
 
@@ -493,9 +492,6 @@ class VisorVTK(Visor):
             self._port,
             trame_log_dir,
         )
-
-    def _initialize_scene(self) -> VisorLocalScene:
-        return VisorLocalScene(self.server, dark_mode=self._dark_mode)
 
     def _prepare_and_render_scene(
             self,

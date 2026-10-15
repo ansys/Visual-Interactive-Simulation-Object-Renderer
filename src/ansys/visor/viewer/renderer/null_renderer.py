@@ -26,6 +26,7 @@ from ansys.visor.viewer.renderer.base import IRenderer
 if TYPE_CHECKING:
     from vtkmodules.vtkCommonDataModel import vtkDataObject
 
+    from ansys.visor.viewer.core.visor_enums import VisorVtkVariableType
     from ansys.visor.viewer.models.common.visor_camera_state import VisorCameraState
     from ansys.visor.viewer.vtk.scene_graph import VisorSceneGraphPartNode
 
@@ -89,8 +90,7 @@ class NullRenderer(IRenderer):
     def apply_color_variable(
         self,
         node_id: int,
-        variable_id: str,
-        array_type: str,
+        array_type: "VisorVtkVariableType",
         array_name: str,
         component: int,
         min_val: float,
@@ -99,16 +99,6 @@ class NullRenderer(IRenderer):
         pass
 
     def clear_color_variable(self, node_id: int) -> None:
-        pass
-
-    def refresh_color_variable_range(
-        self,
-        node_id: int,
-        variable_id: str,
-        array_type: str,
-        array_name: str,
-        component: int,
-    ) -> None:
         pass
 
     # ------------------------------------------------------------------

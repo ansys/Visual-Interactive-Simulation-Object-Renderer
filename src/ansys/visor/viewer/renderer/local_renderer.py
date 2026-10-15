@@ -43,6 +43,7 @@ from ansys.visor.viewer.vtk.widgets.visor_cross_section import VisorCrossSection
 from ansys.visor.viewer.vtk.widgets.visor_orientation import VisorOrientationWidget
 
 if TYPE_CHECKING:
+    from ansys.visor.viewer.core.visor_enums import VisorVtkVariableType
     from ansys.visor.viewer.vtk.scene_graph import VisorSceneGraphPartNode
 
 logger = VisorDefaultLogger(__name__)
@@ -82,9 +83,8 @@ class VisorLocalRenderer(IRenderer):
         self._cross_section_widget = self._initialize_cross_section_widget()
         self._bounding_box_widget = self._initialize_bounding_box_widget()
 
-        # Wasm state seeding -- moved verbatim from
-        # ``VisorScene._initialize_vtk_pipeline`` so the client-visible
-        # payload is byte-identical to main.
+        # Wasm state seeding: the ids and names the client reads to bind to
+        # this render window, renderer, interactor and picker.
         self._server.state["wasm_ids"] = {
             "renderWindowId": self._local_view.get_wasm_id(self._render_window),
             "rendererId": self._local_view.get_wasm_id(self._vtk_renderer),
@@ -102,10 +102,9 @@ class VisorLocalRenderer(IRenderer):
     def build_renderer_annotation(self) -> WasmRendererAnnotation:
         """See :meth:`IRenderer.build_renderer_annotation`.
 
-        Per-node handles are stamped from the same ``object_manager.GetId``
-        call that :class:`SceneGraphStateBuilder` uses today to stamp
-        ``SceneGraphNodeInfo.wasm_actor_id`` etc. (the R2 accommodation
-        invariant) -- not a re-keyed or re-indexed id space.
+        Per-node handles are stamped with ``object_manager.GetId`` on the
+        registered pipeline's own objects -- not a re-keyed or re-indexed id
+        space.
         """
         get_id = self._object_manager.GetId
         nodes = {
@@ -250,8 +249,7 @@ class VisorLocalRenderer(IRenderer):
     def apply_color_variable(
         self,
         node_id: int,
-        variable_id: str,
-        array_type: str,
+        array_type: "VisorVtkVariableType",
         array_name: str,
         component: int,
         min_val: float,
@@ -263,9 +261,7 @@ class VisorLocalRenderer(IRenderer):
         :meth:`VtkNodePipeline.set_color_variable`.  *array_type* must
         already be a :class:`VisorVtkVariableType`; it is parsed at the
         trigger boundary, never here, and the pipeline compares it by
-        identity, so any other value is a logged no-op there.
-        *variable_id* is not forwarded -- it is stored opaquely by the
-        registry and is not needed to configure the mapper.  An unknown
+        identity, so any other value is a logged no-op there.  An unknown
         *node_id* is a logged no-op, never a raise.
 
         Ends with :meth:`_serialize_part_state`, after the mapper write, so
@@ -479,7 +475,7 @@ class VisorLocalRenderer(IRenderer):
             self._serialize_vtk_object(pipe.actor.GetProperty())
 
     def set_cross_section_visibility(self, visible: bool) -> None:
-        """No-op in Story 1.2. Phase 3 populates."""
+        """No-op: the widget's enablement is driven client-side."""
 
     def sync_cross_section_plane(
         self, origin: list[float], normal: list[float]
@@ -532,10 +528,10 @@ class VisorLocalRenderer(IRenderer):
         )
 
     def set_bounding_box_visibility(self, visible: bool) -> None:
-        """No-op in Story 1.2. Phase 3 populates."""
+        """No-op: the widget's enablement is driven client-side."""
 
     # ------------------------------------------------------------------
-    # IRenderer: widget fan-out (called by coordinator today)
+    # IRenderer: widget fan-out
     # ------------------------------------------------------------------
 
     def update_bounds(self, bounds: list[float]) -> None:
@@ -591,8 +587,8 @@ class VisorLocalRenderer(IRenderer):
     ) -> dict:
         """See :meth:`IRenderer.pick_geometry`.
 
-        Body moved verbatim from ``VisorScene.pick_geometry``; only the
-        world-position packing changes (tuple in, three scalars out).
+        The actor is found by matching each renderer actor's object-manager
+        id against *actor_wasm_id*.
         """
         import math
 
@@ -725,7 +721,7 @@ class VisorLocalRenderer(IRenderer):
         return self._local_view.ref_name
 
     # ------------------------------------------------------------------
-    # Internal init helpers (moved verbatim from VisorScene)
+    # Internal init helpers
     # ------------------------------------------------------------------
 
     def _initialize_vtk_renderer(self) -> vtkRenderer:
