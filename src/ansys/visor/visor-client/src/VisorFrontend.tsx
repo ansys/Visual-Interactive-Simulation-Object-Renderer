@@ -14,6 +14,7 @@ import { attachCameraSyncReporter } from './CameraSyncReporter';
 import { Panel_TopRight_Util } from './components/ui-panels/Panel_TopRight_Util.tsx';
 import { Panel_TopLeft_Util } from './components/ui-panels/Panel_TopLeft_Util.tsx';
 import { OrientationWidget } from './widgets/orientationWidget.ts';
+import { FullscreenWidget } from './widgets/fullscreenWidget.ts';
 import { UiScaffoldUtil } from './components/UiScaffold.tsx';
 
 export type { VisorCameraState } from './renderer/IRenderer';
@@ -255,8 +256,10 @@ export class VisorFrontend {
             sendUiPanelTriggerAsync('set_panel_top_right_legend_collapsed', { collapsed });
         this.sendPanelTopRightTabIndexAsync = (tabIndex) =>
             sendUiPanelTriggerAsync('set_panel_top_right_tab_index', { tabIndex });
-        this.toggleFullScreenAsync = () => renderer.toggleFullScreenAsync();
-        this.setEdgeVisibilityAsync = (visible) => renderer.setEdgeVisibilityGlobalAsync(visible);
+        const fullscreenWidget = new FullscreenWidget();
+        this.toggleFullScreenAsync = () => fullscreenWidget.setFullScreenAsync();
+        this.setEdgeVisibilityGlobalAsync = (visible) =>
+            renderer.setEdgeVisibilityGlobalAsync(visible);
         this.setCrossSectionVisibilityAsync = (visible) =>
             renderer.setCrossSectionVisibilityAsync(visible);
         this.setBoundingBoxVisibilityAsync = (visible) =>
@@ -578,7 +581,8 @@ export class VisorFrontend {
     addFrameRenderedListener: (handler: (fps: number) => void) => () => void;
     setCrossSectionVisibilityAsync: (visible?: boolean) => Promise<void>;
     setBoundingBoxVisibilityAsync: (visible?: boolean) => Promise<void>;
-    setEdgeVisibilityAsync: (visible?: boolean | undefined) => Promise<void>;
+    /** Show, hide or toggle edges on every part. */
+    setEdgeVisibilityGlobalAsync: (visible?: boolean | undefined) => Promise<void>;
     setOrthographicModeAsync: (enable?: boolean) => Promise<void>;
     getAppStateAsync: (keyedByName?: boolean) => Promise<VisorAppState>;
     setAppStateAsync: (state?: StateInput<VisorAppState>, updateUI?: boolean) => Promise<void>;

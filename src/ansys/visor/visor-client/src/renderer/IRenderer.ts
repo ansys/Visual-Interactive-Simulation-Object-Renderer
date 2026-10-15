@@ -23,17 +23,6 @@ export type VisorCameraState = Readonly<{
     parallelScale: number;
 }>;
 
-/** The seven camera fields that can be applied. No derived fields. */
-export type AppliedCameraState = Readonly<{
-    position: readonly number[];
-    focalPoint: readonly number[];
-    viewUp: readonly number[];
-    clippingRange: readonly number[];
-    parallelProjection: boolean;
-    viewAngle: number;
-    parallelScale: number;
-}>;
-
 /**
  * Where a settled camera change came from: `gesture` if user input was
  * active during the change, `programmatic` otherwise.
@@ -104,14 +93,6 @@ export interface IRenderer {
     setCameraParallelProjectionAsync(enabled: boolean): Promise<void>;
     setCameraViewAngleAsync(angle: number): Promise<void>;
     setCameraParallelScaleAsync(scale: number): Promise<void>;
-    /**
-     * Apply the seven applied camera fields in one RPC. WasmRenderer implements it
-     * by delegating to the seven per-field setters above. See §11 for the
-     * Story 3.2 rationale (server-tracked camera + sync-back).
-     */
-    setCameraStateAsync(state: AppliedCameraState): Promise<void>;
-    /** Frame the scene on the given bounds; used by scene-graph rebuilds. */
-    resetCameraAsync(bounds?: readonly number[]): Promise<void>;
 
     // ---- Subscriptions (return unsubscribe closures) ------------------------
     /** Fires whenever the camera changes. Callback receives a full snapshot. */
@@ -242,8 +223,6 @@ export interface IRenderer {
     applyEdgeVisibilityGlobalAsync(visible: boolean): Promise<void>;
     /** Whether edges are shown on every part in the scene. See contract note above. */
     areEdgesVisibleGlobally(): boolean;
-
-    toggleFullScreenAsync(): Promise<void>;
 
     // ---- Picking (geometry pick — the vertex/edge/face path) ---------------
     /**
