@@ -1,4 +1,4 @@
-import { render, fireEvent, act } from '@testing-library/react';
+import { render, fireEvent, act, within } from '@testing-library/react';
 import { VisorFrontend } from '../VisorFrontend';
 import { Panel_TopLeft } from '../components/ui-panels/Panel_TopLeft';
 import { Panel_TopRight } from '../components/ui-panels/Panel_TopRight';
@@ -11,10 +11,9 @@ import { deliveredPart, deliveredScene } from './deliveredSceneFixture.ts';
 
 /**
  * The client half of server-owned UI panel state: the four `VisorFrontend`
- * send methods, and the per-panel mount gate that keeps a freshly mounted
- * panel silent.
+ * send methods, and which panel writes send.
  *
- * Two subjects, and they fail differently.
+ * Three subjects, and they fail differently.
  *
  *   1. Each send method puts its own trigger name and the value it was given
  *      on the wire. A name mismatched by one character between the two stacks
@@ -22,27 +21,28 @@ import { deliveredPart, deliveredScene } from './deliveredSceneFixture.ts';
  *      name strings are pinned here as hand-written literals -- as is every
  *      expected payload.
  *
- *   2. Every rebuild remounts every panel, and each mount runs
- *      `expandButton.click()` (both panels, twice in the top-right) and
- *      `propertyTabElem.onclick(null!)`. Those writes run *before* the util is
- *      registered. Were the gate open there, every refresh and every rebuild
- *      would report the client's mount defaults over the record the server
- *      just delivered, and a save in that window would record them -- correct
+ *   2. Only a user click sends. Every rebuild remounts every panel, and each
+ *      mount initializes its controls through the panel's apply methods; a
+ *      delivery through `setAppStateAsync` applies through the same methods.
+ *      Were either to send, every refresh and every rebuild would report the
+ *      client's mount defaults, or echo back the record the server just
+ *      delivered, and a save in that window would record them -- correct
  *      under every other test, and wrong in the running application only.
- *      Tests 5 and 6 pin the gate closed at mount for each panel separately,
- *      because the two gate differently: the top-left gate is purely
- *      synchronous, the top-right gate spans two awaits.
+ *      The mount tests and the delivery test pin that silence, the mount
+ *      tests per panel because the top-left mount is synchronous and the
+ *      top-right mount spans two awaits.
  *
- * Tests 5 and 6 cannot see a gate that never opens -- a panel that reports
- * nothing at mount and nothing afterwards passes both. Test 7 is that pin,
- * on the top-right panel, whose gate is the one behind the awaits.
+ *   3. A panel that sends nothing at all passes every test in 2. The click
+ *      tests are that pin, one per control: a user click sends its trigger
+ *      exactly once.
  *
- * Test 8 is a third subject and not a send at all: the top-right panel
- * initializes its properties panel from the tree view's current selection,
- * rather than from an empty list. A selection delivered before the panel
- * mounts reaches the rows and the mesh through `TreeViewUtil.synchronize()`,
- * which runs no selection-change listener, so an empty-list initialization
- * leaves the properties panel blank until the user clicks a part.
+ * The last test is a separate subject and not a send at all: the top-right
+ * panel initializes its properties panel from the tree view's current
+ * selection, rather than from an empty list. A selection delivered before the
+ * panel mounts reaches the rows and the mesh through
+ * `TreeViewUtil.synchronize()`, which runs no selection-change listener, so an
+ * empty-list initialization leaves the properties panel blank until the user
+ * clicks a part.
  *
  * jsdom has no `ResizeObserver` and jest here runs with no `setupFiles`
  * (`jest.config.cjs`), so the stub below is this module's own.
@@ -81,8 +81,9 @@ function makeSceneGraphNode() {
 }
 
 /**
- * Every renderer member `VisorFrontend`'s constructor reaches. The sends are
- * the subject; these are here so construction completes.
+ * Every renderer member `VisorFrontend`'s constructor, `setAppStateAsync` and
+ * the two mounted panels reach. The sends are the subject; these are here so
+ * construction and delivery complete.
  */
 function makeRendererDouble() {
     return {
@@ -90,6 +91,8 @@ function makeRendererDouble() {
         domElement: document.createElement('div'),
         addCameraSettledListener: jest.fn(() => jest.fn()),
         addViewerClickedListener: jest.fn(() => jest.fn()),
+        renderAsync: jest.fn(async () => undefined),
+        resizeAsync: jest.fn(async () => undefined),
     };
 }
 
@@ -129,7 +132,7 @@ function makeSendDoubles() {
  * A real scene graph, which `Panel_TopLeft` hands to its `TreeView`.
  *
  * The renderer is optional and defaults to absent, which is what the two
- * mount-gate tests want: they never reach a node method. A test whose selection
+ * mount tests want: they never reach a node method. A test whose selection
  * is non-empty does reach one -- the properties panel clears the colour
  * variable on a part with no data arrays -- and supplies the double below.
  */
@@ -179,7 +182,7 @@ function makeNodeRendererDouble(): IRenderer {
 /**
  * A `VisorFrontend` stand-in carrying only what `Panel_TopLeft`'s effect
  * reaches, plus a promise that settles when the panel hands over its util --
- * which is the moment the gate is expected to open.
+ * which is the moment its mount has finished.
  */
 function makeTopLeftFrontendDouble() {
     const sends = makeSendDoubles();
@@ -203,7 +206,7 @@ function makeTopLeftFrontendDouble() {
  *
  * `selectedNodes` is what the tree view util holds when the panel's effect
  * reaches it. It defaults to empty -- the state a tree with nothing selected is
- * in -- so the two mount-gate tests below are unaffected by its presence.
+ * in -- so the two mount tests below are unaffected by its presence.
  */
 function makeTopRightFrontendDouble(selectedNodes: VisorSceneNodeExtended[] = []) {
     const sends = makeSendDoubles();
@@ -277,7 +280,7 @@ describe('VisorFrontend UI panel send surface', () => {
     });
 });
 
-describe('the panel mount gate', () => {
+describe('panel mount', () => {
     test('Panel_TopLeft sends nothing while mounting', async () => {
         const { visorState, sends, utilRegistered } = makeTopLeftFrontendDouble();
 
@@ -291,8 +294,8 @@ describe('the panel mount gate', () => {
         });
         await utilRegistered;
 
-        // The mount click has run and the util has been handed over, so the
-        // gate is open now -- and nothing was reported on the way there.
+        // Mount has applied its default and handed over the util, and
+        // reported nothing on the way there.
         expect(visorState.setPanelTopLeftUtil).toHaveBeenCalledTimes(1);
         expect(sends.sendPanelTopLeftPanelCollapsedAsync).not.toHaveBeenCalled();
     });
@@ -310,12 +313,37 @@ describe('the panel mount gate', () => {
         });
         await utilRegistered;
 
-        // Three mount writes here, not one: both blocks' expand clicks and the
-        // tab call, all before the registration this has now awaited.
+        // Three mount writes here, not one: the panel, the legend and the
+        // tab, all before the registration this has now awaited.
         expect(visorState.setPanelTopRightUtil).toHaveBeenCalledTimes(1);
         expect(sends.sendPanelTopRightPanelCollapsedAsync).not.toHaveBeenCalled();
         expect(sends.sendPanelTopRightLegendCollapsedAsync).not.toHaveBeenCalled();
         expect(sends.sendPanelTopRightTabIndexAsync).not.toHaveBeenCalled();
+    });
+});
+
+describe('a user click', () => {
+    test('a click on the Panel_TopLeft collapse button sends exactly once', async () => {
+        const { visorState, sends, utilRegistered } = makeTopLeftFrontendDouble();
+        const { container } = render(
+            <Panel_TopLeft visorState={visorState as unknown as VisorFrontend} onLoad={() => {}} />
+        );
+        await act(async () => {
+            await utilRegistered;
+        });
+
+        // Located by its heading: the ids in this component are
+        // `randomId()`-generated, and the button sits in the cell after
+        // "Objects".
+        const collapseButton = within(container)
+            .getByText('Objects', { selector: 'td' })
+            .nextElementSibling!.querySelector('button') as HTMLButtonElement;
+        expect(collapseButton).not.toBeNull();
+
+        fireEvent.click(collapseButton);
+
+        expect(sends.sendPanelTopLeftPanelCollapsedAsync).toHaveBeenCalledTimes(1);
+        expect(sends.sendPanelTopLeftPanelCollapsedAsync).toHaveBeenCalledWith(true);
     });
 
     test('a click on a Panel_TopRight control after its util is registered sends exactly once', async () => {
@@ -340,6 +368,82 @@ describe('the panel mount gate', () => {
 
         expect(sends.sendPanelTopRightPanelCollapsedAsync).toHaveBeenCalledTimes(1);
         expect(sends.sendPanelTopRightPanelCollapsedAsync).toHaveBeenCalledWith(true);
+    });
+
+    test('a click on the Panel_TopRight legend collapse button sends exactly once', async () => {
+        const { visorState, sends, utilRegistered } = makeTopRightFrontendDouble();
+        const { container } = render(
+            <Panel_TopRight visorState={visorState as unknown as VisorFrontend} onLoad={() => {}} />
+        );
+        await act(async () => {
+            await utilRegistered;
+        });
+
+        // Located by its heading: the button sits in the cell after the
+        // overlay's "Legend" cell.
+        const collapseButton = within(container)
+            .getByText('Legend', { selector: 'td' })
+            .nextElementSibling!.querySelector('button') as HTMLButtonElement;
+        expect(collapseButton).not.toBeNull();
+
+        fireEvent.click(collapseButton);
+
+        expect(sends.sendPanelTopRightLegendCollapsedAsync).toHaveBeenCalledTimes(1);
+        expect(sends.sendPanelTopRightLegendCollapsedAsync).toHaveBeenCalledWith(true);
+    });
+
+    test('a click on the Panel_TopRight legend tab sends exactly once', async () => {
+        const { visorState, sends, utilRegistered } = makeTopRightFrontendDouble();
+        const { container } = render(
+            <Panel_TopRight visorState={visorState as unknown as VisorFrontend} onLoad={() => {}} />
+        );
+        await act(async () => {
+            await utilRegistered;
+        });
+
+        // The tab's label; the click bubbles to the tab element's handler.
+        fireEvent.click(within(container).getByText('Legend Settings'));
+
+        expect(sends.sendPanelTopRightTabIndexAsync).toHaveBeenCalledTimes(1);
+        expect(sends.sendPanelTopRightTabIndexAsync).toHaveBeenCalledWith(1);
+    });
+});
+
+describe('delivered panel state', () => {
+    test('setAppStateAsync applies delivered panel state and sends no panel trigger', async () => {
+        const { frontend, triggerSender } = makeFrontend();
+        await act(async () => {
+            render(
+                <>
+                    <Panel_TopLeft visorState={frontend} onLoad={() => {}} />
+                    <Panel_TopRight visorState={frontend} onLoad={() => {}} />
+                </>
+            );
+        });
+        const panelTopLeft = await frontend.panelTopLeftUtilPromise;
+        const panelTopRight = await frontend.panelTopRightUtilPromise;
+        triggerSender.mockClear();
+
+        // Every value differs from its mount default.
+        await frontend.setAppStateAsync(
+            {
+                ui: {
+                    panelTopLeftPanelCollapsed: true,
+                    panelTopRightPanelCollapsed: true,
+                    panelTopRightLegendCollapsed: true,
+                    panelTopRightTabIndex: 1,
+                },
+            },
+            false
+        );
+
+        // The delivery reached the panels, so the silence below is not that
+        // of a branch that never ran.
+        expect(panelTopLeft.isPanelCollapsed).toBe(true);
+        expect(panelTopRight.isPanelCollapsed).toBe(true);
+        expect(panelTopRight.isLegendCollapsed).toBe(true);
+        expect(panelTopRight.tabIndex).toBe(1);
+        expect(triggerSender.mock.calls.map((call) => call[0])).toEqual([]);
     });
 });
 

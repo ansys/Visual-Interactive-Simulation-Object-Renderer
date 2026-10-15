@@ -1049,7 +1049,7 @@ class VisorSceneBase(ABC):
         """Record which top-right tab is active.
 
         The value is stored opaquely and is never interpreted here; it is
-        only ever handed back to the client's ``selectTab``, which is where
+        only ever handed back to the client's ``applyTabIndex``, which is where
         the range guard lives.
         """
         with self._vtk_lock:
