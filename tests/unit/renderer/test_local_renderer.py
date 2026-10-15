@@ -1174,7 +1174,7 @@ class TestCamera:
         camera = renderer._vtk_renderer.GetActiveCamera.return_value
         camera.calls.clear()
 
-        with patch("ansys.visor.viewer.renderer.local_renderer.logger") as log:
+        with patch("ansys.visor.viewer.renderer.base.logger") as log:
             renderer.set_projection(True)
 
         assert camera.calls == [("SetParallelProjection", True)]
