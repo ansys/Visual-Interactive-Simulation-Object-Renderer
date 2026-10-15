@@ -6,7 +6,8 @@ import {
 } from './VisorVariableManager.tsx';
 import VisorVtkDataArray from './appstate/vtkInfo/VisorVtkDataArray.tsx';
 import VisorSceneState from './appstate/VisorSceneState.tsx';
-import { IRenderer } from '../renderer/IRenderer';
+import type { ColorVariableReference } from './appstate/VisorPartState.tsx';
+import type { ColorVariableDescriptor, IRenderer } from '../renderer/IRenderer';
 
 export type VisorSceneNodeSimple = Readonly<{
     id: number;
@@ -45,6 +46,21 @@ export type VisorSceneNodeExtended = Readonly<{
     setVisibilityAsync: (visible: boolean) => Promise<void>;
     setSelectedAsync: (selected: boolean) => Promise<void>;
     setOpacityAsync: (opacity: number) => Promise<void>;
+    /** Write to node and renderer; send nothing.
+     * False when the node already held the value. */
+    applyVisibilityAsync: (visible: boolean) => Promise<boolean>;
+    /** Write to node and renderer; send nothing.
+     * False when the node already held the value. */
+    applyOpacityAsync: (opacity: number) => Promise<boolean>;
+    /** Write to node and renderer; send nothing.
+     * False when the node already held the value. */
+    applySelectedAsync: (selected: boolean) => Promise<boolean>;
+    /** Write to node and renderer; send nothing.
+     * False when the node already held the value. */
+    applyDiffuseColorRgbAsync: (r: number, g: number, b: number) => Promise<boolean>;
+    /** Color by the reference, or clear on null; send nothing.
+     * True when the renderer was given a new reference or had one cleared. */
+    applyColorVariableAsync: (reference: ColorVariableReference | null) => Promise<boolean>;
     /**
      * Removes the part's colour variable.  A part is always coloured by its
      * diffuse colour, and a colour variable overrides it while set; clearing
@@ -171,6 +187,25 @@ export const CreateVisorSceneGraph = (() => {
         // replaced on every delivery.
         const variableCollection = variableManager.getPartVariableCollection(nodeId);
 
+        /** The descriptor of the variable slot applied to the part, or null when none is. */
+        const appliedDescriptor = (): ColorVariableDescriptor | null => {
+            if (_variableId === null) {
+                return null;
+            }
+            const variable = variableCollection.getVariable(_variableId);
+            if (variable == null) {
+                return null;
+            }
+            return {
+                variableId: _variableId,
+                variableType: variable.type,
+                variableName: variable.name,
+                component: _variableComponent,
+                min: _variableMin,
+                max: _variableMax,
+            };
+        };
+
         const node: VisorSceneNodeExtended = {
             id: simpleNode.id,
             get rootNode() {
@@ -226,9 +261,17 @@ export const CreateVisorSceneGraph = (() => {
                 await renderer!.sendPartDiffuseColorAsync(nodeId, rgbNormalized);
             },
             async setDiffuseColorRgbAsync(r, g, b) {
+                if (await node.applyDiffuseColorRgbAsync(r, g, b)) {
+                    await renderer!.sendPartDiffuseColorAsync(
+                        nodeId,
+                        customDiffuseColor.rgbNormalized
+                    );
+                }
+            },
+            async applyDiffuseColorRgbAsync(r, g, b) {
                 const current = customDiffuseColor.rgbNormalized;
                 if (current[0] === r && current[1] === g && current[2] === b) {
-                    return;
+                    return false;
                 }
                 customDiffuseColor.setRgb(r, g, b);
                 const rgbNormalized = customDiffuseColor.rgbNormalized;
@@ -239,20 +282,36 @@ export const CreateVisorSceneGraph = (() => {
                     rgbNormalized[2],
                     _selected
                 );
-                await renderer!.sendPartDiffuseColorAsync(nodeId, rgbNormalized);
+                return true;
             },
             async clearColorVariableAsync() {
-                if (_variableId === null) {
-                    return;
+                if (await node.applyColorVariableAsync(null)) {
+                    await renderer!.sendClearPartColorVariableAsync(nodeId);
                 }
-                _variableId = null;
-                _variableComponent = -1;
-                _variableMin = -1;
-                _variableMax = -1;
-                await renderer!.clearColorVariableAsync(nodeId);
-                await renderer!.sendClearPartColorVariableAsync(nodeId);
             },
             async setColorVariableAsync(id, component) {
+                if (component == null) {
+                    return;
+                }
+                const reference = { variableId: id, variableComponent: component };
+                if (await node.applyColorVariableAsync(reference)) {
+                    await renderer!.sendPartColorVariableAsync(nodeId, appliedDescriptor()!);
+                }
+            },
+            async applyColorVariableAsync(reference) {
+                if (reference === null) {
+                    if (_variableId === null) {
+                        return false;
+                    }
+                    _variableId = null;
+                    _variableComponent = -1;
+                    _variableMin = -1;
+                    _variableMax = -1;
+                    await renderer!.clearColorVariableAsync(nodeId);
+                    return true;
+                }
+                const id = reference.variableId;
+                const component = reference.variableComponent;
                 if (_variableId === id && _variableComponent === component) {
                     // Already coloured by this slot: only a held range that
                     // differs from the one last applied reaches the actor.
@@ -261,15 +320,13 @@ export const CreateVisorSceneGraph = (() => {
                         if (variableCollection.getVariable(id) == null) {
                             warnVariableNotHeld(id);
                         }
-                        return;
+                        return false;
                     }
                     const [heldMin, heldMax] = held.customRange;
                     if (heldMin !== _variableMin || heldMax !== _variableMax) {
                         await node.setScalarRangeAsync(heldMin, heldMax);
                     }
-                    return;
-                } else if (component == null) {
-                    return;
+                    return false;
                 }
                 const variable = variableCollection.getVariable(id);
                 if (variable == null) {
@@ -278,28 +335,18 @@ export const CreateVisorSceneGraph = (() => {
                     _variableId = id;
                     _variableComponent = component;
                     warnVariableNotHeld(id);
-                    return;
+                    return false;
                 }
                 const rangeInfo = variable.getRangeInfo(component);
                 if (rangeInfo == null) {
-                    return;
+                    return false;
                 }
-                const min = rangeInfo.customRange[0];
-                const max = rangeInfo.customRange[1];
                 _variableId = id;
                 _variableComponent = component;
-                _variableMin = min;
-                _variableMax = max;
-                const descriptor = {
-                    variableId: id,
-                    variableType: variable.type,
-                    variableName: variable.name,
-                    component,
-                    min,
-                    max,
-                };
-                await renderer!.setColorVariableAsync(nodeId, descriptor);
-                await renderer!.sendPartColorVariableAsync(nodeId, descriptor);
+                _variableMin = rangeInfo.customRange[0];
+                _variableMax = rangeInfo.customRange[1];
+                await renderer!.setColorVariableAsync(nodeId, appliedDescriptor()!);
+                return true;
             },
             async setScalarRangeAsync(min, max) {
                 _variableMin = min;
@@ -307,11 +354,11 @@ export const CreateVisorSceneGraph = (() => {
                 await renderer!.setScalarRangeAsync(nodeId, min, max);
             },
             async setVisibilityAsync(visible) {
-                if (_visible === visible) {
-                    return;
-                }
-                _visible = visible;
                 if (node.isGroupNode) {
+                    if (_visible === visible) {
+                        return;
+                    }
+                    _visible = visible;
                     const promises = [];
                     for (const n of node.descendantActorNodesOrSelfArray) {
                         promises.push(n.setVisibilityAsync(visible));
@@ -319,15 +366,32 @@ export const CreateVisorSceneGraph = (() => {
                     await Promise.all(promises);
                     return;
                 }
+                if (await node.applyVisibilityAsync(visible)) {
+                    await renderer!.sendPartVisibilityAsync(nodeId, visible);
+                }
+            },
+            async applyVisibilityAsync(visible) {
+                if (_visible === visible) {
+                    return false;
+                }
+                _visible = visible;
+                if (node.isGroupNode) {
+                    const promises = [];
+                    for (const n of node.descendantActorNodesOrSelfArray) {
+                        promises.push(n.applyVisibilityAsync(visible));
+                    }
+                    await Promise.all(promises);
+                    return true;
+                }
                 await renderer!.setVisibilityAsync(nodeId, visible);
-                await renderer!.sendPartVisibilityAsync(nodeId, visible);
+                return true;
             },
             async setSelectedAsync(selected) {
-                if (_selected === selected) {
-                    return;
-                }
-                _selected = selected;
                 if (node.isGroupNode) {
+                    if (_selected === selected) {
+                        return;
+                    }
+                    _selected = selected;
                     const promises = [];
                     for (const n of node.descendantActorNodesOrSelfArray) {
                         promises.push(n.setSelectedAsync(selected));
@@ -335,23 +399,40 @@ export const CreateVisorSceneGraph = (() => {
                     await Promise.all(promises);
                     return;
                 }
+                if (await node.applySelectedAsync(selected)) {
+                    // The trigger carries no colour: the server reads the part's
+                    // stored colour from its own record.
+                    await renderer!.sendPartSelectedAsync(nodeId, selected);
+                }
+            },
+            async applySelectedAsync(selected) {
+                if (_selected === selected) {
+                    return false;
+                }
+                _selected = selected;
+                if (node.isGroupNode) {
+                    const promises = [];
+                    for (const n of node.descendantActorNodesOrSelfArray) {
+                        promises.push(n.applySelectedAsync(selected));
+                    }
+                    await Promise.all(promises);
+                    return true;
+                }
                 await renderer!.setSelectedAsync(
                     nodeId,
                     _selected,
                     customDiffuseColor.rgbNormalized
                 );
-                // The trigger carries no colour: the server reads the part's
-                // stored colour from its own record.
-                await renderer!.sendPartSelectedAsync(nodeId, _selected);
+                return true;
             },
             async setOpacityAsync(opacity: number) {
-                if (_opacity === opacity) {
-                    return;
-                } else if (opacity < 0 || opacity > 1) {
-                    throw new Error(`opacity must be a number between 0 and 1 (${opacity})`);
-                }
-                _opacity = opacity;
                 if (node.isGroupNode) {
+                    if (_opacity === opacity) {
+                        return;
+                    } else if (opacity < 0 || opacity > 1) {
+                        throw new Error(`opacity must be a number between 0 and 1 (${opacity})`);
+                    }
+                    _opacity = opacity;
                     const promises = [];
                     for (const n of node.descendantActorNodesOrSelfArray) {
                         promises.push(n.setOpacityAsync(opacity));
@@ -359,8 +440,27 @@ export const CreateVisorSceneGraph = (() => {
                     await Promise.all(promises);
                     return;
                 }
+                if (await node.applyOpacityAsync(opacity)) {
+                    await renderer!.sendPartOpacityAsync(nodeId, opacity);
+                }
+            },
+            async applyOpacityAsync(opacity: number) {
+                if (_opacity === opacity) {
+                    return false;
+                } else if (opacity < 0 || opacity > 1) {
+                    throw new Error(`opacity must be a number between 0 and 1 (${opacity})`);
+                }
+                _opacity = opacity;
+                if (node.isGroupNode) {
+                    const promises = [];
+                    for (const n of node.descendantActorNodesOrSelfArray) {
+                        promises.push(n.applyOpacityAsync(opacity));
+                    }
+                    await Promise.all(promises);
+                    return true;
+                }
                 await renderer!.setOpacityAsync(nodeId, opacity);
-                await renderer!.sendPartOpacityAsync(nodeId, opacity);
+                return true;
             },
             get variableId() {
                 return _variableId;
