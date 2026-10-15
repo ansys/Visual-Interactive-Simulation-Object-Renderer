@@ -33,7 +33,6 @@ export class VisorFrontend {
             renderer
         );
         variableManager.finishAddingDataArrayMetadata();
-        renderer.attachSceneGraph(sceneGraph);
 
         let treeViewUtilSet: boolean = false;
         let panelTopLeftUtilSet: boolean = false;
@@ -260,10 +259,8 @@ export class VisorFrontend {
         this.setEdgeVisibilityAsync = (visible) => renderer.setEdgeVisibilityGlobalAsync(visible);
         this.setCrossSectionVisibilityAsync = (visible) =>
             renderer.setCrossSectionVisibilityAsync(visible);
-        this.updateCrossSectionBoundsAsync = () => renderer.updateCrossSectionBoundsAsync();
         this.setBoundingBoxVisibilityAsync = (visible) =>
             renderer.setBoundingBoxVisibilityAsync(visible);
-        this.updateBoundingBoxBoundsAsync = () => renderer.updateBoundingBoxBoundsAsync();
         this.setOrthographicModeAsync = async () => {
             await renderer.setOrthographicModeAsync();
             const uiScaffold = await uiScaffoldUtilPromise;
@@ -580,10 +577,8 @@ export class VisorFrontend {
     ) => () => void;
     addFrameRenderedListener: (handler: (fps: number) => void) => () => void;
     setCrossSectionVisibilityAsync: (visible?: boolean) => Promise<void>;
-    updateCrossSectionBoundsAsync: () => Promise<void>;
     setBoundingBoxVisibilityAsync: (visible?: boolean) => Promise<void>;
     setEdgeVisibilityAsync: (visible?: boolean | undefined) => Promise<void>;
-    updateBoundingBoxBoundsAsync: () => Promise<void>;
     setOrthographicModeAsync: (enable?: boolean) => Promise<void>;
     getAppStateAsync: (keyedByName?: boolean) => Promise<VisorAppState>;
     setAppStateAsync: (state?: StateInput<VisorAppState>, updateUI?: boolean) => Promise<void>;

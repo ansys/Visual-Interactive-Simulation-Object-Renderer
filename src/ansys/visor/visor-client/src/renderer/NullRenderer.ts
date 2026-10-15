@@ -8,7 +8,6 @@ import {
     PickGeometryResult,
     VisorCameraState,
 } from './IRenderer';
-import { VisorSceneNodeExtended } from '../state/VisorSceneGraph.tsx';
 
 const NULL_CAMERA_STATE: VisorCameraState = {
     distance: 0,
@@ -32,10 +31,6 @@ const NULL_CAMERA_STATE: VisorCameraState = {
  */
 export class NullRenderer implements IRenderer {
     readonly domElement: HTMLDivElement = document.createElement('div');
-
-    attachSceneGraph(_sceneGraph: VisorSceneNodeExtended): void {
-        // no-op
-    }
 
     async renderAsync(): Promise<void> {
         // no-op
@@ -151,10 +146,6 @@ export class NullRenderer implements IRenderer {
         // no-op
     }
 
-    async setEdgeVisibilityAsync(_nodeId: NodeId, _edgeVisible: boolean): Promise<void> {
-        // no-op
-    }
-
     async setOpacityAsync(_nodeId: NodeId, _opacity: number): Promise<void> {
         // no-op
     }
@@ -221,10 +212,6 @@ export class NullRenderer implements IRenderer {
         // no-op
     }
 
-    async updateCrossSectionBoundsAsync(): Promise<void> {
-        // no-op
-    }
-
     async getCrossSectionOriginAsync(): Promise<readonly number[]> {
         return [0, 0, 0];
     }
@@ -250,10 +237,6 @@ export class NullRenderer implements IRenderer {
     }
 
     async applyBoundingBoxVisibilityAsync(_visible: boolean): Promise<void> {
-        // no-op
-    }
-
-    async updateBoundingBoxBoundsAsync(): Promise<void> {
         // no-op
     }
 

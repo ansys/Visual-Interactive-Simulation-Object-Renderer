@@ -10,8 +10,8 @@ import type {
  *
  * This module exists apart from `VisorFrontend` so that it can be tested. A
  * `VisorFrontend` cannot be constructed under jest -- it needs a real scene
- * graph node, the module-global variable manager and a renderer that accepts
- * `attachSceneGraph`, and it ends in `Object.freeze` -- so a listener body
+ * graph node, the module-global variable manager and a renderer, and it ends
+ * in `Object.freeze` -- so a listener body
  * written inline there would be pinned by nothing, and the payload shape is
  * precisely the part no server-side gate can check. `CameraGestureTracker`
  * was split out for the same reason in the previous increment.
