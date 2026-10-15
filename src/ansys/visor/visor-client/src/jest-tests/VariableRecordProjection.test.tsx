@@ -670,3 +670,73 @@ describe('the range trigger is sent for an edit and never for a delivery', () =>
         expect(rangeSends(triggerSender)).toEqual([]);
     });
 });
+
+/** Sets a panel `<select>` to a value and lets its change handler settle. */
+async function chooseOption(select: HTMLSelectElement, value: string): Promise<void> {
+    select.value = value;
+    await act(async () => {
+        fireEvent.change(select);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+}
+
+/** The panel `<select>` holding an option with the given value. */
+function selectHolding(container: HTMLElement, value: string): HTMLSelectElement {
+    return container.querySelector(`select option[value="${value}"]`)!
+        .parentElement as HTMLSelectElement;
+}
+
+describe('re-selection carries the node component only where it names an option', () => {
+    test('a scalar is applied after re-selecting a part coloured by a vector component X', async () => {
+        const { frontend, renderer } = makeFrontend();
+        const part = frontend.sceneGraph.descendantActorNodesOrSelfDictionary[PART_A_ID];
+        frontend.setTreeViewUtil(makeTreeViewUtilDouble([part]));
+        await frontend.setAppStateAsync(
+            {
+                scene: {
+                    variableStates: {
+                        [VELOCITY_ID]: velocityRecord(),
+                        [PRESSURE_ID]: pressureRecord(),
+                    },
+                },
+            },
+            false
+        );
+        await part.setColorVariableAsync(VELOCITY_ID, -1);
+
+        let container: HTMLElement = null!;
+        await act(async () => {
+            container = render(
+                <Panel_TopRight visorState={frontend} onLoad={() => {}} />
+            ).container;
+        });
+        const util = await frontend.panelTopRightUtilPromise;
+        const warningSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+        try {
+            await chooseOption(selectHolding(container, '0'), '0');
+            await act(async () => {
+                await util.refreshSelectionAsync();
+            });
+            renderer.sendPartColorVariableAsync.mockClear();
+
+            await chooseOption(selectHolding(container, PRESSURE_ID), PRESSURE_ID);
+
+            expect(renderer.sendPartColorVariableAsync.mock.calls).toEqual([
+                [
+                    1,
+                    {
+                        variableId: 'POINT::pressure::1',
+                        variableType: 'POINT',
+                        variableName: 'pressure',
+                        component: -1,
+                        min: 2,
+                        max: 8,
+                    },
+                ],
+            ]);
+            expect(warningSpy).not.toHaveBeenCalledWith("invalid componentId: '0'");
+        } finally {
+            warningSpy.mockRestore();
+        }
+    });
+});
