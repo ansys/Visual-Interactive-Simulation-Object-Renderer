@@ -460,10 +460,8 @@ describe('setAppStateAsync holds a delivered variable block', () => {
                 noop,
                 noop,
                 noop,
-                noop,
                 () => false,
                 () => false,
-                noop,
                 () => 0,
                 async () => {
                     order.push('refresh');

@@ -363,31 +363,19 @@ export class VisorFrontend {
             void (async () => {
                 const panelTopLeft = await panelTopLeftUtilPromise;
                 if (uiState.panelTopLeftPanelCollapsed !== undefined) {
-                    if (uiState.panelTopLeftPanelCollapsed) {
-                        panelTopLeft.collapsePanel();
-                    } else {
-                        panelTopLeft.expandPanel();
-                    }
+                    panelTopLeft.applyPanelCollapsed(uiState.panelTopLeftPanelCollapsed);
                 }
             })();
             void (async () => {
                 const panelTopRight = await panelTopRightUtilPromise;
                 if (uiState.panelTopRightPanelCollapsed !== undefined) {
-                    if (uiState.panelTopRightPanelCollapsed) {
-                        panelTopRight.collapsePanel();
-                    } else {
-                        panelTopRight.expandPanel();
-                    }
+                    panelTopRight.applyPanelCollapsed(uiState.panelTopRightPanelCollapsed);
                 }
                 if (uiState.panelTopRightLegendCollapsed !== undefined) {
-                    if (uiState.panelTopRightLegendCollapsed) {
-                        panelTopRight.collapseLegend();
-                    } else {
-                        panelTopRight.expandLegend();
-                    }
+                    panelTopRight.applyLegendCollapsed(uiState.panelTopRightLegendCollapsed);
                 }
                 if (uiState.panelTopRightTabIndex !== undefined) {
-                    panelTopRight.selectTab(uiState.panelTopRightTabIndex);
+                    panelTopRight.applyTabIndex(uiState.panelTopRightTabIndex);
                 }
             })();
             const promises: Promise<unknown>[] = [];

@@ -25,7 +25,7 @@ layout, not widget state, but are here on the same terms: scene-wide, no
 toggle's.
 
 ``tab_index`` is deliberately unbounded: the client only ever sends ``0``
-or ``1``, and ``Panel_TopRight_Util.selectTab`` already ignores anything
+or ``1``, and ``Panel_TopRight_Util.applyTabIndex`` already ignores anything
 else, so the bound lives there, not here.
 """
 

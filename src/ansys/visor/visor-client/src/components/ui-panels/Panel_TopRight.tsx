@@ -224,13 +224,10 @@ export const Panel_TopRight: FC<{
                 document.documentElement) as HTMLElement
         );
 
-        let collapsePanel: () => void;
-        let expandPanel: () => void;
+        let applyPanelCollapsed: (collapsed: boolean) => void;
         let getIsPanelCollapsed: () => boolean;
-        let collapseLegend: () => void;
-        let expandLegend: () => void;
+        let applyLegendCollapsed: (collapsed: boolean) => void;
         let getIsLegendCollapsed: () => boolean;
-        let sendEnabled = false;
 
         {
             // set up top right panel collapse/expand buttons
@@ -242,35 +239,31 @@ export const Panel_TopRight: FC<{
             ]) as HTMLButtonElement;
             const componentMinHeight: string = componentContainer.style.minHeight;
             let isCollapsed = false;
-            collapseButton.onclick = (e) => {
-                componentContainer.style.width = `${componentContainer.offsetWidth}px`;
-                componentContainer.style.removeProperty('min-height');
-                collapsiblePanel.style.display = 'none';
-                collapseButton.remove();
-                collapseButtonContainer.appendChild(expandButton);
-                isCollapsed = true;
-                if (sendEnabled) {
-                    void visorState.sendPanelTopRightPanelCollapsedAsync(isCollapsed);
+            applyPanelCollapsed = (collapsed) => {
+                if (collapsed) {
+                    componentContainer.style.width = `${componentContainer.offsetWidth}px`;
+                    componentContainer.style.removeProperty('min-height');
+                    collapsiblePanel.style.display = 'none';
+                    collapseButton.remove();
+                    collapseButtonContainer.appendChild(expandButton);
+                } else {
+                    componentContainer.style.removeProperty('width');
+                    componentContainer.style.minHeight = componentMinHeight;
+                    collapsiblePanel.style.removeProperty('display');
+                    expandButton.remove();
+                    collapseButtonContainer.appendChild(collapseButton);
                 }
+                isCollapsed = collapsed;
+            };
+            collapseButton.onclick = (e) => {
+                applyPanelCollapsed(true);
+                void visorState.sendPanelTopRightPanelCollapsedAsync(isCollapsed);
             };
             expandButton.onclick = (e) => {
-                componentContainer.style.removeProperty('width');
-                componentContainer.style.minHeight = componentMinHeight;
-                collapsiblePanel.style.removeProperty('display');
-                expandButton.remove();
-                collapseButtonContainer.appendChild(collapseButton);
-                isCollapsed = false;
-                if (sendEnabled) {
-                    void visorState.sendPanelTopRightPanelCollapsedAsync(isCollapsed);
-                }
+                applyPanelCollapsed(false);
+                void visorState.sendPanelTopRightPanelCollapsedAsync(isCollapsed);
             };
-            expandButton.click();
-            collapsePanel = () => {
-                collapseButton.click();
-            };
-            expandPanel = () => {
-                expandButton.click();
-            };
+            applyPanelCollapsed(false);
             getIsPanelCollapsed = () => {
                 return isCollapsed;
             };
@@ -284,33 +277,29 @@ export const Panel_TopRight: FC<{
                 'theme-hover-background-3',
             ]) as HTMLButtonElement;
             let isCollapsed = false;
-            collapseButton.onclick = (e) => {
-                legendOverlayElem.style.width = `${legendOverlayElem.offsetWidth}px`;
-                legendCollapsibleElem.style.display = 'none';
-                collapseButton.remove();
-                legendCollapseButtonContainer.appendChild(expandButton);
-                isCollapsed = true;
-                if (sendEnabled) {
-                    void visorState.sendPanelTopRightLegendCollapsedAsync(isCollapsed);
+            applyLegendCollapsed = (collapsed) => {
+                if (collapsed) {
+                    legendOverlayElem.style.width = `${legendOverlayElem.offsetWidth}px`;
+                    legendCollapsibleElem.style.display = 'none';
+                    collapseButton.remove();
+                    legendCollapseButtonContainer.appendChild(expandButton);
+                } else {
+                    legendOverlayElem.style.removeProperty('width');
+                    legendCollapsibleElem.style.removeProperty('display');
+                    expandButton.remove();
+                    legendCollapseButtonContainer.appendChild(collapseButton);
                 }
+                isCollapsed = collapsed;
+            };
+            collapseButton.onclick = (e) => {
+                applyLegendCollapsed(true);
+                void visorState.sendPanelTopRightLegendCollapsedAsync(isCollapsed);
             };
             expandButton.onclick = (e) => {
-                legendOverlayElem.style.removeProperty('width');
-                legendCollapsibleElem.style.removeProperty('display');
-                expandButton.remove();
-                legendCollapseButtonContainer.appendChild(collapseButton);
-                isCollapsed = false;
-                if (sendEnabled) {
-                    void visorState.sendPanelTopRightLegendCollapsedAsync(isCollapsed);
-                }
+                applyLegendCollapsed(false);
+                void visorState.sendPanelTopRightLegendCollapsedAsync(isCollapsed);
             };
-            expandButton.click();
-            collapseLegend = () => {
-                collapseButton.click();
-            };
-            expandLegend = () => {
-                expandButton.click();
-            };
+            applyLegendCollapsed(false);
             getIsLegendCollapsed = () => {
                 return isCollapsed;
             };
@@ -322,31 +311,34 @@ export const Panel_TopRight: FC<{
         legendTabIconContainer.appendChild(legendTabIcon);
         let tabIndex = 0;
 
-        propertyTabElem.onclick = () => {
-            propertyTabElem.classList.add('theme-background-1');
-            propertyPanelElem.style.removeProperty('display');
-            propertyTabTextContainer.style.removeProperty('display');
-            legendTabElem.classList.remove('theme-background-1');
-            legendPanelElem.style.display = 'none';
-            legendTabTextContainer.style.display = 'none';
-            tabIndex = 0;
-            if (sendEnabled) {
-                void visorState.sendPanelTopRightTabIndexAsync(tabIndex);
+        const applyTabIndex = (index: number) => {
+            if (index === 0) {
+                propertyTabElem.classList.add('theme-background-1');
+                propertyPanelElem.style.removeProperty('display');
+                propertyTabTextContainer.style.removeProperty('display');
+                legendTabElem.classList.remove('theme-background-1');
+                legendPanelElem.style.display = 'none';
+                legendTabTextContainer.style.display = 'none';
+                tabIndex = 0;
+            } else if (index === 1) {
+                propertyTabElem.classList.remove('theme-background-1');
+                propertyPanelElem.style.display = 'none';
+                propertyTabTextContainer.style.display = 'none';
+                legendTabElem.classList.add('theme-background-1');
+                legendPanelElem.style.removeProperty('display');
+                legendTabTextContainer.style.removeProperty('display');
+                tabIndex = 1;
             }
+        };
+        propertyTabElem.onclick = () => {
+            applyTabIndex(0);
+            void visorState.sendPanelTopRightTabIndexAsync(tabIndex);
         };
         legendTabElem.onclick = () => {
-            propertyTabElem.classList.remove('theme-background-1');
-            propertyPanelElem.style.display = 'none';
-            propertyTabTextContainer.style.display = 'none';
-            legendTabElem.classList.add('theme-background-1');
-            legendPanelElem.style.removeProperty('display');
-            legendTabTextContainer.style.removeProperty('display');
-            tabIndex = 1;
-            if (sendEnabled) {
-                void visorState.sendPanelTopRightTabIndexAsync(tabIndex);
-            }
+            applyTabIndex(1);
+            void visorState.sendPanelTopRightTabIndexAsync(tabIndex);
         };
-        propertyTabElem.onclick(null!);
+        applyTabIndex(0);
 
         function fixValue(val: number): string {
             if (val >= 100000 || val <= -100000) {
@@ -480,27 +472,15 @@ export const Panel_TopRight: FC<{
             // reach this panel.
             await onSelectionChangeAsync(treeViewUtil.selectedNodes);
             const util = new Panel_TopRight_Util(
-                expandPanel,
-                collapsePanel,
-                expandLegend,
-                collapseLegend,
+                applyPanelCollapsed,
+                applyLegendCollapsed,
+                applyTabIndex,
                 getIsPanelCollapsed,
                 getIsLegendCollapsed,
-                (tabIndex: number) => {
-                    if (tabIndex === 0) {
-                        propertyTabElem.click();
-                    } else if (tabIndex === 1) {
-                        legendTabElem.click();
-                    }
-                },
                 () => tabIndex,
                 () => onSelectionChangeAsync(treeViewUtil.selectedNodes)
             );
             visorState.setPanelTopRightUtil(util);
-            // Must stay on the line after the util handoff: it suppresses the three mount writes
-            // above and is open before any delivered apply awaiting the util promise can click;
-            // scaffolding, removed when delivery is separated from mutation.
-            sendEnabled = true;
             onLoad(util);
         })();
 
