@@ -11,7 +11,6 @@ import {
 } from './IRenderer';
 import VtkScene from '../wasm/VtkScene';
 import { WasmNodeHandles, WasmRendererAnnotation } from './RendererAnnotation';
-import { VisorSceneNodeExtended } from '../state/VisorSceneGraph.tsx';
 import { CrossSectionWidget } from '../widgets/crossSectionWidget.ts';
 import { BoundingBoxWidget } from '../widgets/boundingBoxWidget.ts';
 import { OrthographicWidget } from '../widgets/orthographicWidget.ts';
@@ -49,8 +48,6 @@ export class WasmRenderer implements IRenderer {
             this.#nodeIdToHandles.set(nodeId, handles);
         }
 
-        // Widgets that only need vtkScene are built here. BoundingBoxWidget and
-        // EdgesWidget need the live scene graph and are built in attachSceneGraph.
         this.#crossSectionWidget = new CrossSectionWidget(vtkScene, {
             planeWasmId: wasmPlaneId,
             representationWasmId: wasmPlaneRepId,
@@ -58,6 +55,12 @@ export class WasmRenderer implements IRenderer {
         });
         this.#orthographicWidget = new OrthographicWidget(vtkScene);
         this.#fullscreenWidget = new FullscreenWidget();
+        this.#boundingBoxWidget = new BoundingBoxWidget(vtkScene, {
+            outlineActorId: annotation.widgets.boundingBoxOutlineActorId,
+            axesActorId: annotation.widgets.boundingBoxAxesActorId,
+            outlineQueryId: annotation.widgets.boundingBoxOutlineActorId,
+        });
+        this.#edgesWidget = new EdgesWidget(this);
 
         const planeWidget = vtkScene.getVtkObject(wasmPlaneWidgetId);
         planeWidget.observe('InteractionEvent', this.#crossSectionWidget.interactionHandler);
@@ -112,13 +115,6 @@ export class WasmRenderer implements IRenderer {
             vtkScene.noteWidgetGesture();
         });
 
-        // Bounding-box ids are stashed for attachSceneGraph, which is the
-        // point at which the live sceneGraph (needed by BoundingBoxWidget)
-        // becomes available.
-        this.#wasmBoundingBoxActorId = annotation.widgets.boundingBoxOutlineActorId;
-        this.#wasmBoundingBoxAxesActorId = annotation.widgets.boundingBoxAxesActorId;
-        this.#boundingBoxBoxAlgorithmWasmId = annotation.widgets.boundingBoxAlgorithmId;
-
         this.domElement = vtkScene.canvasDiv;
     }
 
@@ -156,33 +152,11 @@ export class WasmRenderer implements IRenderer {
     readonly #crossSectionWidget: CrossSectionWidget;
     readonly #orthographicWidget: OrthographicWidget;
     readonly #fullscreenWidget: FullscreenWidget;
-    readonly #wasmBoundingBoxActorId: number;
-    readonly #wasmBoundingBoxAxesActorId: number;
-    readonly #boundingBoxBoxAlgorithmWasmId: number;
-    #boundingBoxWidget: BoundingBoxWidget | null = null;
-    #edgesWidget: EdgesWidget | null = null;
-
-    #requireSceneGraphAttached(methodName: string): void {
-        if (this.#boundingBoxWidget == null || this.#edgesWidget == null) {
-            throw new Error(
-                `WasmRenderer.${methodName} called before attachSceneGraph(). ` +
-                    'VisorFrontend must call attachSceneGraph immediately after CreateVisorSceneGraph.'
-            );
-        }
-    }
+    readonly #boundingBoxWidget: BoundingBoxWidget;
+    readonly #edgesWidget: EdgesWidget;
 
     // ---- Canvas / lifecycle -------------------------------------------------
     readonly domElement: HTMLDivElement;
-
-    attachSceneGraph(sceneGraph: VisorSceneNodeExtended): void {
-        this.#boundingBoxWidget = new BoundingBoxWidget(this.#vtkScene, sceneGraph, {
-            outlineActorId: this.#wasmBoundingBoxActorId,
-            axesActorId: this.#wasmBoundingBoxAxesActorId,
-            boxAlgorithmWasmId: this.#boundingBoxBoxAlgorithmWasmId,
-            outlineQueryId: this.#wasmBoundingBoxActorId,
-        });
-        this.#edgesWidget = new EdgesWidget(sceneGraph, this);
-    }
 
     async renderAsync(): Promise<void> {
         this.#vtkScene.render();
@@ -359,6 +333,12 @@ export class WasmRenderer implements IRenderer {
         await this.#applyDiffuseColorAsync(nodeId, currentDiffuseRgb, selected);
     }
 
+    /** The id of every node the annotation gave handles for. */
+    nodeIds(): IterableIterator<NodeId> {
+        return this.#nodeIdToHandles.keys();
+    }
+
+    /** Show or hide one node's edges; the edges widget fans the global toggle out through this. */
     async setEdgeVisibilityAsync(nodeId: NodeId, edgeVisible: boolean): Promise<void> {
         const handles = this.#nodeIdToHandles.get(nodeId);
         if (handles == null) {
@@ -568,10 +548,6 @@ export class WasmRenderer implements IRenderer {
         await this.#crossSectionWidget.setVisibilityAsync(visible);
     }
 
-    async updateCrossSectionBoundsAsync(): Promise<void> {
-        await this.#crossSectionWidget.updateBoundsAsync();
-    }
-
     async getCrossSectionOriginAsync(): Promise<readonly number[]> {
         return await this.#crossSectionWidget.getOriginAsync();
     }
@@ -589,26 +565,18 @@ export class WasmRenderer implements IRenderer {
     }
 
     async setBoundingBoxVisibilityAsync(visible?: boolean): Promise<void> {
-        this.#requireSceneGraphAttached('setBoundingBoxVisibilityAsync');
-        await this.#boundingBoxWidget!.setVisibilityAsync(visible);
+        await this.#boundingBoxWidget.setVisibilityAsync(visible);
         await this.#sendWidgetTriggerAsync('set_bounding_box_visibility', {
             visible: this.isBoundingBoxVisible(),
         });
     }
 
     isBoundingBoxVisible(): boolean {
-        this.#requireSceneGraphAttached('isBoundingBoxVisible');
-        return this.#boundingBoxWidget!.enabled;
+        return this.#boundingBoxWidget.enabled;
     }
 
     async applyBoundingBoxVisibilityAsync(visible: boolean): Promise<void> {
-        this.#requireSceneGraphAttached('applyBoundingBoxVisibilityAsync');
-        await this.#boundingBoxWidget!.setVisibilityAsync(visible);
-    }
-
-    async updateBoundingBoxBoundsAsync(): Promise<void> {
-        this.#requireSceneGraphAttached('updateBoundingBoxBoundsAsync');
-        await this.#boundingBoxWidget!.updateBoundsAsync();
+        await this.#boundingBoxWidget.setVisibilityAsync(visible);
     }
 
     async setOrthographicModeAsync(enable?: boolean): Promise<void> {
@@ -627,21 +595,18 @@ export class WasmRenderer implements IRenderer {
     }
 
     async setEdgeVisibilityGlobalAsync(visible?: boolean): Promise<void> {
-        this.#requireSceneGraphAttached('setEdgeVisibilityGlobalAsync');
-        await this.#edgesWidget!.setEdgesVisibleAsync(visible);
+        await this.#edgesWidget.setEdgesVisibleAsync(visible);
         await this.#sendWidgetTriggerAsync('set_edges_visible', {
-            visible: this.#edgesWidget!.enabled,
+            visible: this.#edgesWidget.enabled,
         });
     }
 
     areEdgesVisibleGlobally(): boolean {
-        this.#requireSceneGraphAttached('areEdgesVisibleGlobally');
-        return this.#edgesWidget!.enabled;
+        return this.#edgesWidget.enabled;
     }
 
     async applyEdgeVisibilityGlobalAsync(visible: boolean): Promise<void> {
-        this.#requireSceneGraphAttached('applyEdgeVisibilityGlobalAsync');
-        await this.#edgesWidget!.setEdgesVisibleAsync(visible);
+        await this.#edgesWidget.setEdgesVisibleAsync(visible);
     }
 
     async toggleFullScreenAsync(): Promise<void> {
