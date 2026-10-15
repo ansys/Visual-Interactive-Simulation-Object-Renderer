@@ -9,8 +9,7 @@ without touching scene coordination.
 
 Contract covers node lifecycle, per-part visual mutations,
 camera, widget control (cross-section, bounding box, edges), widget fan-out
-(scene bounds, actor count), picking, and render/flush. Not covered yet:
-state-authority hooks, trigger-facing methods, round-trip additions.
+(scene bounds, actor count), picking, and render/flush.
 
 """
 
@@ -22,6 +21,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from vtkmodules.vtkCommonDataModel import vtkDataObject
 
+    from ansys.visor.viewer.core.visor_enums import VisorVtkVariableType
     from ansys.visor.viewer.models.common.visor_camera_state import VisorCameraState
     from ansys.visor.viewer.models.common.visor_cross_section_state import (
         VisorCrossSectionState,
@@ -139,8 +139,7 @@ class IRenderer(ABC):
     def apply_color_variable(
         self,
         node_id: int,
-        variable_id: str,
-        array_type: str,
+        array_type: "VisorVtkVariableType",
         array_name: str,
         component: int,
         min_val: float,
@@ -154,10 +153,8 @@ class IRenderer(ABC):
         ----------
         node_id:
             Scene-graph node to update.
-        variable_id:
-            Server-authoritative opaque ID (stored as-is; not parsed here).
         array_type:
-            ``"POINT"`` or ``"CELL"``.
+            The array's association, already parsed at the trigger boundary.
         array_name:
             VTK array name.
         component:
@@ -235,9 +232,7 @@ class IRenderer(ABC):
     def set_edges_visible(self, visible: bool) -> None:
         """Show or hide edges on every part in the scene.
 
-        Scene-wide, not per-node: edges are a single global toggle and the
-        per-part surface that once mirrored it had no reader, no sender and
-        no model field.
+        Scene-wide, not per-node: edges are a single global toggle.
 
         On return, the state this renderer serves to the client reflects the
         write, and the client is not notified.
