@@ -264,7 +264,7 @@ export const CreateVisorSceneGraph = (() => {
                 if (await node.applyDiffuseColorRgbAsync(r, g, b)) {
                     await renderer!.sendPartDiffuseColorAsync(
                         nodeId,
-                        customDiffuseColor.rgbNormalized
+                        [r, g, b]
                     );
                 }
             },
