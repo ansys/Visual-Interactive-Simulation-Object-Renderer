@@ -1697,35 +1697,20 @@ def test_sync_camera_projects_the_camera_onto_the_pipeline(scene):
     camera.SetParallelScale.assert_called_once_with(GESTURE_PARALLEL_SCALE)
 
 
-def test_sync_camera_serializes_after_the_write_with_the_active_camera_id(scene):
-    """The re-serialisation follows the write, and carries production's id.
+def test_sync_camera_serializes_the_camera_exactly_once(scene):
+    """One re-serialization, the renderer's own, carrying the active camera's id.
 
-    This is the assertion that pins the increment.  Reverted -- the write kept
-    and the re-serialisation dropped -- the record is right, the pipeline
-    camera is right, every other test in this module still passes, and the
-    client is served the pre-gesture camera on its next fetch.  The user sees
-    a refresh snap back to the framing they moved away from.
-
-    The spy appends ``"camera"`` for the write and the two-tuple
-    ``("serialize", <id>)`` for the re-serialization; the tuple is the
-    recording format, not the argument.  ``<id>`` is asserted as the bare id
-    production passes, since ``UpdateStateFromObject`` takes a single id.
+    The renderer's ``sync_camera`` leaves its served state current; the
+    coordinator adds no re-serialization of its own.  A coordinator that
+    still re-serialized after the renderer call records the id twice.  What
+    the client is served is pinned in tests/unit/renderer/test_local_renderer.py.
     """
-    order = []
-    real_sync = scene._renderer.sync_camera
-
-    def _sync(camera_state):
-        order.append("camera")
-        return real_sync(camera_state)
-
-    scene._renderer.sync_camera = _sync
-    scene._renderer._object_manager.UpdateStateFromObject = (
-        lambda object_id: order.append(("serialize", object_id))
-    )
+    serialized = []
+    scene._renderer._object_manager.UpdateStateFromObject = serialized.append
 
     scene.sync_camera(_gesture_camera())
 
-    assert order == ["camera", ("serialize", ACTIVE_CAMERA_WASM_ID)]
+    assert serialized == [ACTIVE_CAMERA_WASM_ID]
 
 
 def test_sync_camera_holds_the_lock_across_both_halves(scene):
@@ -1788,45 +1773,26 @@ def test_sync_camera_does_not_notify_the_client(scene):
 # reset_camera -- the re-serialisation
 #
 # ``VisorSceneBase.reset_camera`` calls ``self._renderer.reset_camera(...)``
-# then ``self._renderer.serialize_camera_state()``, both inside
-# ``_vtk_lock``.  Same shape as the ``sync_camera`` trigger section above: the
-# re-serialisation runs after the reset, is spied on
-# ``_object_manager.UpdateStateFromObject`` with the active-camera id, and
-# the lock is held (depth >= 1) at both points.
-#
-# Own literals are unnecessary here -- reset_camera takes no camera argument,
-# only the scene-graph bounds -- so what is pinned is order and lock depth,
-# not a value.
+# inside ``_vtk_lock``, and the renderer's reset leaves its served state
+# current on return.  Same shape as the ``sync_camera`` trigger section
+# above: the coordinator adds no re-serialization of its own, so exactly one
+# is spied on ``_object_manager.UpdateStateFromObject`` with the
+# active-camera id, and the lock is held (depth >= 1) at both points.
 # ===========================================================================
 
-def test_reset_camera_serializes_after_the_reset_with_the_active_camera_id(scene):
-    """The re-serialisation follows the reset, and carries production's id.
+def test_reset_camera_serializes_the_camera_exactly_once(scene):
+    """One re-serialization, the renderer's own, carrying the active camera's id.
 
-    Reverted -- the reset kept and the re-serialisation dropped -- the
-    pipeline camera is right and every other test in this module still
-    passes, while the client is served the pre-reset camera on its next
-    fetch.
-
-    The spy appends ``"reset"`` for the reset call and the two-tuple
-    ``("serialize", <id>)`` for the re-serialisation; the tuple is the
-    recording format, not the argument.  ``<id>`` is asserted as the bare id
-    production passes, since ``UpdateStateFromObject`` takes a single id.
+    A coordinator that still re-serialized after the renderer call records
+    the id twice.  What the client is served is pinned in
+    tests/unit/renderer/test_local_renderer.py.
     """
-    order = []
-    real_reset = scene._renderer.reset_camera
-
-    def _reset(bounds):
-        order.append("reset")
-        return real_reset(bounds)
-
-    scene._renderer.reset_camera = _reset
-    scene._renderer._object_manager.UpdateStateFromObject = (
-        lambda object_id: order.append(("serialize", object_id))
-    )
+    serialized = []
+    scene._renderer._object_manager.UpdateStateFromObject = serialized.append
 
     scene.reset_camera()
 
-    assert order == ["reset", ("serialize", ACTIVE_CAMERA_WASM_ID)]
+    assert serialized == [ACTIVE_CAMERA_WASM_ID]
 
 
 def test_reset_camera_holds_the_lock_across_both_halves(scene):
@@ -2609,38 +2575,20 @@ def _projection_save_scene(scene, record):
 # The coordinator
 # ---------------------------------------------------------------------------
 
-def test_set_projection_applies_to_the_renderer_and_then_serializes(scene):
-    """The re-serialisation follows the write, and carries production's id.
+def test_set_projection_serializes_the_camera_exactly_once(scene):
+    """One re-serialization, the renderer's own, carrying the active camera's id.
 
-    Reverted -- the write kept and the re-serialisation dropped -- the record
-    is right, the pipeline camera is right, and the client is served the
-    pre-toggle camera on its next fetch.
-
-    Also pins *where* the re-serialisation lives.  Written inside the
-    renderer's own ``set_projection`` instead of here, the lock probe below
-    would still pass; this spy sits on the coordinator's two calls, so a
-    renderer that serialised for itself would record the pair in the wrong
-    order or twice.
-
-    The spy appends ``("set_projection", <value>)`` for the write and the
-    two-tuple ``("serialize", <id>)`` for the re-serialisation; the tuple is
-    the recording format, not the argument.
+    The renderer's ``set_projection`` leaves its served state current; the
+    coordinator adds no re-serialization of its own.  A coordinator that
+    still re-serialized after the renderer call records the id twice.  What
+    the client is served is pinned in tests/unit/renderer/test_local_renderer.py.
     """
-    order = []
-    real_set = scene._renderer.set_projection
-
-    def _set(parallel):
-        order.append(("set_projection", parallel))
-        return real_set(parallel)
-
-    scene._renderer.set_projection = _set
-    scene._renderer._object_manager.UpdateStateFromObject = (
-        lambda object_id: order.append(("serialize", object_id))
-    )
+    serialized = []
+    scene._renderer._object_manager.UpdateStateFromObject = serialized.append
 
     scene.set_projection(PROJECTION_ON)
 
-    assert order == [("set_projection", True), ("serialize", ACTIVE_CAMERA_WASM_ID)]
+    assert serialized == [ACTIVE_CAMERA_WASM_ID]
 
 
 def test_set_projection_holds_the_lock_across_both_halves(scene):
@@ -2650,7 +2598,7 @@ def test_set_projection_holds_the_lock_across_both_halves(scene):
     the story that catches the quiet failure.  Three reverts, three distinct
     signatures:
 
-    * drop ``serialize_camera_state()``  -> ``serialize_depth`` is never
+    * drop the renderer's re-serialization -> ``serialize_depth`` is never
       recorded and this fails on the missing key;
     * move it below the ``with`` block   -> ``serialize_depth`` is 0 while
       ``write_depth`` is 1, so both the non-zero and the equality assertions
@@ -2829,39 +2777,24 @@ def _plane_save_scene(scene, record_plane):
 # The coordinator
 # ---------------------------------------------------------------------------
 
-def test_sync_cross_section_plane_applies_to_the_renderer_and_then_serializes(scene):
-    """The re-serialisation follows the write, and there are two of them.
+def test_sync_cross_section_plane_serializes_the_plane_exactly_twice(scene):
+    """Two re-serializations, the renderer's own: the plane and the handle.
 
-    Reverted -- the write kept and the re-serialisation dropped -- the record
-    is right, the server's own plane and representation are right, every other
-    test in this module still passes, and the client is served the pre-drag
-    plane on its next fetch.  The user sees a page reload snap the plane back
-    to where it was before they dragged it.
-
-    Two serialise calls, not one: ``serialize_cross_section_state`` names the
-    plane and the representation separately.  Which object each names is
-    pinned in tests/unit/renderer/test_local_renderer.py, against a widget
-    double whose two objects have distinct ids; what is pinned here is that
-    the coordinator reaches that method at all, and reaches it after the
-    write.
+    The renderer's ``sync_cross_section_plane`` names the plane and the
+    representation separately and leaves its served state current; the
+    coordinator adds no re-serialization of its own.  A coordinator that
+    still re-serialized after the renderer call records four.  Which object
+    each names, and what the client is served, is pinned in
+    tests/unit/renderer/test_local_renderer.py against a real widget.
     """
-    order = []
-    real_sync = scene._renderer.sync_cross_section_plane
-
-    def _sync(origin, normal):
-        order.append("plane")
-        return real_sync(origin, normal)
-
-    scene._renderer.sync_cross_section_plane = _sync
-    scene._renderer._object_manager.UpdateStateFromObject = (
-        lambda object_id: order.append("serialize")
-    )
+    serialized = []
+    scene._renderer._object_manager.UpdateStateFromObject = serialized.append
 
     scene.sync_cross_section_plane(
         GESTURE_CROSS_SECTION_ORIGIN, GESTURE_CROSS_SECTION_NORMAL
     )
 
-    assert order == ["plane", "serialize", "serialize"]
+    assert len(serialized) == 2
 
 
 def test_sync_cross_section_plane_holds_the_lock_across_both_halves(scene):

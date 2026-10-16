@@ -9,11 +9,15 @@ Coverage targets
 3.  Per-part visual mutations -- visibility, opacity, diffuse colour,
     selection and colour variable all resolve the pipeline and delegate to
     VtkNodePipeline (their VTK effects are asserted in
-    tests/unit/vtk/test_node_pipeline.py); edge visibility and the
-    colour-variable range refresh stay no-ops.
-4.  Camera round-trip -- reset_camera, sync_camera / get_camera_state.
+    tests/unit/vtk/test_node_pipeline.py), then re-serialize the object they
+    wrote; edge visibility fans out over every pipeline and re-serializes
+    each property.
+4.  Camera -- reset_camera, sync_camera / get_camera_state, set_projection,
+    each re-serializing the active camera without notifying the client.
 5.  Render / flush delegation.
 6.  pick_geometry -- vertex, edge, face modes.
+7.  Cross-section plane -- the record, the two VTK writes, the two-id
+    re-serialization, and the seed.
 """
 
 from __future__ import annotations
@@ -23,6 +27,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from vtkmodules.vtkCommonCore import vtkFloatArray
 from vtkmodules.vtkFiltersSources import vtkSphereSource
+from vtkmodules.vtkRenderingCore import vtkCamera, vtkRenderWindowInteractor
 
 from ansys.visor.viewer.core.visor_enums import VisorVtkVariableType
 from ansys.visor.viewer.models.common.visor_camera_state import VisorCameraState
@@ -30,6 +35,7 @@ from ansys.visor.viewer.renderer.base import IRenderer
 from ansys.visor.viewer.renderer.local_renderer import VisorLocalRenderer
 from ansys.visor.viewer.renderer.null_renderer import NullRenderer
 from ansys.visor.viewer.vtk.node_pipeline import VtkNodePipeline
+from ansys.visor.viewer.vtk.widgets.visor_cross_section import VisorCrossSectionWidget
 
 # ---------------------------------------------------------------------------
 # Lightweight VTK-data stubs (no real VTK objects required for pick tests)
@@ -190,6 +196,55 @@ class _CameraDouble:
 RENDER_WINDOW_WASM_ID = 8150001
 ACTIVE_CAMERA_WASM_ID = 8150002
 WRONG_OBJECT_WASM_ID = 8150999
+
+# One literal per part object, so a re-serialization that names the actor
+# where the property was written -- or the mapper, or another part's
+# property -- fails by id rather than coinciding.
+MAPPER_WASM_ID = 8150003
+ACTOR_WASM_ID = 8150004
+PROPERTY_WASM_ID = 8150005
+SECOND_PROPERTY_WASM_ID = 8150006
+
+
+def _real_pipeline() -> VtkNodePipeline:
+    """A real VtkNodePipeline over a sphere, so recorded values are real VTK reads."""
+    source = vtkSphereSource()
+    source.Update()
+    return VtkNodePipeline.from_dataset(source.GetOutput())
+
+
+def _record_served(renderer, readers: dict) -> list:
+    """Key ``GetId`` on *readers*' objects and record ``(id, read())`` at each re-serialization.
+
+    *readers* maps an id literal to ``(vtk_object, read)``.  Any other object
+    resolves to ``WRONG_OBJECT_WASM_ID`` and is recorded with ``None``, so a
+    re-serialization of the wrong object shows up in the list by id.
+    """
+    renderer._object_manager.GetId.side_effect = lambda obj: next(
+        (object_id for object_id, (o, _) in readers.items() if o is obj),
+        WRONG_OBJECT_WASM_ID,
+    )
+    recorded = []
+    renderer._object_manager.UpdateStateFromObject.side_effect = lambda object_id: (
+        recorded.append(
+            (object_id, readers[object_id][1]() if object_id in readers else None)
+        )
+    )
+    return recorded
+
+
+def _install_real_camera(renderer) -> vtkCamera:
+    """Make a real vtkCamera the active camera, keyed to ACTIVE_CAMERA_WASM_ID."""
+    camera = vtkCamera()
+    renderer._vtk_renderer.GetActiveCamera.return_value = camera
+    renderer._object_manager.GetId.side_effect = (
+        lambda obj: ACTIVE_CAMERA_WASM_ID
+        if obj is camera
+        else RENDER_WINDOW_WASM_ID
+        if obj is renderer._render_window
+        else WRONG_OBJECT_WASM_ID
+    )
+    return camera
 
 
 
@@ -478,6 +533,27 @@ class TestGlobalEdgeVisibility:
         assert mock_logger.debug.call_count == 0
         assert mock_logger.warning.call_count == 0
 
+    def test_set_edges_visible_serves_every_part_properly(self, renderer):
+        """Every part's property is re-serialized by its own id, each with the flag already written.
+
+        Two real pipelines, each property keyed to its own literal, seeded with
+        edges off.  Compared as a sorted list so the pin is on "every part,
+        once, with the new value", not on registry iteration order.
+        """
+        first, second = _real_pipeline(), _real_pipeline()
+        first_prop, second_prop = first.actor.GetProperty(), second.actor.GetProperty()
+        first_prop.SetEdgeVisibility(0)
+        second_prop.SetEdgeVisibility(0)
+        renderer._pipelines.update({4: first, 9: second})
+        recorded = _record_served(renderer, {
+            PROPERTY_WASM_ID: (first_prop, first_prop.GetEdgeVisibility),
+            SECOND_PROPERTY_WASM_ID: (second_prop, second_prop.GetEdgeVisibility),
+        })
+
+        renderer.set_edges_visible(True)
+
+        assert sorted(recorded) == [(PROPERTY_WASM_ID, 1), (SECOND_PROPERTY_WASM_ID, 1)]
+
 
 # ===========================================================================
 # 3b.  Delegated apply bodies: visibility, opacity, diffuse colour,
@@ -700,6 +776,96 @@ class TestDelegatedApplyBodies:
 
         assert recorded == [(8150003, 0)]
 
+    # ------------------------------------------------------------------
+    # What the client is served after each per-part write
+    #
+    # Real pipeline, ids keyed on object identity, the value read at the
+    # moment of re-serialization.  Each seed differs from the value written,
+    # so a re-serialization placed before the write records the seed.
+    # ------------------------------------------------------------------
+
+    def test_apply_visibility_serves_the_written_visibility(self, renderer):
+        """The actor is re-serialized by its own id, once, with the visibility already written."""
+        pipe = _real_pipeline()
+        actor = pipe.actor
+        actor.SetVisibility(1)
+        renderer._pipelines[4] = pipe
+        recorded = _record_served(renderer, {
+            ACTOR_WASM_ID: (actor, actor.GetVisibility),
+        })
+
+        renderer.apply_visibility(4, False)
+
+        assert recorded == [(ACTOR_WASM_ID, 0)]
+
+    def test_apply_opacity_serves_the_written_opacity(self, renderer):
+        """The property is re-serialized by its own id, once, with the opacity already written."""
+        pipe = _real_pipeline()
+        prop = pipe.actor.GetProperty()
+        prop.SetOpacity(0.9)
+        renderer._pipelines[4] = pipe
+        recorded = _record_served(renderer, {
+            ACTOR_WASM_ID: (pipe.actor, pipe.actor.GetVisibility),
+            PROPERTY_WASM_ID: (prop, prop.GetOpacity),
+        })
+
+        renderer.apply_opacity(4, 0.25)
+
+        assert recorded == [(PROPERTY_WASM_ID, 0.25)]
+
+    def test_apply_diffuse_color_serves_the_written_color(self, renderer):
+        """The property is re-serialized by its own id, once, with the colour already written."""
+        pipe = _real_pipeline()
+        prop = pipe.actor.GetProperty()
+        prop.SetDiffuseColor(0.1, 0.2, 0.3)
+        renderer._pipelines[4] = pipe
+        recorded = _record_served(renderer, {
+            ACTOR_WASM_ID: (pipe.actor, pipe.actor.GetVisibility),
+            PROPERTY_WASM_ID: (prop, prop.GetDiffuseColor),
+        })
+
+        renderer.apply_diffuse_color(4, 0.75, 0.5, 0.25)
+
+        assert recorded == [(PROPERTY_WASM_ID, (0.75, 0.5, 0.25))]
+
+    def test_apply_selected_serves_the_written_lighting_terms(self, renderer):
+        """The property is re-serialized by its own id, once, with every term set_selected writes.
+
+        Diffuse, ambient, ambient colour and diffuse colour: the selected
+        branch writes all four, and each is seeded to a value it does not
+        write.  The selection ambient colour is the production constant,
+        written out here as a literal.
+        """
+        pipe = _real_pipeline()
+        prop = pipe.actor.GetProperty()
+        prop.SetDiffuse(1.0)
+        prop.SetAmbient(0.0)
+        prop.SetAmbientColor(0.9, 0.9, 0.9)
+        prop.SetDiffuseColor(0.1, 0.2, 0.3)
+        renderer._pipelines[4] = pipe
+        recorded = _record_served(renderer, {
+            ACTOR_WASM_ID: (pipe.actor, pipe.actor.GetVisibility),
+            PROPERTY_WASM_ID: (
+                prop,
+                lambda: (
+                    prop.GetDiffuse(),
+                    prop.GetAmbient(),
+                    prop.GetAmbientColor(),
+                    prop.GetDiffuseColor(),
+                ),
+            ),
+        })
+
+        renderer.apply_selected(4, True, [0.75, 0.5, 0.25])
+
+        assert len(recorded) == 1
+        object_id, (diffuse, ambient, ambient_color, diffuse_color) = recorded[0]
+        assert object_id == PROPERTY_WASM_ID
+        assert diffuse == 0.5
+        assert ambient == 0.5
+        assert ambient_color == pytest.approx((0 / 255, 62 / 255, 111 / 255))
+        assert diffuse_color == (0.75, 0.5, 0.25)
+
 
 # ===========================================================================
 # 4.  Camera
@@ -800,49 +966,101 @@ class TestCamera:
 
         assert renderer.get_camera_state() is cam
 
-    def test_serialize_camera_state_updates_the_states_from_the_active_camera_id(
-        self, renderer
-    ):
-        """The re-serialise names the active camera, and nothing else.
+    # -- what the client is served after each camera write ------------------
+    #
+    # A real vtkCamera installed as the active camera, keyed to
+    # ACTIVE_CAMERA_WASM_ID; every other object resolves to a different
+    # literal, so naming the render window or the renderer fails by id.  The
+    # value is read at the moment of re-serialization, and every seed differs
+    # from what the call writes.
 
-        The id source is keyed on object identity, so every object other than
-        the active camera resolves to a different, equally distinctive
-        literal.  Asserting ``ACTIVE_CAMERA_WASM_ID`` therefore fails if the
-        implementation names ``_render_window``, ``_vtk_renderer``, the
-        interactor or the picker, rather than coinciding with them.  The
-        render window has a literal of its own, so the previous call shape
-        fails by name.  Asserting against
-        ``GetId(renderer._vtk_renderer.GetActiveCamera())`` -- the expression
-        production reads -- would pass in all of those cases and pin nothing.
+    def test_sync_camera_serves_the_written_camera(self, renderer):
+        """The camera is re-serialized by its own id, once, with the projection already written."""
+        camera = _install_real_camera(renderer)
+        camera.SetPosition(51.0, 52.0, 53.0)
+        camera.SetFocalPoint(54.0, 55.0, 56.0)
+        camera.SetParallelProjection(1)
+        camera.SetViewAngle(41.0)
+        camera.SetParallelScale(19.0)
+        recorded = []
+        renderer._object_manager.UpdateStateFromObject.side_effect = lambda object_id: (
+            recorded.append((
+                object_id,
+                camera.GetPosition(),
+                camera.GetFocalPoint(),
+                camera.GetParallelProjection(),
+                camera.GetViewAngle(),
+                camera.GetParallelScale(),
+            ))
+        )
 
-        The expected value is the bare id production passes:
-        ``UpdateStateFromObject`` takes a single id, not a sequence.
+        renderer.sync_camera(VisorCameraState(
+            position=[1.0, 2.0, 3.0],
+            focal_point=[4.0, 5.0, 6.0],
+            view_up=[0.0, 0.0, 1.0],
+            clipping_range=[7.0, 8.0],
+            parallel_projection=False,
+            view_angle=31.0,
+            parallel_scale=9.0,
+        ))
+
+        assert recorded == [
+            (ACTIVE_CAMERA_WASM_ID, (1.0, 2.0, 3.0), (4.0, 5.0, 6.0), 0, 31.0, 9.0)
+        ]
+
+    def test_reset_camera_serves_the_reset_camera(self, renderer):
+        """The camera is re-serialized by its own id, once, after the reset wrote it.
+
+        The VTK renderer is a MagicMock, so ``ResetCamera`` computes nothing;
+        its side effect writes a hand-written position instead, and that
+        literal is what must be served.  No assertion rests on a value VTK
+        computed.
         """
-        camera = renderer._vtk_renderer.GetActiveCamera()
-        renderer._object_manager.GetId.side_effect = (
-            lambda obj: ACTIVE_CAMERA_WASM_ID
-            if obj is camera
-            else RENDER_WINDOW_WASM_ID
-            if obj is renderer._render_window
-            else WRONG_OBJECT_WASM_ID
+        camera = _install_real_camera(renderer)
+        camera.SetPosition(51.0, 52.0, 53.0)
+        renderer._vtk_renderer.ResetCamera.side_effect = (
+            lambda bounds: camera.SetPosition(41.0, 42.0, 43.0)
+        )
+        recorded = []
+        renderer._object_manager.UpdateStateFromObject.side_effect = lambda object_id: (
+            recorded.append((object_id, camera.GetPosition()))
         )
 
-        renderer.serialize_camera_state()
+        renderer.reset_camera([0.0, 1.0, 0.0, 1.0, 0.0, 1.0])
 
-        renderer._object_manager.UpdateStateFromObject.assert_called_with(
-            ACTIVE_CAMERA_WASM_ID
+        assert recorded == [(ACTIVE_CAMERA_WASM_ID, (41.0, 42.0, 43.0))]
+
+    def test_set_projection_serves_the_written_projection(self, renderer):
+        """The camera is re-serialized by its own id, once, with the projection already written."""
+        camera = _install_real_camera(renderer)
+        camera.SetParallelProjection(0)
+        recorded = []
+        renderer._object_manager.UpdateStateFromObject.side_effect = lambda object_id: (
+            recorded.append((object_id, camera.GetParallelProjection()))
         )
 
-    def test_serialize_camera_state_does_not_notify_the_client(self, renderer):
+        renderer.set_projection(True)
+
+        assert recorded == [(ACTIVE_CAMERA_WASM_ID, 1)]
+
+    def test_sync_camera_does_not_notify_the_client(self, renderer):
         """Serialise without pushing -- the whole reason this is not a flush.
 
-        ``flush_wasm_state`` serialises *and* fires the client-side update,
+        ``LocalView.update`` serialises *and* fires the client-side update,
         which rebuilds the scene and races the ``set_state`` that follows on
-        the load path.  An implementation written as ``flush_wasm_state()``
-        would make the camera current and would look correct here in every
-        other respect; only this assertion separates them.
+        the load path.  The scene-level no-notify tests stub the renderer's
+        ``render`` and ``flush_wasm_state`` but not ``LocalView.update``, so a
+        renderer that called it directly is caught only here.
         """
-        renderer.serialize_camera_state()
+        renderer.sync_camera(VisorCameraState(
+            position=[1.0, 2.0, 3.0],
+            focal_point=[4.0, 5.0, 6.0],
+            view_up=[0.0, 0.0, 1.0],
+            clipping_range=[7.0, 8.0],
+            parallel_projection=False,
+            view_angle=31.0,
+            parallel_scale=9.0,
+        ))
 
         renderer._local_view.update.assert_not_called()
 
@@ -1112,9 +1330,8 @@ class _CrossSectionWidgetDouble:
     ``set_origin`` and ``set_normal``, because what has to be pinned is their
     order relative to each other and not merely that each happened.
 
-    ``plane`` and ``plane_representation`` are two distinct objects, so an id
-    lookup keyed on identity can tell them apart and a re-serialise that named
-    the same object twice fails.
+    ``plane`` and ``plane_representation`` are two distinct objects, as on
+    the real widget.
     """
 
     def __init__(self):
@@ -1185,41 +1402,40 @@ class TestCrossSectionPlane:
             ("set_normal", REPORTED_PLANE_NORMAL),
         ]
 
-    # -- serialize_cross_section_state --------------------------------------
+    # -- what the client is served after the plane write --------------------
 
-    def test_serialize_cross_section_state_names_the_plane_and_the_representation_ids(
-        self, renderer, widget
-    ):
-        """The re-serialise names exactly two objects: the plane and the handle.
+    def test_sync_cross_section_plane_serves_the_written_plane(self, renderer):
+        """The plane and the handle are each re-serialized by their own id, with the plane written.
 
-        This is the assertion that pins the increment.  The id source is keyed
-        on object identity, so every object other than those two resolves to a
-        third, equally distinctive literal; asserting these two therefore
-        fails -- rather than coincides -- if production names the widget, the
-        render window or the renderer.
+        A real ``VisorCrossSectionWidget`` over a bare interactor, so the
+        plane and the representation are the real VTK objects production
+        writes through ``set_origin`` and ``set_normal``.  The widget's own
+        ``update_bounds`` leaves a default plane that differs from the
+        reported one; nothing is asserted on that default.
 
-        Revert to a plane-only re-serialise and the call count is 1.  That
-        revert leaves the server correct and the client saving a stale handle,
-        which no other assertion in this suite sees.
-
-        No render is in this test at all, which is what pins the "never relies
-        on a render following" clause: the two calls are the whole mechanism.
+        Two entries, plane then handle.  A plane-only re-serialization leaves
+        the client saving a stale handle; one placed before the writes records
+        the default plane.
         """
-        renderer._object_manager.GetId.side_effect = (
-            lambda obj: CROSS_SECTION_PLANE_WASM_ID
-            if obj is widget.plane
-            else CROSS_SECTION_REPRESENTATION_WASM_ID
-            if obj is widget.plane_representation
-            else WRONG_OBJECT_WASM_ID
-        )
+        widget = VisorCrossSectionWidget(vtkRenderWindowInteractor())
+        widget.update_bounds([-10.0, 10.0, -10.0, 10.0, -10.0, 10.0])
+        renderer._cross_section_widget = widget
+        plane, representation = widget.plane, widget.plane_representation
+        recorded = _record_served(renderer, {
+            CROSS_SECTION_PLANE_WASM_ID: (
+                plane, lambda: (plane.GetOrigin(), plane.GetNormal())
+            ),
+            CROSS_SECTION_REPRESENTATION_WASM_ID: (
+                representation,
+                lambda: (representation.GetOrigin(), representation.GetNormal()),
+            ),
+        })
 
-        renderer.serialize_cross_section_state()
+        renderer.sync_cross_section_plane(REPORTED_PLANE_ORIGIN, REPORTED_PLANE_NORMAL)
 
-        calls = renderer._object_manager.UpdateStateFromObject.call_args_list
-        assert len(calls) == 2
-        assert [call.args[0] for call in calls] == [
-            CROSS_SECTION_PLANE_WASM_ID,
-            CROSS_SECTION_REPRESENTATION_WASM_ID,
+        assert recorded == [
+            (CROSS_SECTION_PLANE_WASM_ID, ((4.0, 5.0, 6.0), (0.0, 1.0, 0.0))),
+            (CROSS_SECTION_REPRESENTATION_WASM_ID, ((4.0, 5.0, 6.0), (0.0, 1.0, 0.0))),
         ]
 
     # -- update_bounds: the seed --------------------------------------------
