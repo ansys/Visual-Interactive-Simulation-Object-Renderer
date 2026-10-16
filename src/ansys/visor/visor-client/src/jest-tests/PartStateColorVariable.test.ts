@@ -18,4 +18,3 @@ describe('a part state parses the delivered colorVariable', () => {
         expect(part.variableComponent).toBeUndefined();
     });
 });
-

@@ -221,7 +221,6 @@ export default class VisorSceneState {
                 data = parseState(state)!;
             }
 
-
             this.setUnit(data.unit === undefined ? this._unit : data.unit, replace);
             this.setCrossSectionEnabled(
                 data.crossSectionEnabled === undefined

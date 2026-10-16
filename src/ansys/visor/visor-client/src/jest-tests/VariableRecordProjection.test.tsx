@@ -384,7 +384,10 @@ describe('setAppStateAsync holds a delivered variable block', () => {
                             partStates: {
                                 '1': {
                                     id: '1',
-                                    colorVariable: { variableId: PRESSURE_ID, variableComponent: -1 },
+                                    colorVariable: {
+                                        variableId: PRESSURE_ID,
+                                        variableComponent: -1,
+                                    },
                                 },
                             },
                         },

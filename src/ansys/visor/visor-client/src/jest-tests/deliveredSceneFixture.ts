@@ -27,4 +27,3 @@ export function deliveredScene(...parts: Record<string, unknown>[]): VisorSceneS
     }
     return new VisorSceneState({ datasetStates: { '0': { id: '0', partStates } } });
 }
-
