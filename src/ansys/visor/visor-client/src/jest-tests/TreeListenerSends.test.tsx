@@ -100,7 +100,9 @@ async function mountPanel(part1Overrides: Record<string, unknown> = {}) {
         sendPanelTopLeftPanelCollapsedAsync: jest.fn(async () => undefined),
     };
     await act(async () => {
-        render(<Panel_TopLeft visorState={visorState as unknown as VisorFrontend} onLoad={() => {}} />);
+        render(
+            <Panel_TopLeft visorState={visorState as unknown as VisorFrontend} onLoad={() => {}} />
+        );
     });
     const nextRender = () =>
         new Promise<void>((resolve) => {
@@ -145,4 +147,3 @@ describe('tree selection listener', () => {
         expect(renderer.sendPartSelectedAsync.mock.calls).toEqual([[3, true]]);
     });
 });
-
