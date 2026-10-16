@@ -15,7 +15,6 @@ Two groups:
 Behavioural coverage of the remaining shared logic lives in
 test_local_scene.py, exercised through the concrete VisorLocalScene subclass.
 """
-import asyncio
 import json
 import threading
 from unittest.mock import MagicMock, patch
@@ -63,9 +62,8 @@ def test_cannot_instantiate_directly():
 
 
 def test_abstract_methods():
-    """VisorSceneBase declares exactly the two expected abstract hooks."""
+    """VisorSceneBase declares exactly the one expected abstract hook."""
     assert VisorSceneBase.__abstractmethods__ == {
-        "_get_runtime_state_async",
         "_push_runtime_state",
     }
 
@@ -75,10 +73,7 @@ def test_abstract_methods():
 # ===========================================================================
 
 class _ConcreteScene(VisorSceneBase):
-    """Smallest concrete VisorSceneBase: both abstract hooks are inert."""
-
-    async def _get_runtime_state_async(self, timeout: float):
-        return MagicMock(name="runtime_app_state")
+    """Smallest concrete VisorSceneBase: the abstract hook is inert."""
 
     def _push_runtime_state(self, runtime_app_state) -> None:
         return None
@@ -1061,38 +1056,14 @@ def _runtime_state(part_states, dataset_id=1):
     )
 
 
-def _frontend_state():
-    """What the browser returns: per-part values for a dataset id of its own.
-
-    Distinguishable on both axes — a dataset id the registry does not have and
-    an opacity the registry never held — so a test can tell registry-sourced
-    output from frontend-sourced output.
-    """
-    return RuntimeAppState.from_components(
-        ui=VisorUIState(dark_theme=False),
-        unit="m",
-        dataset_states={
-            FRONTEND_DATASET_ID: RuntimeDatasetState(
-                id=FRONTEND_DATASET_ID,
-                part_states={NODE_ID: RuntimePartProperties(id=NODE_ID, opacity=0.99)},
-            )
-        },
-        variable_states={},
-    )
-
-
-def _capture_persist_input(scene, frontend_state):
-    """Wire get_state to *frontend_state* and capture what the mapper receives."""
+def _capture_persist_input(scene):
+    """Capture the runtime state get_state hands to the persist mapper."""
     captured = {}
-
-    async def _get_runtime_state_async(timeout):
-        return frontend_state
 
     def _runtime_to_persisted(runtime_state):
         captured["runtime_state"] = runtime_state
         return MagicMock(name="persisted")
 
-    scene._get_runtime_state_async = _get_runtime_state_async
     scene._state_mapper = MagicMock(name="state_mapper")
     scene._state_mapper.runtime_to_persisted.side_effect = _runtime_to_persisted
     return captured
@@ -1140,29 +1111,13 @@ def second_pipeline(renderer, array_dataset):
 def test_get_state_sources_dataset_states_from_the_registry(scene, registry):
     """The persist mapper is handed the registry's per-part state."""
     registry.set_part_opacity(NODE_ID, 0.25)
-    captured = _capture_persist_input(scene, _frontend_state())
+    captured = _capture_persist_input(scene)
 
-    asyncio.run(scene.get_state(timeout=1.0))
+    scene.get_state()
 
     mapped = captured["runtime_state"].scene.dataset_states
     assert list(mapped) == [1]
     assert mapped[1].part_states[NODE_ID].opacity == 0.25
-
-
-def test_get_state_discards_the_frontend_dataset_states(scene, registry):
-    """The browser's per-part state does not survive into the persisted state."""
-    registry.set_part_opacity(NODE_ID, 0.25)
-    captured = _capture_persist_input(scene, _frontend_state())
-
-    asyncio.run(scene.get_state(timeout=1.0))
-
-    mapped = captured["runtime_state"].scene.dataset_states
-    assert FRONTEND_DATASET_ID not in mapped
-    assert all(
-        part.opacity != 0.99
-        for dataset_state in mapped.values()
-        for part in dataset_state.part_states.values()
-    )
 
 
 def test_get_state_reads_the_registry_under_the_lock(scene):
@@ -1171,9 +1126,9 @@ def test_get_state_reads_the_registry_under_the_lock(scene):
     spy_registry = _DepthRecordingRegistry(scene)
     spy_registry.datasets = {1: _make_part_dataset(1, [NODE_ID])}
     scene._dataset_registry = spy_registry
-    _capture_persist_input(scene, _frontend_state())
+    _capture_persist_input(scene)
 
-    asyncio.run(scene.get_state(timeout=1.0))
+    scene.get_state()
 
     assert spy_registry.depth_at_read >= 1
     assert scene._vtk_lock.depth == 0
@@ -1184,9 +1139,9 @@ def test_get_state_snapshots_the_registry_rather_than_referencing_it(scene, regi
     """A write landing after the read does not change what was captured."""
     registry.set_part_opacity(NODE_ID, 0.25)
     live_state = registry.datasets[1].state
-    captured = _capture_persist_input(scene, _frontend_state())
+    captured = _capture_persist_input(scene)
 
-    asyncio.run(scene.get_state(timeout=1.0))
+    scene.get_state()
     registry.set_part_opacity(NODE_ID, 0.75)
 
     snapshot = captured["runtime_state"].scene.dataset_states[1]
@@ -1198,17 +1153,16 @@ def test_get_state_snapshots_the_registry_rather_than_referencing_it(scene, regi
 # ---------------------------------------------------------------------------
 # Save path — the camera
 #
-# The save takes the camera from the renderer's record.  Three things could
+# The save takes the camera from the renderer's record.  Two things could
 # supply one and they are told apart here by value, not by call recording:
 #
 #   * the record          -> RECORD_*    (what the save must write)
-#   * the browser's reply -> REPLY_*     (what the save wrote before)
 #   * the pipeline camera -> PIPELINE_*  (the record's projection, which
 #                                         re-imports VTK's own drift)
 #
 # The record and the pipeline agree in the running application except in
 # clipping_range, and only after a ResetCamera, so reading the pipeline is a
-# silent failure there.  The three literal sets below differ in every field so
+# silent failure there.  The two literal sets below differ in every field so
 # that it is not silent here.
 #
 # These tests run the REAL state mapper -- not the _capture_persist_input
@@ -1229,9 +1183,6 @@ RECORD_PARALLEL_PROJECTION = True
 RECORD_VIEW_ANGLE = 31.0
 RECORD_PARALLEL_SCALE = 19.0
 
-REPLY_POSITION = [21.0, 22.0, 23.0]
-REPLY_CLIPPING_RANGE = [27.0, 28.0]
-
 PIPELINE_POSITION = [31.0, 32.0, 33.0]
 PIPELINE_CLIPPING_RANGE = [37.0, 38.0]
 
@@ -1246,19 +1197,6 @@ def _record_camera() -> VisorCameraState:
         parallel_projection=RECORD_PARALLEL_PROJECTION,
         view_angle=RECORD_VIEW_ANGLE,
         parallel_scale=RECORD_PARALLEL_SCALE,
-    )
-
-
-def _reply_camera() -> VisorCameraState:
-    """What the browser answers getState with.  Never the right answer."""
-    return VisorCameraState(
-        position=REPLY_POSITION,
-        focal_point=[24.0, 25.0, 26.0],
-        view_up=[1.0, 0.0, 0.0],
-        clipping_range=REPLY_CLIPPING_RANGE,
-        parallel_projection=False,
-        view_angle=32.0,
-        parallel_scale=29.0,
     )
 
 
@@ -1322,38 +1260,27 @@ class _CameraRecordRenderer:
         return self._pipeline_camera
 
 
-def _save_scene(scene, record, reply_camera):
-    """Wire *scene* for a save whose record is *record* and whose browser
-    reply carries *reply_camera*.  Returns the renderer double."""
+def _save_scene(scene, record):
+    """Wire *scene* for a save whose camera record is *record*.
+    Returns the renderer double."""
     double = _CameraRecordRenderer(record, _pipeline_camera(), scene=scene)
     scene._renderer = double
     scene._dataset_registry = VisorDatasetRegistry()
-
-    async def _get_runtime_state_async(timeout):
-        return RuntimeAppState.from_components(
-            ui=VisorUIState(dark_theme=False),
-            unit="m",
-            dataset_states={},
-            camera=reply_camera,
-            variable_states={},
-        )
-
-    scene._get_runtime_state_async = _get_runtime_state_async
     return double
 
 
 def test_get_state_takes_the_camera_from_the_record(scene):
     """The saved camera is the record's, field for field.
 
-    This is the assertion that pins the change.  Reverted, the camera on the
-    returned state is the browser's reply and every field below differs.
+    This is the assertion that pins the camera source.  Drop the assignment and
+    the returned state carries no camera at all.
 
     Asserted on what get_state RETURNS -- the object that reaches the writer
     -- not on the runtime state it was built from.
     """
-    _save_scene(scene, _record_camera(), _reply_camera())
+    _save_scene(scene, _record_camera())
 
-    persisted = asyncio.run(scene.get_state(timeout=1.0))
+    persisted = scene.get_state()
 
     camera = persisted.scene.camera
     assert camera.position == RECORD_POSITION
@@ -1365,21 +1292,6 @@ def test_get_state_takes_the_camera_from_the_record(scene):
     assert camera.parallel_scale == RECORD_PARALLEL_SCALE
 
 
-def test_get_state_discards_the_camera_the_browser_returned(scene):
-    """The browser's camera does not survive into the persisted state.
-
-    Its own test rather than an extra assertion above: "wrote the record" and
-    "did not write the reply" are the same only while the round trip still
-    carries a camera at all, and the round trip is not being removed.
-    """
-    _save_scene(scene, _record_camera(), _reply_camera())
-
-    persisted = asyncio.run(scene.get_state(timeout=1.0))
-
-    assert persisted.scene.camera.position != REPLY_POSITION
-    assert persisted.scene.camera.clipping_range != REPLY_CLIPPING_RANGE
-
-
 def test_get_state_does_not_read_the_pipeline_camera(scene):
     """The record is read; the pipeline is not.
 
@@ -1387,9 +1299,9 @@ def test_get_state_does_not_read_the_pipeline_camera(scene):
     running application the two agree except in clipping_range, and only
     after a ResetCamera, so no manual check discriminates them reliably.
     """
-    double = _save_scene(scene, _record_camera(), _reply_camera())
+    double = _save_scene(scene, _record_camera())
 
-    persisted = asyncio.run(scene.get_state(timeout=1.0))
+    persisted = scene.get_state()
 
     assert double.record_reads == 1
     assert double.pipeline_reads == 0
@@ -1398,17 +1310,17 @@ def test_get_state_does_not_read_the_pipeline_camera(scene):
 
 
 def test_get_state_writes_no_camera_when_the_record_is_empty(scene):
-    """Negative twin: an empty record writes no camera, reply notwithstanding.
+    """An empty record writes no camera.
 
     The record is None only for a scene that never held a dataset, since the
-    first one resets the camera and that reset writes the record.  The reply
-    carries a perfectly valid camera, so this is the only test in the module
-    that a guarded assignment -- one that skipped the write when the record
-    was None -- would fail.
+    first one resets the camera and that reset writes the record.  get_state
+    starts from an empty runtime state whose camera is already None, so this
+    test cannot tell an unconditional assignment from a guarded one; it pins
+    only that nothing else supplies a camera.
     """
-    _save_scene(scene, None, _reply_camera())
+    _save_scene(scene, None)
 
-    persisted = asyncio.run(scene.get_state(timeout=1.0))
+    persisted = scene.get_state()
 
     assert persisted.scene.camera is None
 
@@ -1419,13 +1331,12 @@ def test_get_state_reads_the_camera_under_the_lock(scene):
     The record is a single attribute holding a whole object reference, but the
     read sits in the same critical section as the registry snapshot and is
     asserted the same way, on the precedent of
-    test_get_state_reads_the_registry_under_the_lock -- which also covers the
-    await, since the lock is taken after it and never held across it.
+    test_get_state_reads_the_registry_under_the_lock.
     """
     scene._vtk_lock = _LockSpy()
-    double = _save_scene(scene, _record_camera(), _reply_camera())
+    double = _save_scene(scene, _record_camera())
 
-    asyncio.run(scene.get_state(timeout=1.0))
+    scene.get_state()
 
     assert double.depth_at_read >= 1
     assert scene._vtk_lock.depth == 0
@@ -2238,8 +2149,8 @@ def test_apply_state_component_without_variable_id_does_not_clear(
 #
 # Three toggles the server now holds: cross-section, edges, bounding box.
 # Each has a coordinator method that writes the store and applies to the
-# renderer under ``_vtk_lock``; ``get_state`` reads the store rather than the
-# browser's reply; ``apply_state`` restores it; ``get_scene_details`` delivers
+# renderer under ``_vtk_lock``; ``get_state`` reads the store; ``apply_state``
+# restores it; ``get_scene_details`` delivers
 # it to a rebuilt or reconnecting client.
 #
 # Every expected value below is a hand-written literal.  ``True`` is used
@@ -2250,11 +2161,6 @@ def test_apply_state_component_without_variable_id_does_not_clear(
 
 TOGGLE_ON = True
 TOGGLE_OFF = False
-
-# What a browser that was asked would answer.  Deliberately the opposite of
-# what the store holds in the derivation test, so that "read the store" and
-# "read the reply" cannot both pass.
-REPLY_TOGGLE = False
 
 DELIVERED_PARALLEL_PROJECTION = True
 
@@ -2343,26 +2249,13 @@ def _delivered_camera() -> VisorCameraState:
     )
 
 
-def _toggle_save_scene(scene, reply_toggle):
-    """Wire *scene* for a save whose browser reply carries *reply_toggle*.
+def _toggle_save_scene(scene):
+    """Wire *scene* for a save.
 
     The registry is emptied so the mapper's per-dataset loop contributes
     nothing; what is under test is the scene block of the persisted state.
     """
     scene._dataset_registry = VisorDatasetRegistry()
-
-    async def _get_runtime_state_async(timeout):
-        return RuntimeAppState.from_components(
-            ui=VisorUIState(dark_theme=False),
-            unit="m",
-            dataset_states={},
-            cross_section_enabled=reply_toggle,
-            edges_enabled=reply_toggle,
-            bounding_box_enabled=reply_toggle,
-            variable_states={},
-        )
-
-    scene._get_runtime_state_async = _get_runtime_state_async
 
 
 # ---------------------------------------------------------------------------
@@ -2468,17 +2361,16 @@ def test_set_edges_visible_holds_the_lock_at_the_renderer_call(scene):
 
 
 # ---------------------------------------------------------------------------
-# get_state -- the toggles come from the store, not from the reply
+# get_state -- the toggles come from the store
 # ---------------------------------------------------------------------------
 
 def test_get_state_takes_the_toggles_from_the_store(scene):
-    """The saved toggles are the server's, with the browser saying otherwise.
+    """The saved toggles are the server's.
 
-    This is the assertion that pins the change.  The reply carries the
-    hand-written literal ``False`` for all three while the store holds ``True``
-    for all three; revert the three get_state assignments and every assertion
-    below reports ``False``.  That single difference is what separates
-    "server-authoritative" from "round-trips the client's answer".
+    This is the assertion that pins the store as the source.  The store holds
+    ``True`` for all three against a default of ``False``; revert the three
+    get_state assignments and every assertion below fails, because the empty
+    runtime state carries ``None`` for all three.
 
     Asserted on what get_state RETURNS -- the object that reaches the writer --
     not on the runtime state it was built from.
@@ -2486,31 +2378,13 @@ def test_get_state_takes_the_toggles_from_the_store(scene):
     scene.set_cross_section_visibility(TOGGLE_ON)
     scene.set_edges_visible(TOGGLE_ON)
     scene.set_bounding_box_visibility(TOGGLE_ON)
-    _toggle_save_scene(scene, REPLY_TOGGLE)
+    _toggle_save_scene(scene)
 
-    persisted = asyncio.run(scene.get_state(timeout=1.0))
+    persisted = scene.get_state()
 
     assert persisted.scene.cross_section_enabled is True
     assert persisted.scene.edges_enabled is True
     assert persisted.scene.bounding_box_enabled is True
-
-
-def test_get_state_discards_the_toggles_the_browser_returned(scene):
-    """The browser's toggles do not survive into the persisted state.
-
-    The mirror of the test above and its own test for the same reason the
-    camera pair is split: "wrote the store" and "did not write the reply" are
-    the same only while the round trip still carries toggles at all, and the
-    round trip is not being removed.  Here the store is left at its default
-    ``False`` and the reply carries ``True``.
-    """
-    _toggle_save_scene(scene, True)
-
-    persisted = asyncio.run(scene.get_state(timeout=1.0))
-
-    assert persisted.scene.cross_section_enabled is False
-    assert persisted.scene.edges_enabled is False
-    assert persisted.scene.bounding_box_enabled is False
 
 
 # ---------------------------------------------------------------------------
@@ -2719,33 +2593,15 @@ def test_set_part_visibility_unknown_node_id_does_not_fan_out(scene):
 PROJECTION_ON = True
 PROJECTION_OFF = False
 
-# What a browser that was asked would answer for the persisted toggle.
-# Deliberately the opposite of the record's parallel_projection, so "derived
-# from the record" and "passed through from the reply" cannot both pass.
-REPLY_ORTHOGRAPHIC = False
+def _projection_save_scene(scene, record):
+    """Wire *scene* for a save: renderer record *record*.
 
-
-def _projection_save_scene(scene, record, reply_orthographic):
-    """Wire *scene* for a save: renderer record *record*, reply *orthographic*.
-
-    The same shape as ``_save_scene`` above, but the reply carries the
-    persisted projection toggle rather than a camera, because that is the
-    field whose source is under test.
+    The same shape as ``_save_scene`` above; the persisted projection toggle
+    is the field whose source is under test.
     """
     double = _CameraRecordRenderer(record, _pipeline_camera(), scene=scene)
     scene._renderer = double
     scene._dataset_registry = VisorDatasetRegistry()
-
-    async def _get_runtime_state_async(timeout):
-        return RuntimeAppState.from_components(
-            ui=VisorUIState(dark_theme=False),
-            unit="m",
-            dataset_states={},
-            orthographic_enabled=reply_orthographic,
-            variable_states={},
-        )
-
-    scene._get_runtime_state_async = _get_runtime_state_async
     return double
 
 
@@ -2876,12 +2732,11 @@ def test_set_projection_does_not_notify_the_client(scene):
 # ---------------------------------------------------------------------------
 
 def test_get_state_derives_orthographic_enabled_from_the_camera_record(scene):
-    """The saved projection is the record's, with the browser saying otherwise.
+    """The saved projection is the record's.
 
     This is the assertion that closes AC-5.  The record carries the
-    hand-written literal ``True`` while the reply carries the hand-written
-    literal ``False``; revert the derivation and the assertion reports
-    ``False``, which is the reply's answer passed through.
+    hand-written literal ``True``; revert the derivation and the assertion
+    fails, because the empty runtime state carries ``None``.
 
     ``record_reads == 1`` is asserted here too: the record is bound once and
     read once, so the camera and the projection are answers to a single
@@ -2890,9 +2745,9 @@ def test_get_state_derives_orthographic_enabled_from_the_camera_record(scene):
     Asserted on what get_state RETURNS -- the object that reaches the writer
     -- not on the runtime state it was built from.
     """
-    double = _projection_save_scene(scene, _record_camera(), REPLY_ORTHOGRAPHIC)
+    double = _projection_save_scene(scene, _record_camera())
 
-    persisted = asyncio.run(scene.get_state(timeout=1.0))
+    persisted = scene.get_state()
 
     assert persisted.scene.orthographic_enabled is True
     assert persisted.scene.camera.parallel_projection is True
@@ -2903,13 +2758,14 @@ def test_get_state_orthographic_enabled_is_none_when_the_record_is_empty(scene):
     """An empty record emits ``None``, not a fabricated ``False``.
 
     ``None`` says "nothing was ever written"; ``False`` would assert
-    perspective over a client that may be parallel.  The reply carries
-    ``True`` here, so a derivation that dropped its guard and fell back to the
-    reply would be visible rather than coincide.
+    perspective over a client that may be parallel.  get_state starts from an
+    empty runtime state whose projection is already ``None``, so this test
+    cannot tell the derivation from a dropped one; it pins only that nothing
+    fabricates a value.
     """
-    _projection_save_scene(scene, None, True)
+    _projection_save_scene(scene, None)
 
-    persisted = asyncio.run(scene.get_state(timeout=1.0))
+    persisted = scene.get_state()
 
     assert persisted.scene.orthographic_enabled is None
     assert persisted.scene.camera is None
@@ -2938,12 +2794,6 @@ def test_get_state_orthographic_enabled_is_none_when_the_record_is_empty(scene):
 RECORD_CROSS_SECTION_ORIGIN = [51.0, 52.0, 53.0]
 RECORD_CROSS_SECTION_NORMAL = [0.0, 1.0, 0.0]
 
-# What the browser answers getState with.  Never the right answer, and
-# different in every component, so "read the record" and "read the reply"
-# cannot both pass.
-REPLY_CROSS_SECTION_ORIGIN = [61.0, 62.0, 63.0]
-REPLY_CROSS_SECTION_NORMAL = [1.0, 0.0, 0.0]
-
 # What a settled drag reports, and what a save file carries on load.
 GESTURE_CROSS_SECTION_ORIGIN = [71.0, 72.0, 73.0]
 GESTURE_CROSS_SECTION_NORMAL = [0.0, 0.0, 1.0]
@@ -2960,38 +2810,18 @@ def _record_plane() -> VisorCrossSectionState:
     )
 
 
-def _reply_plane() -> VisorCrossSectionState:
-    """What the browser answers getState with.  Never the right answer."""
-    return VisorCrossSectionState(
-        origin=REPLY_CROSS_SECTION_ORIGIN,
-        normal=REPLY_CROSS_SECTION_NORMAL,
-    )
+def _plane_save_scene(scene, record_plane):
+    """Wire *scene* for a save: renderer plane record *record_plane*.
 
-
-def _plane_save_scene(scene, record_plane, reply_plane):
-    """Wire *scene* for a save: renderer record *record_plane*, reply *reply_plane*.
-
-    The same shape as ``_save_scene`` above, but the reply carries a plane
-    rather than a camera, because that is the field whose source is under
-    test.  The registry is emptied so the mapper's per-dataset loop
-    contributes nothing.
+    The same shape as ``_save_scene`` above; the plane is the field whose
+    source is under test.  The registry is emptied so the mapper's
+    per-dataset loop contributes nothing.
     """
     double = _CameraRecordRenderer(
         None, _pipeline_camera(), scene=scene, cross_section=record_plane
     )
     scene._renderer = double
     scene._dataset_registry = VisorDatasetRegistry()
-
-    async def _get_runtime_state_async(timeout):
-        return RuntimeAppState.from_components(
-            ui=VisorUIState(dark_theme=False),
-            unit="m",
-            dataset_states={},
-            cross_section=reply_plane,
-            variable_states={},
-        )
-
-    scene._get_runtime_state_async = _get_runtime_state_async
     return double
 
 
@@ -3076,45 +2906,40 @@ def test_sync_cross_section_plane_holds_the_lock_across_both_halves(scene):
 
 
 # ---------------------------------------------------------------------------
-# get_state -- the plane comes from the record, not from the reply
+# get_state -- the plane comes from the record
 # ---------------------------------------------------------------------------
 
 def test_get_state_takes_the_cross_section_from_the_record(scene):
-    """The saved plane is the record's, with the browser saying otherwise.
+    """The saved plane is the record's.
 
-    The record and the reply differ in every component, so "server
-    authoritative" and "round-trips the client's answer" cannot both pass.
-    Revert the assignment and both assertions below report the reply's
-    numbers.
+    Revert the assignment and both assertions below fail, because the empty
+    runtime state carries no plane.
 
     Asserted on what get_state RETURNS -- the object that reaches the writer
     -- not on the runtime state it was built from.  An assignment placed after
     ``runtime_to_persisted`` passes every assertion made against the runtime
     object and still writes the wrong file.
     """
-    _plane_save_scene(scene, _record_plane(), _reply_plane())
+    _plane_save_scene(scene, _record_plane())
 
-    persisted = asyncio.run(scene.get_state(timeout=1.0))
+    persisted = scene.get_state()
 
     assert persisted.scene.cross_section.origin == RECORD_CROSS_SECTION_ORIGIN
     assert persisted.scene.cross_section.normal == RECORD_CROSS_SECTION_NORMAL
 
 
 def test_get_state_writes_no_cross_section_when_the_record_is_empty(scene):
-    """An empty record writes ``None`` through, reply notwithstanding.
-
-    The assignment is unconditional, exactly as the camera's, and this is the
-    only test that a guarded one -- one that skipped the write when the record
-    was ``None`` -- would fail.  The reply carries a perfectly valid plane, so
-    the guarded version would save the browser's answer and look correct
-    everywhere else.
+    """An empty record writes ``None`` through.
 
     ``None`` says "no plane was ever written".  The guard for "absent says
-    nothing" belongs to the load path, not here.
+    nothing" belongs to the load path, not here.  get_state starts from an
+    empty runtime state whose plane is already ``None``, so this test cannot
+    tell an unconditional assignment from a guarded one; it pins only that
+    nothing else supplies a plane.
     """
-    _plane_save_scene(scene, None, _reply_plane())
+    _plane_save_scene(scene, None)
 
-    persisted = asyncio.run(scene.get_state(timeout=1.0))
+    persisted = scene.get_state()
 
     assert persisted.scene.cross_section is None
 
@@ -3192,17 +3017,10 @@ def test_apply_state_serializes_the_loaded_plane_after_syncing_it(scene):
 PANEL_COLLAPSED = True
 PANEL_TAB_INDEX = 1
 
-# What a browser that was asked would answer.  Deliberately the opposite of
-# what the store holds in the derivation test, so that "read the store" and
-# "read the reply" cannot both pass.
-REPLY_PANEL_COLLAPSED = False
-REPLY_PANEL_TAB_INDEX = 0
-
-# The theme pair.  The server holds one value and the browser reports the
-# other, so that "wrote dark_mode" and "passed the reply through" are
-# distinguishable in a single assertion.
+# The theme.  The server holds the opposite of its constructor default, so
+# "wrote dark_mode" and "wrote a default" are distinguishable in a single
+# assertion.
 SERVER_DARK_MODE = True
-REPLY_DARK_THEME = False
 
 
 class _PanelStoreLockSpy(_LockSpy):
@@ -3229,41 +3047,14 @@ class _PanelStoreLockSpy(_LockSpy):
         return super().__exit__(exc_type, exc, tb)
 
 
-def _reply_ui(
-    panel_top_left_panel_collapsed,
-    panel_top_right_panel_collapsed,
-    panel_top_right_legend_collapsed,
-    panel_top_right_tab_index,
-    dark_theme=REPLY_DARK_THEME,
-):
-    """The ``ui`` block a browser round trip answers with."""
-    return VisorUIState(
-        dark_theme=dark_theme,
-        panel_top_left_panel_collapsed=panel_top_left_panel_collapsed,
-        panel_top_right_panel_collapsed=panel_top_right_panel_collapsed,
-        panel_top_right_legend_collapsed=panel_top_right_legend_collapsed,
-        panel_top_right_tab_index=panel_top_right_tab_index,
-    )
-
-
-def _ui_save_scene(scene, reply_ui):
-    """Wire *scene* for a save whose browser reply carries *reply_ui*.
+def _ui_save_scene(scene):
+    """Wire *scene* for a save.
 
     The same shape as ``_toggle_save_scene`` above; the registry is emptied so
     the mapper's per-dataset loop contributes nothing, and what is under test
     is the ``ui`` block of the persisted state.
     """
     scene._dataset_registry = VisorDatasetRegistry()
-
-    async def _get_runtime_state_async(timeout):
-        return RuntimeAppState.from_components(
-            ui=reply_ui,
-            unit="m",
-            dataset_states={},
-            variable_states={},
-        )
-
-    scene._get_runtime_state_async = _get_runtime_state_async
 
 
 def _panel_runtime_state(ui):
@@ -3325,16 +3116,17 @@ def test_set_panel_top_right_tab_index_holds_the_lock_at_the_store_write(scene):
 
 
 # ---------------------------------------------------------------------------
-# get_state -- the UI record comes from the server, not from the reply
+# get_state -- the UI record comes from the server
 # ---------------------------------------------------------------------------
 
 def test_get_state_takes_the_ui_panel_state_from_the_store(scene):
-    """The saved panel state is the server's, with the browser saying otherwise.
+    """The saved panel state is the server's.
 
-    This is the assertion that pins the change.  The store holds the
-    hand-written literals ``True, True, True, 1`` while the reply carries
-    ``False, False, False, 0``; delete the ``runtime_state.ui`` assignment in
-    get_state and every assertion below reports the reply's value instead.
+    This is the assertion that pins the store as the source.  The store holds
+    the hand-written literals ``True, True, True, 1`` against initial values
+    of ``False, False, False, 0``; delete the ``runtime_state.ui`` assignment
+    in get_state and every assertion below fails, because the empty runtime
+    state's ``ui`` carries none of them.
 
     Asserted on what get_state RETURNS -- the object that reaches the writer --
     not on the runtime state it was built from.
@@ -3343,17 +3135,9 @@ def test_get_state_takes_the_ui_panel_state_from_the_store(scene):
     scene.set_panel_top_right_panel_collapsed(PANEL_COLLAPSED)
     scene.set_panel_top_right_legend_collapsed(PANEL_COLLAPSED)
     scene.set_panel_top_right_tab_index(PANEL_TAB_INDEX)
-    _ui_save_scene(
-        scene,
-        _reply_ui(
-            REPLY_PANEL_COLLAPSED,
-            REPLY_PANEL_COLLAPSED,
-            REPLY_PANEL_COLLAPSED,
-            REPLY_PANEL_TAB_INDEX,
-        ),
-    )
+    _ui_save_scene(scene)
 
-    persisted = asyncio.run(scene.get_state(timeout=1.0))
+    persisted = scene.get_state()
 
     assert persisted.ui.panel_top_left_panel_collapsed is True
     assert persisted.ui.panel_top_right_panel_collapsed is True
@@ -3361,61 +3145,19 @@ def test_get_state_takes_the_ui_panel_state_from_the_store(scene):
     assert persisted.ui.panel_top_right_tab_index == 1
 
 
-def test_get_state_discards_the_ui_panel_state_the_browser_returned(scene):
-    """The browser's panel state does not survive into the persisted state.
-
-    The mirror of the test above and its own test for the same reason the
-    camera and toggle pairs are split: "wrote the store" and "did not write
-    the reply" are the same only while the round trip still carries a ``ui``
-    block at all, and the round trip is not being removed.  Here the store is
-    left at its initial values and the reply carries ``True, True, True, 1``.
-
-    The four expected values are the hand-written literals ``False``,
-    ``False``, ``False`` and ``0``, not a read of the store: a store
-    initialised to ``None`` -- the silent failure the delivery decision
-    turns on -- fails this test on value.
-    """
-    _ui_save_scene(
-        scene,
-        _reply_ui(
-            PANEL_COLLAPSED,
-            PANEL_COLLAPSED,
-            PANEL_COLLAPSED,
-            PANEL_TAB_INDEX,
-        ),
-    )
-
-    persisted = asyncio.run(scene.get_state(timeout=1.0))
-
-    assert persisted.ui.panel_top_left_panel_collapsed is False
-    assert persisted.ui.panel_top_right_panel_collapsed is False
-    assert persisted.ui.panel_top_right_legend_collapsed is False
-    assert persisted.ui.panel_top_right_tab_index == 0
-
-
 def test_get_state_takes_dark_theme_from_the_server_not_the_browser(scene):
-    """The saved theme is ``dark_mode``, with the browser saying otherwise.
+    """The saved theme is ``dark_mode``.
 
     Its own test rather than a fifth assertion above, because it is a
     different source: the other four come from the panel store, this one from
-    the public ``dark_mode`` attribute, and no trigger writes it.  The reply
-    carries the opposite literal, which is what a Dash host prop override
-    produces in the browser today; before this change that value reached the
-    file and, on the next load, the server's own ``dark_mode``.
+    the public ``dark_mode`` attribute, and no trigger writes it.  The server
+    holds ``True`` against a constructor default of ``False``, so a theme
+    taken from anywhere but ``dark_mode`` fails on value.
     """
     scene.dark_mode = SERVER_DARK_MODE
-    _ui_save_scene(
-        scene,
-        _reply_ui(
-            REPLY_PANEL_COLLAPSED,
-            REPLY_PANEL_COLLAPSED,
-            REPLY_PANEL_COLLAPSED,
-            REPLY_PANEL_TAB_INDEX,
-            dark_theme=REPLY_DARK_THEME,
-        ),
-    )
+    _ui_save_scene(scene)
 
-    persisted = asyncio.run(scene.get_state(timeout=1.0))
+    persisted = scene.get_state()
 
     assert persisted.ui.dark_theme is True
 
@@ -3470,8 +3212,8 @@ def test_apply_state_leaves_an_absent_ui_panel_field_alone(scene):
 # get_state -- the record is handed out as a copy
 # ---------------------------------------------------------------------------
 
-# A later write, distinct from both the store's seeded values and the reply's,
-# so a returned state that moved reports a value belonging to neither.
+# A later write, distinct from the store's seeded values, so a returned state
+# that moved reports a value the save never saw.
 LATER_PANEL_TAB_INDEX = 9
 LATER_PANEL_COLLAPSED = False
 
@@ -3499,17 +3241,9 @@ def test_get_state_hands_out_a_copy_of_the_ui_record(scene):
     scene.set_panel_top_right_panel_collapsed(PANEL_COLLAPSED)
     scene.set_panel_top_right_legend_collapsed(PANEL_COLLAPSED)
     scene.set_panel_top_right_tab_index(PANEL_TAB_INDEX)
-    _ui_save_scene(
-        scene,
-        _reply_ui(
-            REPLY_PANEL_COLLAPSED,
-            REPLY_PANEL_COLLAPSED,
-            REPLY_PANEL_COLLAPSED,
-            REPLY_PANEL_TAB_INDEX,
-        ),
-    )
+    _ui_save_scene(scene)
 
-    persisted = asyncio.run(scene.get_state(timeout=1.0))
+    persisted = scene.get_state()
     scene.set_panel_top_right_tab_index(LATER_PANEL_TAB_INDEX)
     scene.set_panel_top_left_panel_collapsed(LATER_PANEL_COLLAPSED)
 
@@ -3923,35 +3657,22 @@ def test_set_state_push_carries_the_record(scene, registry):
     }
 
 
-def _contradictory_reply():
-    """The browser's reply: a different range for the same id, a stray id, and another unit."""
-    return RuntimeAppState.from_components(
-        ui=VisorUIState(dark_theme=False),
-        unit="ft",
-        dataset_states={},
-        variable_states={
-            VARIABLE_ID: _pressure_record(magnitude_range=(900.0, 901.0), ranges=[(902.0, 903.0)]),
-            "POINT::stray::1": _pressure_record(id="POINT::stray::1", array_name="stray"),
-        },
-    )
-
-
 def test_get_state_takes_the_variable_states_from_the_server(scene, registry):
-    """#19: the save receives the server's record, whatever the browser replied."""
+    """#19: the save receives the server's record."""
     _seed_part_variables(registry, [_pressure_variable()])
     scene._rebuild_variable_records_from_registry()
-    captured = _capture_persist_input(scene, _contradictory_reply())
+    captured = _capture_persist_input(scene)
 
-    asyncio.run(scene.get_state(timeout=1.0))
+    scene.get_state()
 
     assert captured["runtime_state"].scene.variable_states == {VARIABLE_ID: _pressure_record()}
 
 
 def test_get_state_takes_the_unit_from_the_registry(scene, registry):
-    """#20: the save receives the registry's unit, whatever the browser replied."""
+    """#20: the save receives the registry's unit."""
     registry.unit = "mm"
-    captured = _capture_persist_input(scene, _contradictory_reply())
+    captured = _capture_persist_input(scene)
 
-    asyncio.run(scene.get_state(timeout=1.0))
+    scene.get_state()
 
     assert captured["runtime_state"].scene.unit == "mm"

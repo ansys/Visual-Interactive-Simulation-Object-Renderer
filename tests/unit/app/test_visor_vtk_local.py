@@ -179,11 +179,11 @@ def test_save_state_writes_json(tmp_path, iface):
     import json
     from unittest.mock import MagicMock
 
-    # Arrange: fake state object returned by the (frontend-driven) get_state call
+    # Arrange: fake state object returned by the scene's get_state call
     state = MagicMock()
     state.model_dump_json.return_value = json.dumps({"foo": "bar"})
 
-    async def _get_state(*args, **kwargs):
+    def _get_state(*args, **kwargs):
         return state
 
     iface._scene.get_state = _get_state
@@ -219,7 +219,7 @@ def test_save_state_writes_dataset_snapshots(tmp_path, iface):
     state = MagicMock()
     state.scene.dataset_states = {}
 
-    async def _get_state(*args, **kwargs):
+    def _get_state(*args, **kwargs):
         return state
 
     iface._scene.get_state = _get_state
@@ -257,7 +257,7 @@ def test_save_state_skips_clean_datasets(tmp_path, iface):
     state = MagicMock()
     state.scene.dataset_states = {}
 
-    async def _get_state(*args, **kwargs):
+    def _get_state(*args, **kwargs):
         return state
 
     iface._scene.get_state = _get_state
@@ -589,26 +589,23 @@ def test_local_app_still_receives_the_pre_existing_arguments(local_app_call):
     """The boundary is extended, not broken: the earlier arguments survive."""
     call, scene, instance = local_app_call
 
-    server, get_scene_details_json, handle_save_state_response, standalone = call.args
+    server, get_scene_details_json, standalone = call.args
     assert server is instance.server
     assert callable(get_scene_details_json)
-    assert callable(handle_save_state_response)
     assert standalone is True
     assert callable(call.kwargs["pick_geometry"])
     assert "trame_logger" in call.kwargs
 
 
 def test_the_pre_existing_lambdas_still_delegate_to_the_scene(local_app_call):
-    """The three original callables are untouched and still reach the scene."""
+    """The two original callables are untouched and still reach the scene."""
     call, scene, _instance = local_app_call
 
-    _server, get_scene_details_json, handle_save_state_response, _standalone = call.args
+    _server, get_scene_details_json, _standalone = call.args
     get_scene_details_json()
-    handle_save_state_response(1, {"ok": True})
     call.kwargs["pick_geometry"](2, 3, "vertex", 0.0, 1.0, 2.0)
 
     scene.get_scene_details_json.assert_called_once_with()
-    scene.handle_save_state_response.assert_called_once_with(1, {"ok": True})
     scene.pick_geometry.assert_called_once_with(2, 3, "vertex", 0.0, 1.0, 2.0)
 
 
