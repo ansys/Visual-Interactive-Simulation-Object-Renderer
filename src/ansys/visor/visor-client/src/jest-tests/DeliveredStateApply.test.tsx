@@ -86,7 +86,10 @@ function makeSceneGraphNode() {
     };
 }
 
-/** Every renderer member the constructor, the part loop and its node methods reach. */
+/**
+ * Every renderer member the constructor, the part loop, its node methods and
+ * the widget toggles reach.
+ */
 function makeRendererDouble() {
     return {
         attachSceneGraph: jest.fn(),
@@ -107,6 +110,12 @@ function makeRendererDouble() {
         clearColorVariableAsync: jest.fn(async () => undefined),
         sendClearPartColorVariableAsync: jest.fn(async () => undefined),
         setScalarRangeAsync: jest.fn(async () => undefined),
+        applyCrossSectionVisibilityAsync: jest.fn(async () => undefined),
+        applyEdgeVisibilityGlobalAsync: jest.fn(async () => undefined),
+        applyBoundingBoxVisibilityAsync: jest.fn(async () => undefined),
+        setCrossSectionVisibilityAsync: jest.fn(async () => undefined),
+        setEdgeVisibilityGlobalAsync: jest.fn(async () => undefined),
+        setBoundingBoxVisibilityAsync: jest.fn(async () => undefined),
     };
 }
 
@@ -217,5 +226,130 @@ describe('the client applies delivered state as given', () => {
         } finally {
             warn.mockRestore();
         }
+    });
+});
+
+/** How many times each of the six per-part send members was called. */
+function sendCallCounts(renderer: ReturnType<typeof makeRendererDouble>) {
+    return {
+        sendPartVisibilityAsync: renderer.sendPartVisibilityAsync.mock.calls.length,
+        sendPartOpacityAsync: renderer.sendPartOpacityAsync.mock.calls.length,
+        sendPartSelectedAsync: renderer.sendPartSelectedAsync.mock.calls.length,
+        sendPartDiffuseColorAsync: renderer.sendPartDiffuseColorAsync.mock.calls.length,
+        sendPartColorVariableAsync: renderer.sendPartColorVariableAsync.mock.calls.length,
+        sendClearPartColorVariableAsync: renderer.sendClearPartColorVariableAsync.mock.calls.length,
+    };
+}
+
+const NO_SENDS = {
+    sendPartVisibilityAsync: 0,
+    sendPartOpacityAsync: 0,
+    sendPartSelectedAsync: 0,
+    sendPartDiffuseColorAsync: 0,
+    sendPartColorVariableAsync: 0,
+    sendClearPartColorVariableAsync: 0,
+};
+
+/** A delivery holding `pressure` and a part A record differing from the fixture's in every field. */
+function deliveryDifferingInEveryField() {
+    return delivery(
+        { [PRESSURE_ID]: pressureRecord() },
+        deliveredPart(PART_A_ID, {
+            visible: false,
+            opacity: 0.25,
+            selected: true,
+            diffuseRgb: [0.25, 0.5, 0.75],
+            colorVariable: { variableId: PRESSURE_ID, variableComponent: -1 },
+        })
+    );
+}
+
+describe('delivered state is applied without sending', () => {
+    test('a delivered record differing in every part field sends no per-part trigger', async () => {
+        const { frontend, renderer } = makeFrontend(deliveredScene(deliveredPart(PART_A_ID)));
+
+        await frontend.setAppStateAsync(deliveryDifferingInEveryField(), false);
+
+        expect(sendCallCounts(renderer)).toEqual(NO_SENDS);
+    });
+
+    test('a delivered record differing in every part field reaches the renderer', async () => {
+        // Guards the test above: a delivery that applied nothing would also send nothing.
+        const { frontend, renderer } = makeFrontend(deliveredScene(deliveredPart(PART_A_ID)));
+
+        await frontend.setAppStateAsync(deliveryDifferingInEveryField(), false);
+
+        expect(renderer.setVisibilityAsync.mock.calls).toEqual([[1, false]]);
+        expect(renderer.setOpacityAsync.mock.calls).toEqual([[1, 0.25]]);
+        expect(renderer.setDiffuseColorRgbAsync.mock.calls).toEqual([[1, 0.25, 0.5, 0.75, false]]);
+        expect(renderer.setSelectedAsync.mock.calls).toEqual([[1, true, [0.25, 0.5, 0.75]]]);
+        expect(renderer.setColorVariableAsync.mock.calls).toEqual([
+            [
+                1,
+                {
+                    variableId: 'POINT::pressure::1',
+                    variableType: 'POINT',
+                    variableName: 'pressure',
+                    component: -1,
+                    min: 2,
+                    max: 8,
+                },
+            ],
+        ]);
+    });
+
+    test('a delivered colorVariable null on a coloured part clears it without sending', async () => {
+        const { frontend, renderer } = makeFrontend(
+            deliveredScene(
+                deliveredPart(PART_A_ID, {
+                    colorVariable: { variableId: PRESSURE_ID, variableComponent: -1 },
+                })
+            )
+        );
+
+        await frontend.setAppStateAsync(
+            delivery({ [PRESSURE_ID]: pressureRecord() }, deliveredPart(PART_A_ID)),
+            false
+        );
+
+        expect(renderer.clearColorVariableAsync.mock.calls).toEqual([[1]]);
+        expect(sendCallCounts(renderer)).toEqual(NO_SENDS);
+    });
+
+    test('the three delivered widget toggles are applied through the apply members and not the setters', async () => {
+        const { frontend, renderer } = makeFrontend(deliveredScene(deliveredPart(PART_A_ID)));
+
+        await frontend.setAppStateAsync(
+            { scene: { crossSectionEnabled: true, edgesEnabled: false, boundingBoxEnabled: true } },
+            false
+        );
+
+        expect(renderer.applyCrossSectionVisibilityAsync.mock.calls).toEqual([[true]]);
+        expect(renderer.applyEdgeVisibilityGlobalAsync.mock.calls).toEqual([[false]]);
+        expect(renderer.applyBoundingBoxVisibilityAsync.mock.calls).toEqual([[true]]);
+        expect(renderer.setCrossSectionVisibilityAsync).not.toHaveBeenCalled();
+        expect(renderer.setEdgeVisibilityGlobalAsync).not.toHaveBeenCalled();
+        expect(renderer.setBoundingBoxVisibilityAsync).not.toHaveBeenCalled();
+    });
+
+    test('setColorVariableAsync on the slot the node holds, with a different range, applies the range and sends nothing', async () => {
+        // The node is built holding pressure's magnitude slot with no range
+        // applied; the delivery below holds the record and touches no part.
+        const { frontend, renderer, partA } = makeFrontend(
+            deliveredScene(
+                deliveredPart(PART_A_ID, {
+                    colorVariable: { variableId: PRESSURE_ID, variableComponent: -1 },
+                })
+            )
+        );
+        await frontend.setAppStateAsync(
+            { scene: { variableStates: { [PRESSURE_ID]: pressureRecord() } } },
+            false
+        );
+
+        await partA.setColorVariableAsync(PRESSURE_ID, -1);
+
+        expect(renderer.setScalarRangeAsync.mock.calls).toEqual([[1, 2, 8]]);
+        expect(sendCallCounts(renderer)).toEqual(NO_SENDS);
     });
 });

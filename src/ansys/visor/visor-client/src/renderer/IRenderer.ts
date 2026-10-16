@@ -222,6 +222,8 @@ export interface IRenderer {
     // server's store.
 
     setCrossSectionVisibilityAsync(visible?: boolean): Promise<void>;
+    /** Show or hide the widget; send nothing. */
+    applyCrossSectionVisibilityAsync(visible: boolean): Promise<void>;
     /** Whether the cross-section plane is shown. See contract note above. */
     isCrossSectionVisible(): boolean; // cached bool, sync
     updateCrossSectionBoundsAsync(): Promise<void>;
@@ -231,11 +233,15 @@ export interface IRenderer {
     setCrossSectionNormalAsync(normal: readonly number[]): Promise<void>;
 
     setBoundingBoxVisibilityAsync(visible?: boolean): Promise<void>;
+    /** Show or hide the widget; send nothing. */
+    applyBoundingBoxVisibilityAsync(visible: boolean): Promise<void>;
     /** Whether the bounding-box outline is shown. See contract note above. */
     isBoundingBoxVisible(): boolean;
     updateBoundingBoxBoundsAsync(): Promise<void>;
 
     setOrthographicModeAsync(enable?: boolean): Promise<void>;
+    /** Show or hide the widget; send nothing. */
+    applyOrthographicModeAsync(enable: boolean): Promise<void>;
     /**
      * Whether the view is in parallel (orthographic) projection. See contract
      * note above; additionally, the server-delivered value is seeded from the
@@ -245,6 +251,8 @@ export interface IRenderer {
     isOrthographicEnabled(): boolean;
 
     setEdgeVisibilityGlobalAsync(visible?: boolean): Promise<void>;
+    /** Show or hide the widget; send nothing. */
+    applyEdgeVisibilityGlobalAsync(visible: boolean): Promise<void>;
     /** Whether edges are shown on every part in the scene. See contract note above. */
     areEdgesVisibleGlobally(): boolean;
 

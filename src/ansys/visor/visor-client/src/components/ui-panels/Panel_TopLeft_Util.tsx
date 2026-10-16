@@ -4,20 +4,22 @@ import { VisorSceneNodeExtended } from '../../state/VisorSceneGraph.tsx';
 export class Panel_TopLeft_Util {
     constructor(
         treeViewUtil: TreeViewUtil<VisorSceneNodeExtended>,
-        expandPanel: () => void,
-        collapsePanel: () => void,
+        applyPanelCollapsed: (collapsed: boolean) => void,
         getIsPanelCollapsed: () => boolean
     ) {
         this.treeViewUtil = treeViewUtil;
-        this.expandPanel = expandPanel;
-        this.collapsePanel = collapsePanel;
+        this.#applyPanelCollapsed = applyPanelCollapsed;
         this.#getIsPanelCollapsed = getIsPanelCollapsed;
     }
 
     readonly treeViewUtil: TreeViewUtil<VisorSceneNodeExtended>;
-    readonly expandPanel: () => void;
-    readonly collapsePanel: () => void;
+    readonly #applyPanelCollapsed: (collapsed: boolean) => void;
     readonly #getIsPanelCollapsed: () => boolean;
+
+    /** Collapse or expand the panel; send nothing. */
+    applyPanelCollapsed(collapsed: boolean): void {
+        this.#applyPanelCollapsed(collapsed);
+    }
 
     get isPanelCollapsed() {
         return this.#getIsPanelCollapsed();

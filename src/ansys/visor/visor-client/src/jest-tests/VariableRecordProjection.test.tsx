@@ -167,6 +167,10 @@ function makeRendererDouble() {
         setCrossSectionVisibilityAsync: jest.fn(async () => undefined),
         setEdgeVisibilityGlobalAsync: jest.fn(async () => undefined),
         setBoundingBoxVisibilityAsync: jest.fn(async () => undefined),
+        applyOrthographicModeAsync: jest.fn(async () => undefined),
+        applyCrossSectionVisibilityAsync: jest.fn(async () => undefined),
+        applyEdgeVisibilityGlobalAsync: jest.fn(async () => undefined),
+        applyBoundingBoxVisibilityAsync: jest.fn(async () => undefined),
         setCameraPositionAsync: jest.fn(async () => undefined),
         setCameraFocalPointAsync: jest.fn(async () => undefined),
         setCameraViewUpAsync: jest.fn(async () => undefined),
@@ -456,10 +460,8 @@ describe('setAppStateAsync holds a delivered variable block', () => {
                 noop,
                 noop,
                 noop,
-                noop,
                 () => false,
                 () => false,
-                noop,
                 () => 0,
                 async () => {
                     order.push('refresh');

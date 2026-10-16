@@ -68,11 +68,16 @@ function makeRendererDouble() {
         domElement: document.createElement('div'),
         addCameraSettledListener: jest.fn(() => jest.fn()),
         addViewerClickedListener: jest.fn(() => jest.fn()),
-        // The two projection writers. Exactly one of these may be called.
+        // The projection writers. Only the apply member may be called: the
+        // setter also sends, and the camera setter leaves the widget flag stale.
+        applyOrthographicModeAsync: jest.fn(async () => undefined),
         setOrthographicModeAsync: jest.fn(async () => undefined),
         setCameraParallelProjectionAsync: jest.fn(async () => undefined),
         // The other widget toggles, unused by this fixture but part of the
         // surface `setAppStateAsync` branches over.
+        applyCrossSectionVisibilityAsync: jest.fn(async () => undefined),
+        applyEdgeVisibilityGlobalAsync: jest.fn(async () => undefined),
+        applyBoundingBoxVisibilityAsync: jest.fn(async () => undefined),
         setCrossSectionVisibilityAsync: jest.fn(async () => undefined),
         setEdgeVisibilityGlobalAsync: jest.fn(async () => undefined),
         setBoundingBoxVisibilityAsync: jest.fn(async () => undefined),
@@ -105,7 +110,7 @@ function makeFrontend(): { frontend: VisorFrontend; renderer: RendererDouble } {
 }
 
 describe('setAppStateAsync applies projection from the camera alone', () => {
-    test('a parallel camera with a contradictory orthographicEnabled applies projection once, with true, through setOrthographicModeAsync', async () => {
+    test('a parallel camera with a contradictory orthographicEnabled applies projection once, with true, through applyOrthographicModeAsync', async () => {
         const { frontend, renderer } = makeFrontend();
 
         await frontend.setAppStateAsync(
@@ -120,8 +125,8 @@ describe('setAppStateAsync applies projection from the camera alone', () => {
             false
         );
 
-        expect(renderer.setOrthographicModeAsync).toHaveBeenCalledTimes(1);
-        expect(renderer.setOrthographicModeAsync).toHaveBeenCalledWith(true);
+        expect(renderer.applyOrthographicModeAsync.mock.calls).toEqual([[true]]);
+        expect(renderer.setOrthographicModeAsync).not.toHaveBeenCalled();
         expect(renderer.setCameraParallelProjectionAsync).not.toHaveBeenCalled();
     });
 
@@ -143,6 +148,7 @@ describe('setAppStateAsync applies projection from the camera alone', () => {
             false
         );
 
+        expect(renderer.applyOrthographicModeAsync).not.toHaveBeenCalled();
         expect(renderer.setOrthographicModeAsync).not.toHaveBeenCalled();
         expect(renderer.setCameraParallelProjectionAsync).not.toHaveBeenCalled();
     });
