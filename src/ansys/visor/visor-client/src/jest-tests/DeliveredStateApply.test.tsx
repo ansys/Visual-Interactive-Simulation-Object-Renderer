@@ -353,4 +353,3 @@ describe('delivered state is applied without sending', () => {
         expect(sendCallCounts(renderer)).toEqual(NO_SENDS);
     });
 });
-
