@@ -1,0 +1,6 @@
+remove\_dataset
+===============
+
+.. currentmodule:: ansys.visor.viewer
+
+.. automethod:: Visor.remove_dataset

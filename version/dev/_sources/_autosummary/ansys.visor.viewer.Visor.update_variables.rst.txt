@@ -1,0 +1,6 @@
+update\_variables
+=================
+
+.. currentmodule:: ansys.visor.viewer
+
+.. automethod:: Visor.update_variables
