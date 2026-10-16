@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 jobs:
-  build:
-    name: Build wheel
+  compatibility-scan:
+    name: Scan SAF compatibility
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -38,20 +38,34 @@ jobs:
           path: dist/*.whl
           if-no-files-found: error
 
-  compatibility-scan:
-    name: Scan SAF compatibility
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Load Visor env
-        uses: ./.github/actions/load-visor-env
-
       - name: Scan compatibility with SAF
         uses: ansys/saf-devops/compatibility-scan@main
         with:
           python-version: ${{ env.MAIN_PYTHON_VERSION }}
           wheel-artifact-name: visor-wheel
-          compatibility-packages: ansys-saf-cli
+          compatibility-packages: >-
+            ansys-saf-sdk[core-dash]
+            ansys-solutions-dash-super-components
+
+      - name: Publish compatibility report
+        if: always()
+        shell: bash
+        run: |
+          REPORT_FILE="compatibility-scan-summary.html"
+          if [[ ! -f "${REPORT_FILE}" ]]; then
+            echo "## SAF compatibility scan report" >> "${GITHUB_STEP_SUMMARY}"
+            echo "The compatibility scan did not produce a report." >> "${GITHUB_STEP_SUMMARY}"
+            exit 0
+          fi
+
+          {
+            echo "## SAF compatibility scan report"
+            sed \
+              -e '/<!DOCTYPE/d' \
+              -e '/<html/d' \
+              -e '/<\/html>/d' \
+              -e '/<head>/,/<\/head>/d' \
+              -e '/<body>/d' \
+              -e '/<\/body>/d' \
+              "${REPORT_FILE}"
+          } >> "${GITHUB_STEP_SUMMARY}"
