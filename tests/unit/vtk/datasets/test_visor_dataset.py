@@ -5,6 +5,7 @@ import pytest
 from vtkmodules.util.vtkConstants import VTK_FLOAT
 
 from ansys.visor.viewer.core.visor_enums import VisorVtkVariableType
+from ansys.visor.viewer.models.common.part_properties import PartProperties
 
 # Target import
 from ansys.visor.viewer.vtk.datasets.visor_dataset import VisorDataset
@@ -67,7 +68,7 @@ def dataset_factory(mock_data_object):
             "ansys.visor.viewer.vtk.datasets.visor_dataset.is_composite_dataset",
             return_value=is_composite,
         )
-        is_comp_ctx = is_comp_patch.start()
+        is_comp_patch.start()
 
         # Patch `VisorVariables` to return provided or mocked instance
         if variables_instance is None and not is_composite:
@@ -76,7 +77,7 @@ def dataset_factory(mock_data_object):
             "ansys.visor.viewer.vtk.datasets.visor_dataset.VisorVariables",
             return_value=variables_instance,
         )
-        tv_ctx = tv_patch.start()
+        tv_patch.start()
 
         # Patch PartIndex so it doesn't try to traverse the mock VTK object
         mock_part_index = MagicMock()
@@ -88,7 +89,7 @@ def dataset_factory(mock_data_object):
             "ansys.visor.viewer.vtk.datasets.visor_dataset.PartIndex",
             return_value=mock_part_index,
         )
-        pi_ctx = pi_patch.start()
+        pi_patch.start()
 
         # Create mock metadata with required structure
         mock_metadata = MagicMock()
@@ -108,9 +109,9 @@ def dataset_factory(mock_data_object):
 
         # Cleanup function to stop patches
         def _cleanup():
-            is_comp_ctx.stop()
-            tv_ctx.stop()
-            pi_ctx.stop()
+            is_comp_patch.stop()
+            tv_patch.stop()
+            pi_patch.stop()
 
         return ds, variables_instance, _cleanup
 
@@ -192,7 +193,7 @@ def test_update_variables_on_composite_broadcast_applies_to_all_matching_parts(d
         "ansys.visor.viewer.vtk.datasets.visor_dataset.is_composite_dataset",
         return_value=True,
     )
-    is_comp_ctx = is_comp_patch.start()
+    is_comp_patch.start()
 
     part_id_0, part_id_1 = 111, 222
     mock_part_index = MagicMock()
@@ -205,7 +206,7 @@ def test_update_variables_on_composite_broadcast_applies_to_all_matching_parts(d
         "ansys.visor.viewer.vtk.datasets.visor_dataset.PartIndex",
         return_value=mock_part_index,
     )
-    pi_ctx = pi_patch.start()
+    pi_patch.start()
 
     call_count = [0]
     def fake_variables_factory(*args, **kwargs):
@@ -215,7 +216,7 @@ def test_update_variables_on_composite_broadcast_applies_to_all_matching_parts(d
         "ansys.visor.viewer.vtk.datasets.visor_dataset.VisorVariables",
         side_effect=fake_variables_factory,
     )
-    tv_ctx = tv_patch.start()
+    tv_patch.start()
 
     mock_metadata = MagicMock()
     mock_metadata.unit = "mm"
@@ -237,9 +238,9 @@ def test_update_variables_on_composite_broadcast_applies_to_all_matching_parts(d
         mock_vars_0.reload.assert_called_once()
         mock_vars_1.reload.assert_called_once()
     finally:
-        is_comp_ctx.stop()
-        tv_ctx.stop()
-        pi_ctx.stop()
+        is_comp_patch.stop()
+        tv_patch.stop()
+        pi_patch.stop()
 
 
 def test_update_variables_on_composite_broadcast_skips_non_matching_parts(dataset_factory):
@@ -253,7 +254,7 @@ def test_update_variables_on_composite_broadcast_skips_non_matching_parts(datase
         "ansys.visor.viewer.vtk.datasets.visor_dataset.is_composite_dataset",
         return_value=True,
     )
-    is_comp_ctx = is_comp_patch.start()
+    is_comp_patch.start()
 
     part_id_ok, part_id_bad = 111, 222
     mock_part_index = MagicMock()
@@ -266,7 +267,7 @@ def test_update_variables_on_composite_broadcast_skips_non_matching_parts(datase
         "ansys.visor.viewer.vtk.datasets.visor_dataset.PartIndex",
         return_value=mock_part_index,
     )
-    pi_ctx = pi_patch.start()
+    pi_patch.start()
 
     call_count = [0]
     def fake_variables_factory(*args, **kwargs):
@@ -276,7 +277,7 @@ def test_update_variables_on_composite_broadcast_skips_non_matching_parts(datase
         "ansys.visor.viewer.vtk.datasets.visor_dataset.VisorVariables",
         side_effect=fake_variables_factory,
     )
-    tv_ctx = tv_patch.start()
+    tv_patch.start()
 
     mock_metadata = MagicMock()
     mock_metadata.unit = "mm"
@@ -297,9 +298,9 @@ def test_update_variables_on_composite_broadcast_skips_non_matching_parts(datase
         mock_vars_ok.reload.assert_called_once()
         mock_vars_bad.reload.assert_not_called()
     finally:
-        is_comp_ctx.stop()
-        tv_ctx.stop()
-        pi_ctx.stop()
+        is_comp_patch.stop()
+        tv_patch.stop()
+        pi_patch.stop()
 
 
 def test_update_variables_validation_failure_raises(dataset_factory):
@@ -324,24 +325,30 @@ def test_update_variables_happy_path_calls_reload_and_modifies(dataset_factory, 
     mock_update = MagicMock()
 
     # Patch the internal `_update_variable` to avoid touching private behavior but ensure it gets invoked via public API
-    with patch.object(ds, "_update_variable") as upd:
-        ds.update_variables(variable_list=[mock_update, mock_update])
-        variables.validate_new_variables.assert_called_once_with([mock_update, mock_update])
-        assert upd.call_count == 2
-        variables.reload.assert_called_once_with(mock_data_object)
-        # Note: The implementation no longer calls data.Modified() after reload.
-        mock_data_object.Modified.assert_not_called()
+    try:
+        with patch.object(ds, "_update_variable") as upd:
+            ds.update_variables(variable_list=[mock_update, mock_update])
+            variables.validate_new_variables.assert_called_once_with([mock_update, mock_update])
+            assert upd.call_count == 2
+            variables.reload.assert_called_once_with(mock_data_object)
+            # Note: The implementation no longer calls data.Modified() after reload.
+            mock_data_object.Modified.assert_not_called()
+    finally:
+        cleanup()
 
 
 def test_update_variables_empty_list_validates_and_reloads(dataset_factory, mock_data_object):
     """Test that updating variables empty list validates and reloads."""
     ds, variables, cleanup = dataset_factory(is_composite=False)
     variables.validate_new_variables.return_value = True
-    with patch.object(ds, "_update_variable") as upd:
-        ds.update_variables(variable_list=[])
-        variables.validate_new_variables.assert_called_once_with([])
-        upd.assert_not_called()
-        variables.reload.assert_called_once_with(mock_data_object)
+    try:
+        with patch.object(ds, "_update_variable") as upd:
+            ds.update_variables(variable_list=[])
+            variables.validate_new_variables.assert_called_once_with([])
+            upd.assert_not_called()
+            variables.reload.assert_called_once_with(mock_data_object)
+    finally:
+        cleanup()
 
 
 @pytest.fixture
@@ -391,7 +398,7 @@ def dataset_with_variables(mock_data_object):
         "ansys.visor.viewer.vtk.datasets.visor_dataset.is_composite_dataset",
         return_value=False,
     )
-    is_comp_ctx = is_comp_patch.start()
+    is_comp_patch.start()
 
     # Provide a VisorVariables mock
     variables = MagicMock()
@@ -399,7 +406,7 @@ def dataset_with_variables(mock_data_object):
         "ansys.visor.viewer.vtk.datasets.visor_dataset.VisorVariables",
         return_value=variables,
     )
-    tv_ctx = tv_patch.start()
+    tv_patch.start()
 
     # Patch PartIndex so it doesn't traverse the mock VTK object
     mock_part_index = MagicMock()
@@ -411,7 +418,7 @@ def dataset_with_variables(mock_data_object):
         "ansys.visor.viewer.vtk.datasets.visor_dataset.PartIndex",
         return_value=mock_part_index,
     )
-    pi_ctx = pi_patch.start()
+    pi_patch.start()
 
     # Create mock metadata
     mock_metadata = MagicMock()
@@ -429,9 +436,9 @@ def dataset_with_variables(mock_data_object):
     )
 
     def _cleanup():
-        is_comp_ctx.stop()
-        tv_ctx.stop()
-        pi_ctx.stop()
+        is_comp_patch.stop()
+        tv_patch.stop()
+        pi_patch.stop()
 
     return ds, variables, _cleanup
 
@@ -614,3 +621,54 @@ def test_update_variables_marks_dataset_dirty(dataset_with_variables, mock_point
     finally:
         cleanup()
 
+
+# ================================================================== #
+# Part records: one per part, overlaid with the persisted entries
+# ================================================================== #
+
+_DEFAULT_FIELDS = (1.0, True, False, [0.8, 0.8, 0.8], None)
+
+
+def _fields(record):
+    """The five resolved fields of a part record, in a fixed order."""
+    return (record.opacity, record.visible, record.selected, record.diffuse_rgb, record.color_variable)
+
+
+def _three_part_dataset(parts_by_name):
+    """A VisorDataset over a patched three-part index named a/b/c -> 1/2/3, built with *parts_by_name*."""
+    mock_part_index = MagicMock()
+    mock_part_index.name_to_id_map = {"a": 1, "b": 2, "c": 3}
+    mock_part_index.part_ids = [1, 2, 3]
+    mock_part_index.get_leaf_block.return_value = MagicMock()
+
+    mock_metadata = MagicMock()
+    mock_metadata.unit = "mm"
+    mock_metadata.file_path = None
+    mock_metadata.metadata_path = None
+    mock_metadata.state.parts = parts_by_name
+
+    with patch("ansys.visor.viewer.vtk.datasets.visor_dataset.PartIndex", return_value=mock_part_index), \
+            patch("ansys.visor.viewer.vtk.datasets.visor_dataset.VisorVariables", return_value=MagicMock()):
+        return VisorDataset(id=7, name="ds", data=MagicMock(), node_ids=[], metadata=mock_metadata)
+
+
+def test_persisted_to_runtime_state_overlays_the_named_part_and_defaults_the_rest():
+    """Three parts, one named entry: three records, the named one overlaid, the others at the defaults."""
+    ds = _three_part_dataset({})
+
+    state = ds.persisted_to_runtime_state({"b": PartProperties(opacity=0.5)})
+
+    assert sorted(state.part_states) == [1, 2, 3]
+    assert _fields(state.part_states[2]) == (0.5, True, False, [0.8, 0.8, 0.8], None)
+    assert _fields(state.part_states[1]) == _DEFAULT_FIELDS
+    assert _fields(state.part_states[3]) == _DEFAULT_FIELDS
+
+
+def test_dataset_constructed_with_no_part_metadata_has_a_record_per_part():
+    """A dataset whose metadata names no part holds a default record for every part."""
+    ds = _three_part_dataset({})
+
+    assert sorted(ds.state.part_states) == [1, 2, 3]
+    for part_id in (1, 2, 3):
+        assert ds.state.part_states[part_id].id == part_id
+        assert _fields(ds.state.part_states[part_id]) == _DEFAULT_FIELDS

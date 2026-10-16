@@ -4,6 +4,7 @@ import { getPromiseResolver } from './utils/JsHelpers';
 import VisorAppState from './state/appstate/VisorAppState.tsx';
 import VisorDatasetState from './state/appstate/VisorDatasetState.tsx';
 import VisorPartState from './state/appstate/VisorPartState.tsx';
+import VisorSceneState from './state/appstate/VisorSceneState.tsx';
 import { TreeViewUtil } from './treeview/TreeView.tsx';
 import { StateInput } from './state/appstate/VisorStateCommon.tsx';
 import VisorVtkSceneNode from './state/appstate/vtkInfo/VisorVtkSceneNode.tsx';
@@ -21,10 +22,16 @@ export class VisorFrontend {
     constructor(
         renderer: IRenderer,
         sceneGraphNode: VisorVtkSceneNode,
+        deliveredScene: VisorSceneState,
         triggerSender: TrameTriggerSender
     ) {
         const variableManager = getVariableManager();
-        const sceneGraph = CreateVisorSceneGraph(sceneGraphNode, variableManager, renderer);
+        const sceneGraph = CreateVisorSceneGraph(
+            sceneGraphNode,
+            deliveredScene,
+            variableManager,
+            renderer
+        );
         variableManager.finishAddingDataArrayMetadata();
         renderer.attachSceneGraph(sceneGraph);
 
@@ -486,13 +493,13 @@ export class VisorFrontend {
                         }
                         // `selected` is applied to the node, like every other
                         // part field, so the node owns the value and both the
-                        // renderer and the tree read it from there. `=== true`
-                        // holds the current semantics: a part state carrying
-                        // null (never touched) deselects, and the node always
-                        // receives a boolean.
-                        partPromise = partPromise.then(() =>
-                            partNode.setSelectedAsync(part_state.selected === true)
-                        );
+                        // renderer and the tree read it from there.
+                        if (part_state.selected !== undefined) {
+                            const selected = part_state.selected;
+                            partPromise = partPromise.then(() =>
+                                partNode.setSelectedAsync(selected)
+                            );
+                        }
                         promises.push(partPromise);
                         if (part_state.opacity !== undefined) {
                             const promise = node.setOpacityAsync(part_state.opacity);
@@ -502,10 +509,8 @@ export class VisorFrontend {
                             const promise = node.setVisibilityAsync(part_state.visible);
                             promises.push(promise);
                         }
-                        if (
-                            part_state.variableId !== undefined &&
-                            part_state.variableComponent !== undefined
-                        ) {
+                        // A null reference is delivered without a component.
+                        if (part_state.variableId !== undefined) {
                             let promise;
                             if (part_state.variableId !== null) {
                                 promise = node.setColorVariableAsync(

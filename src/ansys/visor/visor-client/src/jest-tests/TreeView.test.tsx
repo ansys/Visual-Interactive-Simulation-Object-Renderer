@@ -6,6 +6,7 @@ import {
     VisorSceneNodeSimple,
 } from '../state/VisorSceneGraph.tsx';
 import { NullRenderer } from '../renderer/NullRenderer.ts';
+import { deliveredPart, deliveredScene } from './deliveredSceneFixture.ts';
 
 describe('TreeView', () => {
     it('renders without a scene graph', () => {
@@ -109,33 +110,36 @@ describe('TreeView', () => {
 });
 
 function getSmallSceneGraph(): VisorSceneNodeExtended {
-    return CreateVisorSceneGraph({
-        id: 0,
-        dataArrays: [],
-        name: '',
-        isGroupNode: true,
-        isActorNode: false,
-        nodeType: 'root',
-        diffuseColor: [1, 1, 1],
-        bounds: [],
-        children: [
-            {
-                id: 1,
-                dataArrays: [],
-                name: 'some-polydata-file.vtp',
-                isGroupNode: false,
-                isActorNode: true,
-                nodeType: 'vtkUnstructuredGrid',
-                diffuseColor: [1, 1, 1],
-                bounds: [],
-                children: [],
-            },
-        ],
-    });
+    return CreateVisorSceneGraph(
+        {
+            id: 0,
+            dataArrays: [],
+            name: '',
+            isGroupNode: true,
+            isActorNode: false,
+            nodeType: 'root',
+            diffuseColor: [1, 1, 1],
+            bounds: [],
+            children: [
+                {
+                    id: 1,
+                    dataArrays: [],
+                    name: 'some-polydata-file.vtp',
+                    isGroupNode: false,
+                    isActorNode: true,
+                    nodeType: 'vtkUnstructuredGrid',
+                    diffuseColor: [1, 1, 1],
+                    bounds: [],
+                    children: [],
+                },
+            ],
+        },
+        deliveredScene(deliveredPart(1))
+    );
 }
 
 function getLargeSceneGraph(): VisorSceneNodeExtended {
-    return CreateVisorSceneGraph(getSceneNodeSimple());
+    return CreateVisorSceneGraph(getSceneNodeSimple(), getLargeDeliveredScene());
 }
 
 /**
@@ -143,7 +147,23 @@ function getLargeSceneGraph(): VisorSceneNodeExtended {
  * setVisibilityAsync/setSelectedAsync can run in a test.
  */
 function getLargeSceneGraphWithRenderer(): VisorSceneNodeExtended {
-    return CreateVisorSceneGraph(getSceneNodeSimple(), undefined, new NullRenderer());
+    return CreateVisorSceneGraph(
+        getSceneNodeSimple(),
+        getLargeDeliveredScene(),
+        undefined,
+        new NullRenderer()
+    );
+}
+
+/** The delivered records for the large graph's five parts. */
+function getLargeDeliveredScene() {
+    return deliveredScene(
+        deliveredPart(3),
+        deliveredPart(4),
+        deliveredPart(5),
+        deliveredPart(6),
+        deliveredPart(7)
+    );
 }
 
 function getSceneNodeSimple(): VisorSceneNodeSimple {

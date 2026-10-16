@@ -1,6 +1,5 @@
 """Class representing a Visor dataset."""
 
-import copy
 from collections.abc import Sequence
 from typing import Dict, List
 
@@ -17,7 +16,10 @@ from ansys.visor.viewer.core.visor_types import VisorDatasetType
 from ansys.visor.viewer.models.common.part_properties import PartProperties
 from ansys.visor.viewer.models.info.visor_dataset_info import VisorDatasetInfo
 from ansys.visor.viewer.models.persist.dataset.persisted_dataset_state import PersistedDatasetState
-from ansys.visor.viewer.models.runtime.dataset.runtime_dataset_state import RuntimeDatasetState
+from ansys.visor.viewer.models.runtime.dataset.runtime_dataset_state import (
+    RuntimeDatasetState,
+    RuntimePartProperties,
+)
 from ansys.visor.viewer.vtk.datasets.part_index import PartIndex
 from ansys.visor.viewer.vtk.variables.visor_part_variables import VisorPartVariables
 from ansys.visor.viewer.vtk.variables.visor_variable_update import VisorVariableUpdate
@@ -44,8 +46,9 @@ class VisorDataset:
 
         # Get the dataset info from metadata
         self.info: VisorDatasetInfo = self._build_dataset_info(id, name, metadata)
-        # Build the initial runtime dataset state from persisted part names -> IDs via PartIndex
-        self.state: RuntimeDatasetState = self.persisted_to_runtime_state(metadata.state.parts)
+        # No records yet, so the metadata's part entries are overlaid onto the defaults.
+        self.state: RuntimeDatasetState = RuntimeDatasetState(id=id)
+        self.state = self.persisted_to_runtime_state(metadata.state.parts)
 
         # Per-part variable metadata, keyed by part_id.
         # Works for both composite and non-composite datasets.
@@ -89,22 +92,6 @@ class VisorDataset:
                 variables=part_vars.list(),
             ))
         return result
-
-    def set_state(self, new_state: PersistedDatasetState) -> None:
-        """
-        Set the state of the dataset from persisted, name-keyed part state.
-
-        This is the persisted-state conversion path: it converts
-        new_state.parts (keyed by part name) into this dataset's runtime
-        state (keyed by part ID) via persisted_to_runtime_state.
-
-        Note: a second, id-keyed replacement path also exists, on the
-        registry rather than here: VisorDatasetRegistry.replace_part_states
-        replaces a dataset's .state directly with an already-runtime,
-        id-keyed RuntimeDatasetState, without going through this method or
-        its name-to-id conversion.
-        """
-        self.state = self.persisted_to_runtime_state(new_state.parts)
 
     def mark_clean(self) -> None:
         """Clear the dirty flag after a successful snapshot write."""
@@ -290,14 +277,24 @@ class VisorDataset:
             self,
             parts_by_name: dict[str, PartProperties],
     ) -> RuntimeDatasetState:
-        """Convert persisted part states (keyed by part name) to runtime part states (keyed by part ID)."""
+        """A record for every part: its current record, or the default where it has none, overlaid with the
+        entry the file names for it.
+
+        Entries are keyed by part name; names matching no part are dropped.
+        ``self.state`` is not modified: the records returned are new objects.
+        """
         name_to_id = self.part_index.name_to_id_map
+        entries_by_id = {
+            name_to_id[part_name]: part_properties
+            for part_name, part_properties in parts_by_name.items()
+            if part_name in name_to_id
+        }
+        current = self.state.part_states
         part_states = {}
-        for part_name, part_properties in parts_by_name.items():
-            part_id = name_to_id.get(part_name)
-            if part_id is not None:
-                part_states[part_id] = copy.deepcopy(part_properties)
-        return RuntimeDatasetState.from_components(id=self.id, part_states=part_states)
+        for part_id in self.part_index.part_ids:
+            record = current.get(part_id) or RuntimePartProperties.default_for(part_id)
+            part_states[part_id] = record.overlaid_with(entries_by_id.get(part_id, PartProperties()))
+        return RuntimeDatasetState(id=self.id, part_states=part_states)
 
     def runtime_to_persisted_state(self, runtime_state: RuntimeDatasetState) -> PersistedDatasetState:
         """Convert runtime state to persisted state (keyed by run ID)."""

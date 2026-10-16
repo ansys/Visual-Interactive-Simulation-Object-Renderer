@@ -3,7 +3,7 @@
 from pydantic import BaseModel, ConfigDict, Field
 
 
-class VisorUIState(BaseModel):
+class PersistedUIState(BaseModel):
     """
     Represents the UI state of a Visor visualization, such as theme preference.
     """

@@ -12,6 +12,19 @@ from ansys.visor.viewer.models.runtime.scene.runtime_scene_state import (
     RuntimeSceneState,
 )
 
+
+def _scene(**overrides) -> RuntimeSceneState:
+    """A scene record with the required scene-level fields filled from literals."""
+    fields = {
+        "unit": "",
+        "orthographic_enabled": None,
+        "cross_section_enabled": False,
+        "edges_enabled": False,
+        "bounding_box_enabled": False,
+    }
+    fields.update(overrides)
+    return RuntimeSceneState(**fields)
+
 # ------------------------------------------------------------------
 # dataset_states validator
 # ------------------------------------------------------------------
@@ -19,7 +32,7 @@ from ansys.visor.viewer.models.runtime.scene.runtime_scene_state import (
 def test_dataset_states_none_becomes_empty():
     """None dataset_states should be coerced to empty dict."""
 
-    state = RuntimeSceneState(dataset_states=None)
+    state = _scene(dataset_states=None)
 
     assert state.dataset_states == {}
 
@@ -32,7 +45,7 @@ def test_dataset_states_coerce_string_keys_to_int():
         "2": MagicMock(spec=RuntimeDatasetState),
     }
 
-    state = RuntimeSceneState(dataset_states=data)
+    state = _scene(dataset_states=data)
 
     assert set(state.dataset_states.keys()) == {1, 2}
 
@@ -45,14 +58,14 @@ def test_dataset_states_invalid_keys_raise():
     }
 
     with pytest.raises(ValidationError):
-        RuntimeSceneState(dataset_states=data)
+        _scene(dataset_states=data)
 
 
 def test_dataset_states_passthrough_non_dict():
     """Non-dict dataset_states should fail validation."""
 
     with pytest.raises(ValidationError):
-        RuntimeSceneState(dataset_states=123)
+        _scene(dataset_states=123)
 
 
 # ------------------------------------------------------------------
@@ -60,19 +73,18 @@ def test_dataset_states_passthrough_non_dict():
 # ------------------------------------------------------------------
 
 def test_default_fields():
-    """Default construction should initialize expected defaults."""
+    """The records default to empty."""
 
-    state = RuntimeSceneState()
+    state = _scene()
 
     assert state.dataset_states == {}
     assert state.variable_states == {}
-    assert state.unit is None
 
 
 def test_setting_basic_fields():
     """Basic fields should be stored correctly."""
 
-    state = RuntimeSceneState(
+    state = _scene(
         unit="m",
         orthographic_enabled=True,
         edges_enabled=False,
@@ -90,7 +102,7 @@ def test_dataset_states_accept_valid_mapping():
         "1": MagicMock(spec=RuntimeDatasetState),
     }
 
-    state = RuntimeSceneState(dataset_states=data)
+    state = _scene(dataset_states=data)
 
     assert 1 in state.dataset_states
     assert isinstance(state.dataset_states[1], RuntimeDatasetState)
@@ -115,7 +127,7 @@ def test_variable_states_default_and_assignment():
         ranges=[(2.0, 3.0)],
     )
 
-    state = RuntimeSceneState(variable_states={"POINT::pressure::1": record})
+    state = _scene(variable_states={"POINT::pressure::1": record})
 
     stored = state.variable_states["POINT::pressure::1"]
     assert isinstance(stored, VisorVariableRecord)

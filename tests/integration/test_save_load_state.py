@@ -45,10 +45,10 @@ from ansys.visor.viewer.core.metadata import ExtendedMetadata
 from ansys.visor.viewer.core.visor_enums import VisorVtkVariableType
 from ansys.visor.viewer.models.common.part_properties import PartProperties
 from ansys.visor.viewer.models.common.visor_camera_state import VisorCameraState
-from ansys.visor.viewer.models.common.visor_ui_state import VisorUIState
 from ansys.visor.viewer.models.common.visor_variable_state import VisorVariableState
 from ansys.visor.viewer.models.persist.dataset.persisted_dataset_state import PersistedDatasetState
 from ansys.visor.viewer.models.persist.persisted_viewer_state import PersistedViewerStateV1
+from ansys.visor.viewer.models.persist.visor_ui_state import PersistedUIState
 from ansys.visor.viewer.vtk.io.file_to_dataset import file_to_dataset
 from ansys.visor.viewer.vtk.io.visor_file_io import VisorFileIO
 
@@ -248,7 +248,7 @@ class TestLoadDatasetsFromState:
 
     def _make_state(self, dataset_states: dict, unit: str = "m") -> PersistedViewerStateV1:
         return PersistedViewerStateV1.from_components(
-            ui_state=VisorUIState(),
+            ui_state=PersistedUIState(),
             unit=unit,
             orthographic_enabled=None,
             cross_section_enabled=None,
@@ -455,7 +455,7 @@ class TestRegistrySourcedPartState:
         file_io.write_dataset(snap, original)
 
         state = PersistedViewerStateV1.from_components(
-            ui_state=VisorUIState(),
+            ui_state=PersistedUIState(),
             unit="m",
             orthographic_enabled=None,
             cross_section_enabled=None,
@@ -496,8 +496,8 @@ class TestRegistrySourcedPartState:
         assert record.visible is False
         assert record.selected is True
         assert record.diffuse_rgb == [1.0, 0.0, 0.0]
-        assert record.variable_id == "POINT::pressure::1"
-        assert record.variable_component == 0
+        assert record.color_variable.variable_id == "POINT::pressure::1"
+        assert record.color_variable.variable_component == 0
 
     def test_reloading_a_colored_part_restores_its_file_range(self, file_io, iface, tmp_path):
         """I-1: a colored part loads at the range the file stores, through the server's record.
@@ -512,7 +512,7 @@ class TestRegistrySourcedPartState:
         file_io.write_dataset(snap, original)
 
         state = PersistedViewerStateV1.from_components(
-            ui_state=VisorUIState(),
+            ui_state=PersistedUIState(),
             unit="m",
             orthographic_enabled=None,
             cross_section_enabled=None,

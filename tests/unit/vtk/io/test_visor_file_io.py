@@ -461,9 +461,9 @@ class TestTryUnlink:
 
 class TestDeleteStaleSnapshots:
     def _make_state(self, dataset_states: dict) -> PersistedViewerStateV1:
-        from ansys.visor.viewer.models.common.visor_ui_state import VisorUIState
+        from ansys.visor.viewer.models.persist.visor_ui_state import PersistedUIState
         return PersistedViewerStateV1.from_components(
-            ui_state=VisorUIState(), unit="m", orthographic_enabled=None,
+            ui_state=PersistedUIState(), unit="m", orthographic_enabled=None,
             cross_section_enabled=None, edges_enabled=None, bounding_box_enabled=None,
             datasets=dataset_states, variable_states={}
         )

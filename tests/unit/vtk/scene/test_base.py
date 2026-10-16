@@ -23,19 +23,25 @@ import pytest
 from vtkmodules.vtkCommonCore import vtkFloatArray
 from vtkmodules.vtkCommonDataModel import vtkPolyData
 from vtkmodules.vtkFiltersSources import vtkSphereSource
+from vtkmodules.vtkRenderingCore import vtkActor
 
+from ansys.visor.viewer.core.metadata import ExtendedMetadata
 from ansys.visor.viewer.core.visor_colors import VisorColors
 from ansys.visor.viewer.core.visor_enums import VisorVtkVariableType
 from ansys.visor.viewer.models.common.visor_camera_state import VisorCameraState
 from ansys.visor.viewer.models.common.visor_cross_section_state import VisorCrossSectionState
-from ansys.visor.viewer.models.common.visor_ui_state import VisorUIState
 from ansys.visor.viewer.models.common.visor_variable_state import VisorVariableState
 from ansys.visor.viewer.models.persist.persisted_viewer_state import PersistedViewerStateV1
+from ansys.visor.viewer.models.persist.visor_ui_state import PersistedUIState
 from ansys.visor.viewer.models.runtime.dataset.runtime_dataset_state import (
     RuntimeDatasetState,
     RuntimePartProperties,
+    VariableReference,
 )
 from ansys.visor.viewer.models.runtime.scene.runtime_app_state import RuntimeAppState
+from ansys.visor.viewer.models.runtime.scene.runtime_scene_state import RuntimeSceneState
+from ansys.visor.viewer.models.runtime.scene.runtime_ui_state import RuntimeUIState
+from ansys.visor.viewer.models.runtime.scene.runtime_view_state import RuntimeViewState
 from ansys.visor.viewer.renderer.local_renderer import VisorLocalRenderer
 from ansys.visor.viewer.vtk.datasets.visor_dataset_registry import VisorDatasetRegistry
 from ansys.visor.viewer.vtk.node_pipeline import VtkNodePipeline
@@ -122,6 +128,44 @@ def _make_part_dataset(dataset_id: int, part_ids, part_states=None, part_variabl
     dataset.state = RuntimeDatasetState(id=dataset_id, part_states=part_states or {})
     dataset.list_variables.return_value = list(part_variables or [])
     return dataset
+
+
+def _record(part_id, **overrides):
+    """A complete record for *part_id* with *overrides* applied."""
+    return RuntimePartProperties.default_for(part_id).model_copy(update=overrides)
+
+
+def _ui_record(**overrides) -> RuntimeUIState:
+    """A complete UI record, at the server's own initial values unless overridden."""
+    fields = {
+        "dark_theme": False,
+        "panel_top_left_panel_collapsed": False,
+        "panel_top_right_panel_collapsed": False,
+        "panel_top_right_legend_collapsed": False,
+        "panel_top_right_tab_index": 0,
+    }
+    fields.update(overrides)
+    return RuntimeUIState(**fields)
+
+
+def _app_state(dataset_states=None, ui=None, **scene_fields) -> RuntimeAppState:
+    """A real, fully resolved RuntimeAppState with no view records.
+
+    Scene-level fields are the literals below unless overridden.
+    """
+    fields = {
+        "unit": "m",
+        "orthographic_enabled": None,
+        "cross_section_enabled": False,
+        "edges_enabled": False,
+        "bounding_box_enabled": False,
+    }
+    fields.update(scene_fields)
+    return RuntimeAppState(
+        ui=ui if ui is not None else _ui_record(),
+        view=RuntimeViewState(camera=None, cross_section=None),
+        scene=RuntimeSceneState(dataset_states=dataset_states or {}, **fields),
+    )
 
 
 @pytest.fixture
@@ -343,13 +387,13 @@ def test_set_part_diffuse_color_applies_to_the_vtk_property(scene, pipeline):
     assert pipeline.actor.GetProperty().GetDiffuseColor() == pytest.approx((1.0, 0.0, 0.0))
 
 
-def test_set_part_diffuse_color_none_clears_the_registry_record(scene, registry):
-    """Store half of a clear: absence is stored as absence, not as a colour."""
+def test_set_part_diffuse_color_none_writes_the_default_colour_into_the_record(scene, registry):
+    """Store half of a reset: the record holds the default colour, not None."""
     registry.set_part_diffuse_color(NODE_ID, [1.0, 0.0, 0.0])
 
     scene.set_part_diffuse_color(NODE_ID, None)
 
-    assert registry.get_part_state(NODE_ID).diffuse_rgb is None
+    assert registry.get_part_state(NODE_ID).diffuse_rgb == [0.8, 0.8, 0.8]
 
 
 def test_set_part_diffuse_color_none_applies_the_default_mesh_colour(scene, pipeline):
@@ -406,14 +450,6 @@ def test_set_part_selected_uses_the_stored_diffuse_colour(scene, registry, pipel
 
     assert pipeline.actor.GetProperty().GetDiffuseColor() == pytest.approx((0.25, 0.5, 0.75))
 
-
-def test_set_part_selected_falls_back_to_the_default_mesh_colour(scene, pipeline):
-    """With no stored colour, the default constant is used."""
-    scene.set_part_selected(NODE_ID, True)
-
-    assert pipeline.actor.GetProperty().GetDiffuseColor() == pytest.approx(
-        tuple(VisorColors.DefaultMeshColor)
-    )
 
 
 def test_set_part_selected_flushes_under_the_lock_after_the_apply(scene, pipeline):
@@ -477,8 +513,9 @@ def test_set_part_color_variable_writes_the_registry_record(scene, registry):
     )
 
     state = registry.get_part_state(NODE_ID)
-    assert state.variable_id == "POINT::pressure::1"
-    assert state.variable_component == 0
+    assert state.color_variable == VariableReference(
+        variable_id="POINT::pressure::1", variable_component=0
+    )
 
 
 def test_set_part_color_variable_applies_to_the_vtk_mapper(scene, pipeline):
@@ -717,8 +754,7 @@ def test_clear_part_color_variable_clears_the_registry_record(scene, registry):
     scene.clear_part_color_variable(NODE_ID)
 
     state = registry.get_part_state(NODE_ID)
-    assert state.variable_id is None
-    assert state.variable_component is None
+    assert state.color_variable is None
 
 
 def test_clear_part_color_variable_disables_scalar_visibility_on_the_mapper(scene, pipeline):
@@ -809,7 +845,7 @@ def test_unknown_node_id_is_a_logged_no_op(scene, registry, pipeline, name):
 
 def test_seeded_part_state_is_mutated_in_place(scene, registry):
     """An existing record is mutated in place, not replaced."""
-    seeded = RuntimePartProperties(id=NODE_ID)
+    seeded = _record(NODE_ID)
     registry.datasets[1].state.part_states[NODE_ID] = seeded
 
     scene.set_part_opacity(NODE_ID, 0.25)
@@ -832,14 +868,18 @@ def mocked_scene(renderer):
     s._scene_graph = MagicMock(name="scene_graph")
     s._dataset_registry = MagicMock(name="dataset_registry")
     s._dataset_registry.count = 1
+    # apply_state snapshots the server's records into validated models, so the
+    # values it reads must be real: a MagicMock is absorbed for calls, not for values.
+    s._dataset_registry.unit = "m"
+    s._dataset_registry.runtime_state_dict = {}
     s._renderer = MagicMock(name="renderer")
+    s._renderer.get_camera_state.return_value = None
+    s._renderer.get_cross_section_plane.return_value = None
     s._state_mapper = MagicMock(name="state_mapper")
-    # apply_state now walks the mapped state's dataset_states, so the mapper
+    # apply_state walks the mapped state's dataset_states, so the mapper
     # must return a real RuntimeAppState rather than a MagicMock (whose
     # dataset_states would be a MagicMock and raise on iteration).
-    s._state_mapper.persisted_to_runtime.return_value = RuntimeAppState.from_components(
-        ui=VisorUIState(dark_theme=False), unit="m", dataset_states={}, variable_states={}
-    )
+    s._state_mapper.persisted_to_runtime.return_value = _app_state()
     s._vtk_lock = _LockSpy()
     return s
 
@@ -1046,13 +1086,10 @@ def _runtime_state(part_states, dataset_id=1):
     apply_state fills it from the server's rebuilt record (CC-1).  A file's
     variable entries are handed to :func:`_apply` instead.
     """
-    return RuntimeAppState.from_components(
-        ui=VisorUIState(dark_theme=False),
-        unit="m",
+    return _app_state(
         dataset_states={
             dataset_id: RuntimeDatasetState(id=dataset_id, part_states=part_states)
         },
-        variable_states={},
     )
 
 
@@ -1359,7 +1396,13 @@ def test_apply_state_pushes_a_json_encodable_runtime_state(scene, registry):
     _apply(
         scene,
         _runtime_state(
-            {NODE_ID: RuntimePartProperties(id=NODE_ID, opacity=0.25, variable_id=VARIABLE_ID)},
+            {
+                NODE_ID: _record(
+                    NODE_ID,
+                    opacity=0.25,
+                    color_variable=VariableReference(variable_id=VARIABLE_ID, variable_component=0),
+                )
+            },
         ),
         file_variable_states={VARIABLE_ID: _variable_state()},
     )
@@ -1377,7 +1420,7 @@ def test_apply_state_populates_the_registry_from_the_persisted_state(scene, regi
     _apply(
         scene,
         _runtime_state(
-            {NODE_ID: RuntimePartProperties(id=NODE_ID, opacity=0.25, visible=False)}
+            {NODE_ID: _record(NODE_ID, opacity=0.25, visible=False)}
         ),
     )
 
@@ -1398,8 +1441,8 @@ def test_apply_state_applies_every_part_to_the_pipeline(
         scene,
         _runtime_state(
             {
-                NODE_ID: RuntimePartProperties(id=NODE_ID, visible=False),
-                SECOND_NODE_ID: RuntimePartProperties(id=SECOND_NODE_ID, opacity=0.25),
+                NODE_ID: _record(NODE_ID, visible=False),
+                SECOND_NODE_ID: _record(SECOND_NODE_ID, opacity=0.25),
             }
         ),
     )
@@ -1436,7 +1479,7 @@ def test_apply_state_flushes_before_the_bridge_call(scene, registry):
     scene._push_runtime_state = lambda state: order.append("bridge")
     scene._renderer._local_view.update = lambda: order.append("flush")
 
-    _apply(scene, _runtime_state({NODE_ID: RuntimePartProperties(id=NODE_ID, opacity=0.25)}))
+    _apply(scene, _runtime_state({NODE_ID: _record(NODE_ID, opacity=0.25)}))
 
     assert order == ["flush", "bridge"]
 
@@ -1444,19 +1487,12 @@ def test_apply_state_flushes_before_the_bridge_call(scene, registry):
 # ---------------------------------------------------------------------------
 # Load path — the camera
 #
-# These are the only tests in this module that drive apply_state with a real
-# PersistedViewerStateV1, through the real state mapper, rather than through
-# the _apply helper (which stubs the mapper) or mocked_scene (which pins its
-# return value).  Two consequences, both deliberate:
-#
-#   1. They exercise the mapper's camera pass-through as well as the camera
-#      step, so they are the first tests here that would notice if the mapper
-#      stopped handing camera on verbatim.
-#   2. A failure could in principle be the unstubbed path rather than the
-#      camera step.  The camera-bearing and camera-free tests below are built
-#      from the SAME constructor call, differing in one argument, so the pair
-#      discriminates: both failing means the shared path, only the first
-#      failing means the camera step, only the second means the guard.
+# These tests drive apply_state with a real PersistedViewerStateV1, through
+# the real state mapper, rather than through the _apply helper (which stubs
+# the mapper) or mocked_scene (which pins its return value).  They exercise
+# the mapper's camera resolution as well as the camera step, so they would
+# notice if the mapper stopped handing a file's camera on verbatim.  The
+# null-camera case is pinned in the overlay section below.
 #
 # ``datasets={}`` keeps the mapper's per-dataset loop empty, so the registry
 # hop (get_by_name) is never taken and cannot contribute a failure.
@@ -1474,14 +1510,9 @@ CAMERA_PARALLEL_SCALE = 9.0
 
 
 def _persisted_state(camera):
-    """A real PersistedViewerStateV1 carrying *camera*, or no camera at all.
-
-    One constructor, one varying argument: the camera-bearing and camera-free
-    cases differ in nothing else, which is what makes the pair a discriminator
-    rather than two unrelated tests.
-    """
+    """A real PersistedViewerStateV1 carrying *camera*."""
     return PersistedViewerStateV1.from_components(
-        ui_state=VisorUIState(dark_theme=False),
+        ui_state=PersistedUIState(dark_theme=False),
         unit="m",
         orthographic_enabled=None,
         cross_section_enabled=None,
@@ -1535,23 +1566,6 @@ def test_apply_state_projects_the_camera_onto_the_pipeline(scene):
     camera.SetParallelProjection.assert_called_once_with(CAMERA_PARALLEL_PROJECTION)
     camera.SetViewAngle.assert_called_once_with(CAMERA_VIEW_ANGLE)
     camera.SetParallelScale.assert_called_once_with(CAMERA_PARALLEL_SCALE)
-
-
-def test_apply_state_without_a_camera_leaves_the_record_untouched(scene):
-    """Absent says nothing: a camera-free file does not reset the record.
-
-    The negative twin of the two tests above -- same constructor, one
-    argument changed -- so a failure here against a pass there isolates the
-    guard, and a failure in both isolates the unstubbed path instead.
-    """
-    seeded = _persisted_camera()
-    scene._renderer.sync_camera(seeded)
-    scene._renderer._vtk_renderer.GetActiveCamera.return_value.reset_mock()
-
-    scene.apply_state(_persisted_state(None))
-
-    assert scene._renderer.get_camera_state() is seeded
-    scene._renderer._vtk_renderer.GetActiveCamera.return_value.SetPosition.assert_not_called()
 
 
 def test_apply_state_syncs_the_camera_under_the_lock_before_the_render_step(scene):
@@ -1844,7 +1858,7 @@ def test_restore_part_states_holds_the_lock(scene, registry, pipeline):
     registry.replace_part_states = _replace
     scene._renderer.apply_opacity = _apply_opacity
 
-    _apply(scene, _runtime_state({NODE_ID: RuntimePartProperties(id=NODE_ID, opacity=0.25)}))
+    _apply(scene, _runtime_state({NODE_ID: _record(NODE_ID, opacity=0.25)}))
 
     assert observed["store_depth"] >= 1
     assert observed["apply_depth"] >= 1
@@ -1859,7 +1873,7 @@ def test_apply_state_unregistered_dataset_id_is_a_logged_skip(scene, pipeline):
         _apply(
             scene,
             _runtime_state(
-                {NODE_ID: RuntimePartProperties(id=NODE_ID, visible=False)},
+                {NODE_ID: _record(NODE_ID, visible=False)},
                 dataset_id=FRONTEND_DATASET_ID,
             ),
         )
@@ -1876,7 +1890,7 @@ def test_apply_state_unknown_node_is_a_logged_no_op(scene, registry, pipeline):
         result = _apply(
             scene,
             _runtime_state(
-                {UNKNOWN_NODE_ID: RuntimePartProperties(id=UNKNOWN_NODE_ID, visible=False)}
+                {UNKNOWN_NODE_ID: _record(UNKNOWN_NODE_ID, visible=False)}
             ),
         )
 
@@ -1885,21 +1899,33 @@ def test_apply_state_unknown_node_is_a_logged_no_op(scene, registry, pipeline):
     assert pipeline.actor.GetVisibility() == 1
 
 
-def test_apply_state_short_diffuse_color_is_a_logged_no_op(scene, registry, pipeline):
-    """A malformed colour leaves the VTK object alone; the record keeps it."""
-    pipeline.actor.GetProperty().SetDiffuseColor(0.1, 0.2, 0.3)
 
-    with patch("ansys.visor.viewer.vtk.scene.base.logger") as mock_logger:
-        _apply(
-            scene,
-            _runtime_state(
-                {NODE_ID: RuntimePartProperties(id=NODE_ID, diffuse_rgb=[1.0, 0.0])}
-            ),
-        )
+RESTORE_SELECTION_CASES = {
+    # case: (selected, stored colour, expected ambient, expected diffuse, expected colour)
+    "selected_custom_colour": (True, [0.25, 0.5, 0.75], 0.5, 0.5, (0.25, 0.5, 0.75)),
+    "selected_default_colour": (True, [0.8, 0.8, 0.8], 0.5, 0.5, (0.8, 0.8, 0.8)),
+    "unselected_custom_colour": (False, [0.25, 0.5, 0.75], 0.0, 1.0, (0.25, 0.5, 0.75)),
+    "unselected_default_colour": (False, [0.8, 0.8, 0.8], 0.0, 1.0, (0.8, 0.8, 0.8)),
+}
 
-    assert mock_logger.warning.call_count == 1
-    assert pipeline.actor.GetProperty().GetDiffuseColor() == pytest.approx((0.1, 0.2, 0.3))
-    assert registry.get_part_state(NODE_ID).diffuse_rgb == [1.0, 0.0]
+
+@pytest.mark.parametrize("case", list(RESTORE_SELECTION_CASES))
+def test_apply_state_restores_selection_lighting_and_colour(scene, registry, pipeline, case):
+    """The restored actor carries the record's selection lighting and its stored colour."""
+    selected, stored_rgb, ambient, diffuse, colour = RESTORE_SELECTION_CASES[case]
+    prop = pipeline.actor.GetProperty()
+    prop.SetAmbient(0.3)
+    prop.SetDiffuse(0.7)
+    prop.SetDiffuseColor(0.1, 0.2, 0.3)
+
+    _apply(
+        scene,
+        _runtime_state({NODE_ID: _record(NODE_ID, selected=selected, diffuse_rgb=stored_rgb)}),
+    )
+
+    assert prop.GetAmbient() == pytest.approx(ambient)
+    assert prop.GetDiffuse() == pytest.approx(diffuse)
+    assert prop.GetDiffuseColor() == pytest.approx(colour)
 
 
 # ---------------------------------------------------------------------------
@@ -1910,8 +1936,9 @@ def _color_variable_state(component, variable_id=VARIABLE_ID):
     """A part coloured by *variable_id*, at *component*."""
     return _runtime_state(
         {
-            NODE_ID: RuntimePartProperties(
-                id=NODE_ID, variable_id=variable_id, variable_component=component
+            NODE_ID: _record(
+                NODE_ID,
+                color_variable=VariableReference(variable_id=variable_id, variable_component=component),
             )
         },
     )
@@ -2072,42 +2099,10 @@ def test_apply_state_clears_the_color_variable_when_none_is_stored(
     """No stored identifier and no stored component: the clear branch."""
     pipeline.mapper.SetScalarVisibility(1)
 
-    _apply(scene, _runtime_state({NODE_ID: RuntimePartProperties(id=NODE_ID)}))
+    _apply(scene, _runtime_state({NODE_ID: _record(NODE_ID, color_variable=None)}))
 
     assert pipeline.mapper.GetScalarVisibility() == 0
 
-
-def test_apply_state_variable_id_without_component_is_a_logged_no_op(
-    scene, registry, pipeline
-):
-    """Half a compound value: an identifier with no component."""
-    _seed_part_variables(registry, [_pressure_variable()])
-    _seed_unconfigured_mapper(pipeline)
-    runtime = _runtime_state(
-        {NODE_ID: RuntimePartProperties(id=NODE_ID, variable_id=VARIABLE_ID)},
-    )
-
-    with patch("ansys.visor.viewer.vtk.scene.base.logger") as mock_logger:
-        _apply(scene, runtime, _file_entries())
-
-    assert mock_logger.warning.call_count == 1
-    assert pipeline.mapper.GetScalarVisibility() == 0
-
-
-def test_apply_state_component_without_variable_id_does_not_clear(
-    scene, registry, pipeline
-):
-    """The mirror half: a component with no identifier must not fall through."""
-    pipeline.mapper.SetScalarVisibility(1)
-    runtime = _runtime_state(
-        {NODE_ID: RuntimePartProperties(id=NODE_ID, variable_component=0)},
-    )
-
-    with patch("ansys.visor.viewer.vtk.scene.base.logger") as mock_logger:
-        _apply(scene, runtime, _file_entries())
-
-    assert mock_logger.warning.call_count == 1
-    assert pipeline.mapper.GetScalarVisibility() == 1
 
 
 # ===========================================================================
@@ -2141,9 +2136,11 @@ class _ToggleSpyRenderer:
 
     ``update_bounds``, ``update_actor_count`` and ``render`` are the scene
     surface ``apply_state`` reaches through its ``finalize_scene`` call, and
-    are the only three names added for it: with a toggle-only state the part
+    ``get_camera_state`` and ``get_cross_section_plane`` are the two record
+    reads of its current-state snapshot; those five are the only names added
+    beyond the toggles: with a toggle-only state the part
     loop makes no renderer call, the cross-section and camera restores are
-    both guarded off, and ``skip_reset_camera=True`` keeps ``reset_camera``
+    both skipped on ``None`` records, and ``skip_reset_camera=True`` keeps ``reset_camera``
     out.  Anything else is still an AttributeError, which is the point of the
     double.  They record into ``scene_calls`` rather than ``calls`` so that
     the toggle assertions keep their exact meaning; nothing asserts
@@ -2179,6 +2176,15 @@ class _ToggleSpyRenderer:
 
     def render(self):
         self.scene_calls.append("render")
+
+    def get_camera_state(self):
+        """``apply_state`` snapshots the current records before overlaying; there are none."""
+        self.scene_calls.append("get_camera_state")
+        return None
+
+    def get_cross_section_plane(self):
+        self.scene_calls.append("get_cross_section_plane")
+        return None
 
 
 class _SceneDetailsRenderer:
@@ -2358,14 +2364,8 @@ def test_get_state_takes_the_toggles_from_the_store(scene):
 # ---------------------------------------------------------------------------
 
 def _toggle_runtime_state(**toggles):
-    """A real RuntimeAppState carrying only the toggles named."""
-    return RuntimeAppState.from_components(
-        ui=VisorUIState(dark_theme=False),
-        unit="m",
-        dataset_states={},
-        **toggles,
-        variable_states={},
-    )
+    """A real, fully resolved RuntimeAppState with the toggles named; the others are False."""
+    return _app_state(**toggles)
 
 
 def test_apply_state_writes_the_toggles_to_the_store(scene):
@@ -2405,42 +2405,85 @@ def test_apply_state_applies_the_toggles_to_the_renderer(scene):
     ]
 
 
-def test_apply_state_absent_toggles_leave_the_store_untouched(scene):
-    """Absent says nothing: a state with no toggles is not a state of False.
-
-    The guard belongs to this path and not to get_state, and this is the test
-    that says so.  The store is seeded to ``True`` first, so a body that wrote
-    the model's own ``None`` default through would be caught.
-    """
-    scene.set_cross_section_visibility(TOGGLE_ON)
-    scene.set_edges_visible(TOGGLE_ON)
-    scene.set_bounding_box_visibility(TOGGLE_ON)
-    spy = _ToggleSpyRenderer(scene)
-    scene._renderer = spy
-
-    _apply(scene, _toggle_runtime_state())
-
-    assert scene._cross_section_enabled is True
-    assert scene._edges_enabled is True
-    assert scene._bounding_box_enabled is True
-    assert spy.calls == []
-
-
 def test_apply_state_ignores_orthographic_enabled(scene):
     """The persisted projection toggle is emitted, never read back.
 
     Two independent fields writing one camera property is the divergence this
     story removes; projection arrives on the camera and nowhere else.  Pinned
     so that a later session does not restore the read as a bug fix: nothing on
-    the scene stores it, and a state carrying only that field changes nothing.
+    the scene stores it, and a file whose flag says parallel over a perspective
+    camera loads as perspective.
     """
-    spy = _ToggleSpyRenderer(scene)
-    scene._renderer = spy
+    pushed = []
+    scene._push_runtime_state = pushed.append
 
-    _apply(scene, _toggle_runtime_state(orthographic_enabled=True))
+    scene.apply_state(
+        _loaded_file(scene={"orthographic_enabled": True, "camera": _persisted_camera()})
+    )
 
-    assert spy.calls == []
+    assert pushed[0].scene.orthographic_enabled is False
+    assert scene._renderer.get_camera_state().parallel_projection is False
     assert not hasattr(scene, "_orthographic_enabled")
+
+
+# ---------------------------------------------------------------------------
+# apply_state -- a loaded file is overlaid onto the server's current state
+# ---------------------------------------------------------------------------
+
+def _loaded_file(scene=None, ui=None) -> PersistedViewerStateV1:
+    """A real loaded file naming exactly the scene and UI keys given."""
+    return PersistedViewerStateV1.model_validate({"ui": ui or {}, "scene": scene or {}})
+
+
+def test_absent_toggle_keeps_a_non_default_store_value(scene):
+    """Unnamed keeps the current value; named takes the file's."""
+    scene.set_cross_section_visibility(TOGGLE_ON)
+    scene.set_edges_visible(TOGGLE_ON)
+    scene.set_bounding_box_visibility(TOGGLE_ON)
+
+    scene.apply_state(_loaded_file(scene={"edges_enabled": False}))
+
+    assert scene._cross_section_enabled is True
+    assert scene._edges_enabled is False
+    assert scene._bounding_box_enabled is True
+
+
+def test_null_unit_and_null_toggle_resolve_to_the_defaults(scene):
+    """Named as null takes the scene default: an empty unit, a toggle off."""
+    scene._dataset_registry.set_unit("mm")
+    scene.set_edges_visible(TOGGLE_ON)
+
+    scene.apply_state(_loaded_file(scene={"unit": None, "edges_enabled": None}))
+
+    assert scene._dataset_registry.unit == ""
+    assert scene._edges_enabled is False
+
+
+def test_null_theme_resolves_to_the_constructor_theme(renderer, registry):
+    """A null UI field takes the value the scene was built with, not the model's."""
+    s = _ConcreteScene(MagicMock(name="server"), dark_mode=True, renderer=renderer)
+    s._dataset_registry = registry
+    s._renderer.flush_wasm_state = MagicMock(name="flush_wasm_state")
+    s.dark_mode = False
+    s._ui_state.panel_top_right_tab_index = 2
+
+    s.apply_state(_loaded_file(ui={"dark_theme": None, "panel_top_right_tab_index": None}))
+
+    assert s.dark_mode is True
+    assert s._ui_state.panel_top_right_tab_index == 0
+
+
+def test_null_camera_leaves_the_camera_record_unchanged(scene):
+    """A null camera or plane leaves the renderer's record as it is; neither has a default."""
+    scene.sync_camera(_record_camera())
+    scene.sync_cross_section_plane(RECORD_CROSS_SECTION_ORIGIN, RECORD_CROSS_SECTION_NORMAL)
+
+    scene.apply_state(_loaded_file(scene={"camera": None, "cross_section": None}))
+
+    assert scene._renderer.get_camera_state() == _record_camera()
+    plane = scene._renderer.get_cross_section_plane()
+    assert plane.origin == RECORD_CROSS_SECTION_ORIGIN
+    assert plane.normal == RECORD_CROSS_SECTION_NORMAL
 
 
 # ---------------------------------------------------------------------------
@@ -2467,7 +2510,7 @@ def test_get_scene_details_delivers_the_four_widget_keywords(scene):
     double = _SceneDetailsRenderer(_delivered_camera())
     scene._renderer = double
 
-    delivered = scene.get_scene_details().app_state.scene
+    delivered = scene.get_scene_details().scene
 
     assert delivered.cross_section_enabled is True
     assert delivered.edges_enabled is True
@@ -2490,7 +2533,7 @@ def test_get_scene_details_delivers_no_orthographic_flag_when_the_camera_record_
     scene._dataset_registry = VisorDatasetRegistry()
     scene._renderer = _SceneDetailsRenderer(None)
 
-    delivered = scene.get_scene_details().app_state.scene
+    delivered = scene.get_scene_details().scene
 
     assert delivered.orthographic_enabled is None
     assert delivered.edges_enabled is True
@@ -2909,7 +2952,7 @@ def test_apply_state_serializes_the_loaded_plane_after_syncing_it(scene):
 
     scene.apply_state(
         PersistedViewerStateV1.from_components(
-            ui_state=VisorUIState(dark_theme=False),
+            ui_state=PersistedUIState(dark_theme=False),
             unit="m",
             orthographic_enabled=None,
             cross_section_enabled=None,
@@ -2991,13 +3034,8 @@ def _ui_save_scene(scene):
 
 
 def _panel_runtime_state(ui):
-    """A real RuntimeAppState carrying only the UI record named."""
-    return RuntimeAppState.from_components(
-        ui=ui,
-        unit="m",
-        dataset_states={},
-        variable_states={},
-    )
+    """A real, fully resolved RuntimeAppState carrying the UI record named."""
+    return _app_state(ui=ui)
 
 
 # ---------------------------------------------------------------------------
@@ -3104,8 +3142,7 @@ def test_apply_state_restores_the_ui_panel_state_to_the_store(scene):
     _apply(
         scene,
         _panel_runtime_state(
-            VisorUIState(
-                dark_theme=False,
+            _ui_record(
                 panel_top_left_panel_collapsed=PANEL_COLLAPSED,
                 panel_top_right_panel_collapsed=PANEL_COLLAPSED,
                 panel_top_right_legend_collapsed=PANEL_COLLAPSED,
@@ -3121,19 +3158,18 @@ def test_apply_state_restores_the_ui_panel_state_to_the_store(scene):
 
 
 def test_apply_state_leaves_an_absent_ui_panel_field_alone(scene):
-    """Absent says nothing: a state with no panel fields is not a state of defaults.
+    """Absent says nothing: a file with no panel fields is not a file of defaults.
 
-    The guard belongs to this path and not to get_state, and this is the test
-    that says so.  The store is seeded through the coordinators first, so a
-    body that wrote the model's own ``None`` default through would be caught;
-    a file written before this record existed carries exactly this shape.
+    The store is seeded through the coordinators first, so a resolution that
+    based the overlay on the defaults rather than the current record would be
+    caught; a file written before this record existed carries exactly this shape.
     """
     scene.set_panel_top_left_panel_collapsed(PANEL_COLLAPSED)
     scene.set_panel_top_right_panel_collapsed(PANEL_COLLAPSED)
     scene.set_panel_top_right_legend_collapsed(PANEL_COLLAPSED)
     scene.set_panel_top_right_tab_index(PANEL_TAB_INDEX)
 
-    _apply(scene, _panel_runtime_state(VisorUIState(dark_theme=False)))
+    scene.apply_state(_loaded_file(ui={"darkTheme": False}))
 
     assert scene._ui_state.panel_top_left_panel_collapsed is True
     assert scene._ui_state.panel_top_right_panel_collapsed is True
@@ -3436,8 +3472,7 @@ def test_rebuild_at_update_clears_a_reference_whose_variable_is_gone(scene, regi
     _update_pressure_to_three_components(scene, registry)
 
     state = registry.get_part_state(NODE_ID)
-    assert state.variable_id is None
-    assert state.variable_component is None
+    assert state.color_variable is None
     with patch("ansys.visor.viewer.vtk.scene.base.logger") as mock_logger:
         _apply(scene, _runtime_state({NODE_ID: state.model_copy()}))
     assert mock_logger.warning.call_count == 0
@@ -3609,3 +3644,109 @@ def test_get_state_takes_the_unit_from_the_registry(scene, registry):
     scene.get_state()
 
     assert captured["runtime_state"].scene.unit == "mm"
+
+
+# ---------------------------------------------------------------------------
+# add_dataset applies each part's record to its pipeline
+#
+# A real registry and scene graph, so the record is the one the metadata
+# seeds at construction and the pipeline is the one register_node builds.
+# The dataset is non-composite, so its single part takes the dataset name.
+# ---------------------------------------------------------------------------
+
+ADDED_ACTOR_WASM_ID = 8150004
+
+
+@pytest.fixture
+def add_scene(renderer):
+    """Scene with the real renderer, a real registry and a real scene graph, holding no dataset."""
+    # A MagicMock plane would reach mapper.AddClippingPlane in register_node.
+    renderer._cross_section_widget.plane = None
+    return _ConcreteScene(MagicMock(name="server"), dark_mode=False, renderer=renderer)
+
+
+def _add_sphere(scene, dataset, parts):
+    """add_dataset *dataset* named "sphere" with *parts* as its metadata part entries; return its pipeline."""
+    metadata = ExtendedMetadata(name="sphere", unit="m", state={"parts": parts})
+    dataset_id = scene.add_dataset(dataset, metadata)
+    part_id = scene.datasets[dataset_id].part_index.part_ids[0]
+    return scene._renderer._pipelines[part_id]
+
+
+def _record_served_actor_visibility(renderer):
+    """Record the actor's visibility at each re-serialization of an actor, from here on."""
+    other_ids = renderer._object_manager.GetId.side_effect
+    actors = {}
+
+    def _get_id(obj):
+        if isinstance(obj, vtkActor):
+            actors[ADDED_ACTOR_WASM_ID] = obj
+            return ADDED_ACTOR_WASM_ID
+        return other_ids(obj)
+
+    served = []
+    renderer._object_manager.GetId.side_effect = _get_id
+    renderer._object_manager.UpdateStateFromObject.side_effect = lambda object_id: (
+        served.append(actors[object_id].GetVisibility()) if object_id == ADDED_ACTOR_WASM_ID else None
+    )
+    return served
+
+
+def test_add_dataset_applies_metadata_visibility_to_the_actor(add_scene, array_dataset):
+    """Metadata hides the part: the actor is hidden, and the actor is served hidden."""
+    served = _record_served_actor_visibility(add_scene._renderer)
+
+    pipe = _add_sphere(add_scene, array_dataset, {"sphere": {"visible": False}})
+
+    assert pipe.actor.GetVisibility() == 0
+    assert served == [0]
+
+
+def test_add_dataset_applies_metadata_opacity_and_color_to_the_property(add_scene, array_dataset):
+    """Metadata opacity and diffuse colour reach the actor's property."""
+    pipe = _add_sphere(
+        add_scene, array_dataset, {"sphere": {"opacity": 0.25, "diffuse_rgb": [0.75, 0.5, 0.25]}}
+    )
+
+    prop = pipe.actor.GetProperty()
+    assert prop.GetOpacity() == pytest.approx(0.25)
+    assert prop.GetDiffuseColor() == pytest.approx((0.75, 0.5, 0.25))
+
+
+def test_add_dataset_applies_selection_lighting_before_color(add_scene, array_dataset):
+    """A part selected with a custom colour: lighting terms, ambient colour and diffuse colour are all set."""
+    pipe = _add_sphere(
+        add_scene, array_dataset, {"sphere": {"selected": True, "diffuse_rgb": [0.75, 0.5, 0.25]}}
+    )
+
+    prop = pipe.actor.GetProperty()
+    assert prop.GetDiffuse() == pytest.approx(0.5)
+    assert prop.GetAmbient() == pytest.approx(0.5)
+    assert prop.GetAmbientColor() == pytest.approx((0.0, 0.2431372549, 0.4352941176))
+    assert prop.GetDiffuseColor() == pytest.approx((0.75, 0.5, 0.25))
+
+
+def test_add_dataset_without_metadata_leaves_the_record_applied(add_scene, array_dataset):
+    """No part entries: the default record is written over a pipeline built with other values."""
+    real_from_dataset = VtkNodePipeline.from_dataset
+
+    def _dirtied(dataset):
+        pipe = real_from_dataset(dataset)
+        pipe.actor.SetVisibility(0)
+        prop = pipe.actor.GetProperty()
+        prop.SetOpacity(0.3)
+        prop.SetDiffuse(0.4)
+        prop.SetAmbient(0.6)
+        prop.SetDiffuseColor(0.1, 0.2, 0.3)
+        return pipe
+
+    with patch.object(VtkNodePipeline, "from_dataset", side_effect=_dirtied):
+        pipe = _add_sphere(add_scene, array_dataset, {})
+
+    prop = pipe.actor.GetProperty()
+    assert pipe.actor.GetVisibility() == 1
+    assert prop.GetOpacity() == pytest.approx(1.0)
+    assert prop.GetDiffuse() == pytest.approx(1.0)
+    assert prop.GetAmbient() == pytest.approx(0.0)
+    assert prop.GetDiffuseColor() == pytest.approx((0.8, 0.8, 0.8))
+

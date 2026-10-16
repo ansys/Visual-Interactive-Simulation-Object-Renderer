@@ -1,6 +1,7 @@
 import { VisorFrontend } from '../VisorFrontend';
 import type { IRenderer } from '../renderer/IRenderer';
 import type VisorVtkSceneNode from '../state/appstate/vtkInfo/VisorVtkSceneNode.tsx';
+import { deliveredScene } from './deliveredSceneFixture.ts';
 
 /**
  * The projection load path: `setAppStateAsync` applies projection from
@@ -8,7 +9,7 @@ import type VisorVtkSceneNode from '../state/appstate/vtkInfo/VisorVtkSceneNode.
  * widget flag.
  *
  * Two persisted fields used to write the same wasm camera property --
- * `scene.orthographicEnabled` and `scene.camera.parallelProjection` -- both
+ * `scene.orthographicEnabled` and `view.camera.parallelProjection` -- both
  * pushed into one unordered promise array, with only the first also setting
  * the cached flag `getAppStateAsync` reads back. Which one won was
  * unspecified. This module pins that there is now exactly one writer, that it
@@ -97,6 +98,7 @@ function makeFrontend(): { frontend: VisorFrontend; renderer: RendererDouble } {
     const frontend = new VisorFrontend(
         renderer as unknown as IRenderer,
         makeSceneGraphNode() as unknown as VisorVtkSceneNode,
+        deliveredScene(),
         jest.fn(async () => undefined)
     );
     return { frontend, renderer };
@@ -110,6 +112,8 @@ describe('setAppStateAsync applies projection from the camera alone', () => {
             {
                 scene: {
                     orthographicEnabled: PERSISTED_ORTHOGRAPHIC_ENABLED,
+                },
+                view: {
                     camera: { parallelProjection: CAMERA_PARALLEL_PROJECTION },
                 },
             },
@@ -131,6 +135,8 @@ describe('setAppStateAsync applies projection from the camera alone', () => {
             {
                 scene: {
                     orthographicEnabled: true,
+                },
+                view: {
                     camera: {},
                 },
             },

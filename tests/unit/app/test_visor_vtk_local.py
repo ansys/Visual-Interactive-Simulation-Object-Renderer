@@ -12,9 +12,9 @@ from ansys.visor.viewer.app.visor_vtk import (
 )
 from ansys.visor.viewer.core.errors import ServerNotStartedError
 from ansys.visor.viewer.core.metadata import ExtendedMetadata
-from ansys.visor.viewer.models.common.visor_ui_state import VisorUIState
 from ansys.visor.viewer.models.persist.dataset.persisted_dataset_state import PersistedDatasetState
 from ansys.visor.viewer.models.persist.persisted_viewer_state import PersistedViewerStateV1
+from ansys.visor.viewer.models.persist.visor_ui_state import PersistedUIState
 
 
 @pytest.fixture
@@ -405,7 +405,7 @@ def _make_state_with_datasets(snapshot_path: str | None, name="model", unit="m")
     """Helper function to create a PersistedViewerStateV1 with a dataset state."""
     ds_state = PersistedDatasetState(serialized_dataset_path=snapshot_path)
     return PersistedViewerStateV1.from_components(
-        ui_state=VisorUIState(), unit=unit, orthographic_enabled=None,
+        ui_state=PersistedUIState(), unit=unit, orthographic_enabled=None,
         cross_section_enabled=None, edges_enabled=None, bounding_box_enabled=None,
         datasets={name: ds_state}, variable_states={}
     )
@@ -517,7 +517,7 @@ def test_load_state_passes_correct_metadata_to_add_dataset(tmp_path, iface):
         serialized_dataset_path=str(snapshot), source_file_path="/orig/mesh.vtu"
     )
     state = PersistedViewerStateV1.from_components(
-        ui_state=VisorUIState(), unit="mm", orthographic_enabled=None,
+        ui_state=PersistedUIState(), unit="mm", orthographic_enabled=None,
         cross_section_enabled=None, edges_enabled=None, bounding_box_enabled=None,
         datasets={"mesh": ds_state}, variable_states={}
     )

@@ -197,14 +197,15 @@ export default class VisorPartState {
                 replace
             );
             this.setSelected(data.selected === undefined ? this._selected : data.selected, replace);
+            const reference = VisorPartState.referenceFields(data.colorVariable);
             this.setVariableId(
-                data.variableId === undefined ? this._variableId : data.variableId,
+                reference.variableId === undefined ? this._variableId : reference.variableId,
                 replace
             );
             this.setVariableComponent(
-                data.variableComponent === undefined
+                reference.variableComponent === undefined
                     ? this._variableComponent
-                    : data.variableComponent,
+                    : reference.variableComponent,
                 replace
             );
         }
@@ -224,8 +225,49 @@ export default class VisorPartState {
             visible: this.visible,
             diffuseRgb: this.diffuseRgb,
             selected: this.selected,
-            variableId: this.variableId,
-            variableComponent: this.variableComponent,
+            colorVariable: VisorPartState.colorVariableOf(this.variableId, this.variableComponent),
         };
+    }
+
+    /**
+     * The flat fields a delivered `colorVariable` stands for: absent gives
+     * neither, null gives a null id, an object gives both.
+     */
+    static referenceFields(colorVariable: unknown): {
+        variableId?: string | null;
+        variableComponent?: number;
+    } {
+        if (colorVariable === undefined) {
+            return {};
+        }
+        if (colorVariable === null) {
+            return { variableId: null };
+        }
+        const reference = colorVariable as JsonDict;
+        return {
+            variableId: ensureString(reference.variableId, 'colorVariable.variableId'),
+            variableComponent: ensureNumber(
+                reference.variableComponent,
+                'colorVariable.variableComponent'
+            ),
+        };
+    }
+
+    /**
+     * The inverse of `referenceFields`: no id gives absent, a null id gives
+     * null, an id with a component gives the object.  An id without a
+     * component gives absent.
+     */
+    static colorVariableOf(
+        variableId: string | null | undefined,
+        variableComponent: number | undefined
+    ): JsonDict | null | undefined {
+        if (variableId === null) {
+            return null;
+        }
+        if (variableId === undefined || variableComponent === undefined) {
+            return undefined;
+        }
+        return { variableId, variableComponent };
     }
 }
