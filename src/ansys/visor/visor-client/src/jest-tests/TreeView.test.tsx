@@ -110,29 +110,32 @@ describe('TreeView', () => {
 });
 
 function getSmallSceneGraph(): VisorSceneNodeExtended {
-    return CreateVisorSceneGraph({
-        id: 0,
-        dataArrays: [],
-        name: '',
-        isGroupNode: true,
-        isActorNode: false,
-        nodeType: 'root',
-        diffuseColor: [1, 1, 1],
-        bounds: [],
-        children: [
-            {
-                id: 1,
-                dataArrays: [],
-                name: 'some-polydata-file.vtp',
-                isGroupNode: false,
-                isActorNode: true,
-                nodeType: 'vtkUnstructuredGrid',
-                diffuseColor: [1, 1, 1],
-                bounds: [],
-                children: [],
-            },
-        ],
-    }, deliveredScene(deliveredPart(1)));
+    return CreateVisorSceneGraph(
+        {
+            id: 0,
+            dataArrays: [],
+            name: '',
+            isGroupNode: true,
+            isActorNode: false,
+            nodeType: 'root',
+            diffuseColor: [1, 1, 1],
+            bounds: [],
+            children: [
+                {
+                    id: 1,
+                    dataArrays: [],
+                    name: 'some-polydata-file.vtp',
+                    isGroupNode: false,
+                    isActorNode: true,
+                    nodeType: 'vtkUnstructuredGrid',
+                    diffuseColor: [1, 1, 1],
+                    bounds: [],
+                    children: [],
+                },
+            ],
+        },
+        deliveredScene(deliveredPart(1))
+    );
 }
 
 function getLargeSceneGraph(): VisorSceneNodeExtended {

@@ -219,4 +219,3 @@ describe('the client applies delivered state as given', () => {
         }
     });
 });
-
