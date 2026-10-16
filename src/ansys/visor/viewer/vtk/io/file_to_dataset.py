@@ -12,6 +12,7 @@ from vtkmodules.vtkIOXML import (
 )
 
 from ansys.visor.viewer.core.visor_logging import VisorDefaultLogger
+from ansys.visor.viewer.vtk.io.client_dataset_normalizer import ClientDatasetNormalizer
 
 """Logging configuration"""
 logger = VisorDefaultLogger(__name__)
@@ -69,6 +70,20 @@ def file_to_dataset(file_path: str) -> vtkDataSet | vtkCompositeDataSet:
 
         # Release the reader and its file handle
         del reader
+
+        if is_hdf:
+            # WORKAROUND (upstream VTK defect, see ClientDatasetNormalizer):
+            # vtkHDFReader returns 64-bit integers as platform-width long
+            # arrays on LP64, which the wasm32 client misreads.  *copy* is
+            # owned by Visor, so converting it in place is safe.  Remove this
+            # block with ClientDatasetNormalizer once fixed upstream.
+            replaced = ClientDatasetNormalizer.normalize_dataset_for_client(copy)
+            if replaced:
+                logger.info(
+                    "Normalized %d array(s) of VTKHDF dataset '%s' to fixed-width types for the client.",
+                    replaced,
+                    file_path,
+                )
 
         logger.debug(f"Finished creating dataset from file: {file_path}")
         return copy
