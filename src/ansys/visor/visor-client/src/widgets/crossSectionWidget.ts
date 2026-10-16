@@ -16,7 +16,6 @@ function toNumericId(id: string | number | undefined, name = 'id'): number {
  * - toggling visibility (queries widget for authoritative state when toggling)
  * - checking enabled state
  * - an interaction handler that copies origin/normal from the widget representation to the plane and triggers a render
- * - updateBoundsAsync is provided as a placeholder (keeps parity with bounding-box API)
  */
 export class CrossSectionWidget {
     constructor(
@@ -42,11 +41,6 @@ export class CrossSectionWidget {
             } else {
                 await widget.Off();
             }
-        };
-        this.updateBoundsAsync = async () => {
-            // placeholder: cross-section bounds logic is currently empty in the original code
-            // keep a no-op to preserve API parity; implement later if needed
-            return;
         };
         this.interactionHandler = async (/* event */) => {
             // copy origin & normal from representation to the underlying plane and render
@@ -105,6 +99,5 @@ export class CrossSectionWidget {
         await this.#plane.SetNormal(normal);
     };
     setVisibilityAsync: (visible?: boolean) => Promise<void>;
-    updateBoundsAsync: () => Promise<void>;
     interactionHandler: (event?: any) => Promise<void>;
 }

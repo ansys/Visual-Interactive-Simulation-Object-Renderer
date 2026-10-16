@@ -1,5 +1,3 @@
-import { VisorSceneNodeExtended } from '../state/VisorSceneGraph.tsx';
-
 /** Stable integer id of an addressable scene-graph node (part or block). */
 export type NodeId = number;
 
@@ -16,17 +14,6 @@ export type VisorCameraState = Readonly<{
     unitsPerPixel: number;
     viewPortHeight: number;
     // Full VTK camera (needed for save / restore)
-    position: readonly number[];
-    focalPoint: readonly number[];
-    viewUp: readonly number[];
-    clippingRange: readonly number[];
-    parallelProjection: boolean;
-    viewAngle: number;
-    parallelScale: number;
-}>;
-
-/** The seven camera fields that can be applied. No derived fields. */
-export type AppliedCameraState = Readonly<{
     position: readonly number[];
     focalPoint: readonly number[];
     viewUp: readonly number[];
@@ -90,14 +77,6 @@ export interface IRenderer {
     // ---- Canvas / lifecycle -------------------------------------------------
     /** DOM element hosting the render output (canvas + overlay). */
     readonly domElement: HTMLDivElement;
-    /**
-     * Hand the live scene graph to the renderer.  Called by VisorFrontend immediately
-     * after CreateVisorSceneGraph.  Temporary: exists because the bounding-box and
-     * edges widgets read live per-node bounds and visibility.
-     * A RemoteRenderer gets those from the server and implements this as a no-op.
-     * TODO: Remove after user wire contract is updated to allow further decoupling.
-     */
-    attachSceneGraph(sceneGraph: VisorSceneNodeExtended): void;
     /** Kick a frame flush. Wasm: wasm.update() + Render(). Remote: no-op / RPC. */
     renderAsync(): Promise<void>;
     /** Resize output to its container. Call after container size changes. */
@@ -114,14 +93,6 @@ export interface IRenderer {
     setCameraParallelProjectionAsync(enabled: boolean): Promise<void>;
     setCameraViewAngleAsync(angle: number): Promise<void>;
     setCameraParallelScaleAsync(scale: number): Promise<void>;
-    /**
-     * Apply the seven applied camera fields in one RPC. WasmRenderer implements it
-     * by delegating to the seven per-field setters above. See §11 for the
-     * Story 3.2 rationale (server-tracked camera + sync-back).
-     */
-    setCameraStateAsync(state: AppliedCameraState): Promise<void>;
-    /** Frame the scene on the given bounds; used by scene-graph rebuilds. */
-    resetCameraAsync(bounds?: readonly number[]): Promise<void>;
 
     // ---- Subscriptions (return unsubscribe closures) ------------------------
     /** Fires whenever the camera changes. Callback receives a full snapshot. */
@@ -177,7 +148,6 @@ export interface IRenderer {
         selected: boolean,
         currentDiffuseRgb: readonly number[]
     ): Promise<void>;
-    setEdgeVisibilityAsync(nodeId: NodeId, edgeVisible: boolean): Promise<void>;
     setOpacityAsync(nodeId: NodeId, opacity: number): Promise<void>;
     setColorVariableAsync(nodeId: NodeId, descriptor: ColorVariableDescriptor): Promise<void>;
     clearColorVariableAsync(nodeId: NodeId): Promise<void>;
@@ -226,7 +196,6 @@ export interface IRenderer {
     applyCrossSectionVisibilityAsync(visible: boolean): Promise<void>;
     /** Whether the cross-section plane is shown. See contract note above. */
     isCrossSectionVisible(): boolean; // cached bool, sync
-    updateCrossSectionBoundsAsync(): Promise<void>;
     getCrossSectionOriginAsync(): Promise<readonly number[]>;
     getCrossSectionNormalAsync(): Promise<readonly number[]>;
     setCrossSectionOriginAsync(origin: readonly number[]): Promise<void>;
@@ -237,7 +206,6 @@ export interface IRenderer {
     applyBoundingBoxVisibilityAsync(visible: boolean): Promise<void>;
     /** Whether the bounding-box outline is shown. See contract note above. */
     isBoundingBoxVisible(): boolean;
-    updateBoundingBoxBoundsAsync(): Promise<void>;
 
     setOrthographicModeAsync(enable?: boolean): Promise<void>;
     /** Show or hide the widget; send nothing. */
@@ -255,8 +223,6 @@ export interface IRenderer {
     applyEdgeVisibilityGlobalAsync(visible: boolean): Promise<void>;
     /** Whether edges are shown on every part in the scene. See contract note above. */
     areEdgesVisibleGlobally(): boolean;
-
-    toggleFullScreenAsync(): Promise<void>;
 
     // ---- Picking (geometry pick — the vertex/edge/face path) ---------------
     /**

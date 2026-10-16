@@ -92,7 +92,6 @@ function makeSceneGraphNode() {
  */
 function makeRendererDouble() {
     return {
-        attachSceneGraph: jest.fn(),
         domElement: document.createElement('div'),
         addCameraSettledListener: jest.fn(() => jest.fn()),
         addViewerClickedListener: jest.fn(() => jest.fn()),

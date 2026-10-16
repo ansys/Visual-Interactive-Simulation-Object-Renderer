@@ -1,9 +1,8 @@
-import { VisorSceneNodeExtended } from '../state/VisorSceneGraph.tsx';
-import type { IRenderer } from '../renderer/IRenderer.ts';
+import type { WasmRenderer } from '../renderer/WasmRenderer.ts';
 
 export class EdgesWidget {
-    constructor(sceneGraph: VisorSceneNodeExtended, renderer: IRenderer) {
-        this.#sceneGraph = sceneGraph;
+    /** Fan the global edges toggle out to every node the renderer holds. */
+    constructor(renderer: WasmRenderer) {
         this.#renderer = renderer;
     }
 
@@ -12,14 +11,13 @@ export class EdgesWidget {
         return this.#enabled;
     }
 
-    #sceneGraph: VisorSceneNodeExtended;
-    #renderer: IRenderer;
+    #renderer: WasmRenderer;
 
     setEdgesVisibleAsync = async (enable?: boolean | null): Promise<void> => {
         this.#enabled = enable ?? !this.#enabled;
         const promises = [];
-        for (const n of this.#sceneGraph.descendantActorNodesOrSelfArray) {
-            promises.push(this.#renderer.setEdgeVisibilityAsync(n.id, this.#enabled));
+        for (const nodeId of this.#renderer.nodeIds()) {
+            promises.push(this.#renderer.setEdgeVisibilityAsync(nodeId, this.#enabled));
         }
         await Promise.all(promises);
     };
