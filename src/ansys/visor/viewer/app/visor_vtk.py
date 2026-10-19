@@ -1,6 +1,5 @@
 """Trame VTKlocal implementation of Visor class"""
 
-import asyncio
 import traceback
 from abc import abstractmethod
 from functools import wraps
@@ -365,29 +364,20 @@ class VisorVTK(Visor):
         logger.info(f"Variables for dataset {dataset_id} updated successfully")
 
     @require_server_on
-    async def save_state(self, state_dir: str, timeout: float = 5.0) -> None:
+    async def save_state(self, state_dir: str) -> None:
         """
         Save the current viewer state to a directory.
-        Requests the runtime state from the frontend, converts it to persisted state,
-        and writes it as visor.json to state_dir.
+        Builds the persisted state from the scene's server-side records and
+        writes it as visor.json to state_dir.  No client needs to be connected.
 
         The canonical snapshot path is always stamped onto each dataset's persisted
         state before writing, so load_state has one unambiguous place to look
         regardless of how the dataset was originally loaded.
         """
-        try:
-            state = await self._scene.get_state(timeout=timeout)
-        except asyncio.TimeoutError as e:
-            msg = (
-                "Timed out waiting for the frontend to respond to `getState`.\n"
-                "This typically means the Trame client is not connected/ready, or JS calls are not being processed.\n"
-                f"Waited {timeout} seconds."
-            )
-            raise RuntimeError(msg) from e
+        state = self._scene.get_state()
 
         # Stamp the canonical snapshot path for every registered dataset.
-        # The registry is the source of truth for which datasets are loaded — not
-        # the frontend state, which only knows about visual/UI properties.
+        # The registry is the source of truth for which datasets are loaded.
         for dataset_name, dataset_state in state.scene.dataset_states.items():
             dataset_state.serialized_dataset_path = str(
                 self._file_io.get_persisted_dataset_path(state_dir, dataset_name)
