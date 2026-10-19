@@ -96,17 +96,29 @@ class IRenderer(ABC):
 
     @abstractmethod
     def apply_visibility(self, node_id: int, visible: bool) -> None:
-        """Set actor visibility for *node_id*."""
+        """Set actor visibility for *node_id*.
+
+        On return, the state this renderer serves to the client reflects the
+        write, and the client is not notified.
+        """
 
     @abstractmethod
     def apply_opacity(self, node_id: int, opacity: float) -> None:
-        """Set actor opacity for *node_id*."""
+        """Set actor opacity for *node_id*.
+
+        On return, the state this renderer serves to the client reflects the
+        write, and the client is not notified.
+        """
 
     @abstractmethod
     def apply_diffuse_color(
         self, node_id: int, r: float, g: float, b: float
     ) -> None:
-        """Set the actor-property diffuse colour for *node_id*."""
+        """Set the actor-property diffuse colour for *node_id*.
+
+        On return, the state this renderer serves to the client reflects the
+        write, and the client is not notified.
+        """
 
     @abstractmethod
     def apply_selected(
@@ -118,6 +130,9 @@ class IRenderer(ABC):
         *diffuse_rgb* is the part's stored diffuse colour, used when
         deselecting to restore the property DiffuseColor alongside resetting
         Ambient/Diffuse.
+
+        On return, the state this renderer serves to the client reflects the
+        write, and the client is not notified.
         """
 
     @abstractmethod
@@ -173,6 +188,9 @@ class IRenderer(ABC):
         An implementation with no pipeline camera leaves the record at its
         previous value rather than clearing it, so that a reset cannot destroy
         a camera the frontend reported.
+
+        On return, the state this renderer serves to the client reflects the
+        write, and the client is not notified.
         """
 
     @abstractmethod
@@ -189,6 +207,9 @@ class IRenderer(ABC):
 
         The record stores the object as given, without copying: callers rely
         on object identity through :meth:`get_camera_state`.
+
+        On return, the state this renderer serves to the client reflects the
+        write, and the client is not notified.
         """
 
     @abstractmethod
@@ -200,24 +221,10 @@ class IRenderer(ABC):
         to the pipeline camera, so a raising VTK setter still leaves the
         record holding what was asked. A ``None`` record is not seeded: the
         pipeline write still happens, but the value is lost until the next
-        :meth:`reset_camera` imports it. Does not re-serialise; that is the
-        coordinator's job.
-        """
+        :meth:`reset_camera` imports it.
 
-    @abstractmethod
-    def serialize_camera_state(self) -> None:
-        """Make the state served to the client current for the camera.
-
-        The camera alone.  Writing the pipeline camera
-        makes the server correct: it does not make the state the client is
-        served correct, and the two are separate steps that can each silently
-        do nothing.
-
-        **Serialize only; do not notify.**  Pushing to the client is
-        :meth:`flush_wasm_state`'s job and carries a rebuild race that the
-        load path deliberately refuses.
-
-        No-op on a renderer that serves the client no VTK object state.
+        On return, the state this renderer serves to the client reflects the
+        write, and the client is not notified.
         """
 
     # ------------------------------------------------------------------------
@@ -231,6 +238,9 @@ class IRenderer(ABC):
         Scene-wide, not per-node: edges are a single global toggle and the
         per-part surface that once mirrored it had no reader, no sender and
         no model field.
+
+        On return, the state this renderer serves to the client reflects the
+        write, and the client is not notified.
         """
 
     @abstractmethod
@@ -244,6 +254,9 @@ class IRenderer(ABC):
         """
         Sync the cross-section plane origin and normal from the frontend back
         to server-side VTK objects.
+
+        On return, the state this renderer serves to the client reflects the
+        write, and the client is not notified.
         """
 
     @abstractmethod
@@ -253,16 +266,6 @@ class IRenderer(ABC):
         written one yet.
         """
 
-    @abstractmethod
-    def serialize_cross_section_state(self) -> None:
-        """Make the state served to the client current for the plane.
-
-        Names its ids explicitly and never relies on a render following.
-
-        **Serialize only; do not notify.**
-
-        No-op on a renderer that serves the client no VTK object state.
-        """
 
     @abstractmethod
     def set_bounding_box_visibility(self, visible: bool) -> None:
