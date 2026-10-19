@@ -708,14 +708,6 @@ class VisorSceneBase(ABC):
         with self._vtk_lock:
             self._renderer.sync_cross_section_plane(origin, normal)
 
-    def pick_geometry(self, actor_wasm_id, cell_id, mode, world_x, world_y, world_z) -> dict:
-        """
-        Frontend-trigger entry point for cell picking.  Packs the world-space
-        pick position into a tuple and delegates to the renderer backend.
-        """
-        return self._renderer.pick_geometry(
-            actor_wasm_id, cell_id, mode, (world_x, world_y, world_z)
-        )
 
     # =========================================================================
     # Per-part visual state — coordinator surface

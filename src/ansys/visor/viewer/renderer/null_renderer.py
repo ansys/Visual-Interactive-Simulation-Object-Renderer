@@ -124,18 +124,6 @@ class NullRenderer(IRenderer):
     def update_actor_count(self, count: int) -> None:
         pass
 
-    # ------------------------------------------------------------------
-    # Picking
-    # ------------------------------------------------------------------
-
-    def pick_geometry(
-        self,
-        actor_wasm_id: int,
-        cell_id: int,
-        mode: str,
-        world_pos: tuple[float, float, float],
-    ) -> dict:
-        return {}
 
     # ------------------------------------------------------------------
     # Render
