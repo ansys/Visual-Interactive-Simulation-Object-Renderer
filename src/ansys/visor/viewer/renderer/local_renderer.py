@@ -1,27 +1,21 @@
 """
 VisorLocalRenderer
 ==================
-:class:`IRenderer` implementation for the wasm / :class:`LocalView` backend.
+:class:`VtkPipelineRenderer` implementation for the wasm / :class:`LocalView`
+backend.
 
-Owns all VTK render-window / actor / widget / LocalView / object-manager
-objects.
+Owns the LocalView and its object manager, and publishes each written VTK
+object by re-serializing it into the state the wasm client fetches.
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 from trame_server import Server
 from trame_vtklocal.widgets.vtklocal import LocalView
 from vtkmodules.vtkCommonCore import vtkObject
-from vtkmodules.vtkCommonDataModel import vtkDataObject
-from vtkmodules.vtkInteractionStyle import vtkInteractorStyleTrackballCamera
 from vtkmodules.vtkRenderingCore import (
-    vtkCellPicker,
     vtkPropPicker,
-    vtkRenderer,
     vtkRenderWindow,
-    vtkRenderWindowInteractor,
 )
 from vtkmodules.vtkSerializationManager import vtkObjectManager
 
@@ -29,56 +23,30 @@ from ansys.visor.viewer.config import settings
 from ansys.visor.viewer.core.perf_timer import PerfTimer
 from ansys.visor.viewer.core.visor_colors import VisorColors
 from ansys.visor.viewer.core.visor_logging import VisorDefaultLogger
-from ansys.visor.viewer.models.common.visor_camera_state import VisorCameraState
-from ansys.visor.viewer.models.common.visor_cross_section_state import VisorCrossSectionState
 from ansys.visor.viewer.models.runtime.vtk.renderer_annotation import (
     WasmNodeHandles,
     WasmRendererAnnotation,
     WasmWidgetHandles,
 )
-from ansys.visor.viewer.renderer.base import IRenderer
-from ansys.visor.viewer.vtk.node_pipeline import VtkNodePipeline
+from ansys.visor.viewer.renderer.pipeline_renderer import VtkPipelineRenderer
 from ansys.visor.viewer.vtk.widgets.visor_bounding_box import VisorBoundingBox
 from ansys.visor.viewer.vtk.widgets.visor_cross_section import VisorCrossSectionWidget
 from ansys.visor.viewer.vtk.widgets.visor_orientation import VisorOrientationWidget
 
-if TYPE_CHECKING:
-    from ansys.visor.viewer.core.visor_enums import VisorVtkVariableType
-    from ansys.visor.viewer.vtk.scene_graph import VisorSceneGraphPartNode
-
 logger = VisorDefaultLogger(__name__)
 
 
-class VisorLocalRenderer(IRenderer):
+class VisorLocalRenderer(VtkPipelineRenderer):
     """IRenderer backend that owns the local wasm / LocalView VTK pipeline."""
 
     _server: Server
-    _vtk_renderer: vtkRenderer
-    _render_window: vtkRenderWindow
-    _render_window_interactor: vtkRenderWindowInteractor
     _local_view: LocalView
     _object_manager: vtkObjectManager
-    _orientation_widget: VisorOrientationWidget
-    _cross_section_widget: VisorCrossSectionWidget
-    _bounding_box_widget: VisorBoundingBox
-    # Registered pipelines keyed by scene-graph node id.  Sole owner;
-    # mutated exclusively via register_node / deregister_node.
-    _pipelines: dict[int, VtkNodePipeline]
 
     def __init__(self, server: Server):
         """Build the full local-mode VTK infrastructure and seed wasm state."""
-        super().__init__()
         self._server = server
-        self._pipelines = {}
-
-        self._vtk_renderer = self._initialize_vtk_renderer()
-        self._render_window = self._initialize_render_window()
-        self._render_window_interactor = self._initialize_render_window_interactor()
-        self._local_view = self._initialize_local_view()
-        self._object_manager = self._local_view.object_manager
-        self._orientation_widget = self._initialize_orientation_widget()
-        self._cross_section_widget = self._initialize_cross_section_widget()
-        self._bounding_box_widget = self._initialize_bounding_box_widget()
+        super().__init__()
 
         # Wasm state seeding: the ids and names the client reads to bind to
         # this render window, renderer, interactor and picker.
@@ -126,175 +94,10 @@ class VisorLocalRenderer(IRenderer):
         return WasmRendererAnnotation(nodes=nodes, widgets=widgets)
 
     # ------------------------------------------------------------------
-    # IRenderer: node lifecycle
+    # VtkPipelineRenderer: publish hooks
     # ------------------------------------------------------------------
 
-    def register_node(
-        self, node: "VisorSceneGraphPartNode", dataset: vtkDataObject
-    ) -> None:
-        """See :meth:`IRenderer.register_node`."""
-        node_id = node.id
-        if node_id in self._pipelines:
-            return  # idempotent
-        pipe = VtkNodePipeline.from_dataset(dataset)
-        pipe.set_clipping_plane(self._cross_section_widget.plane)
-        pipe.mapper.SetScalarVisibility(False)
-        self._vtk_renderer.AddActor(pipe.actor)
-        self._pipelines[node_id] = pipe
-
-    def deregister_node(self, node_id: int) -> None:
-        """See :meth:`IRenderer.deregister_node`."""
-        pipe = self._pipelines.pop(node_id, None)
-        if pipe is not None:
-            self._vtk_renderer.RemoveActor(pipe.actor)
-
-    def deregister_all(self) -> None:
-        """See :meth:`IRenderer.deregister_all`."""
-        for node_id in list(self._pipelines.keys()):
-            self.deregister_node(node_id)
-
-    # ------------------------------------------------------------------
-    # IRenderer: per-part visual mutations
-    # ------------------------------------------------------------------
-
-    def apply_visibility(self, node_id: int, visible: bool) -> None:
-        """See :meth:`IRenderer.apply_visibility`.
-
-        Resolves the pipeline and delegates to
-        :meth:`VtkNodePipeline.set_visibility`.  An unknown *node_id* is a
-        logged no-op, never a raise.
-
-        Ends with :meth:`_serialize_vtk_object` on the actor, after the
-        write, so the state served to the client carries the new visibility.
-        Does not notify the client.
-        """
-        pipe = self._pipelines.get(node_id)
-        if pipe is None:
-            logger.debug(
-                "apply_visibility: no pipeline for node %s; skipping.", node_id
-            )
-            return
-        pipe.set_visibility(visible)
-        self._serialize_vtk_object(pipe.actor)
-
-    def apply_opacity(self, node_id: int, opacity: float) -> None:
-        """See :meth:`IRenderer.apply_opacity`.
-
-        Resolves the pipeline and delegates to
-        :meth:`VtkNodePipeline.set_opacity`.  An unknown *node_id* is a
-        logged no-op, never a raise.
-
-        Ends with :meth:`_serialize_vtk_object` on the actor's property,
-        after the write, so the state served to the client carries the new
-        opacity.  Does not notify the client.
-        """
-        pipe = self._pipelines.get(node_id)
-        if pipe is None:
-            logger.debug(
-                "apply_opacity: no pipeline for node %s; skipping.", node_id
-            )
-            return
-        pipe.set_opacity(opacity)
-        self._serialize_vtk_object(pipe.actor.GetProperty())
-
-    def apply_diffuse_color(
-        self, node_id: int, r: float, g: float, b: float
-    ) -> None:
-        """See :meth:`IRenderer.apply_diffuse_color`.
-
-        Resolves the pipeline and delegates to
-        :meth:`VtkNodePipeline.set_diffuse_color`.  An unknown *node_id*
-        is a logged no-op, never a raise.
-
-        Ends with :meth:`_serialize_vtk_object` on the actor's property,
-        after the write, so the state served to the client carries the new
-        colour.  Does not notify the client.
-        """
-        pipe = self._pipelines.get(node_id)
-        if pipe is None:
-            logger.debug(
-                "apply_diffuse_color: no pipeline for node %s; skipping.", node_id
-            )
-            return
-        pipe.set_diffuse_color(r, g, b)
-        self._serialize_vtk_object(pipe.actor.GetProperty())
-
-    def apply_selected(
-        self, node_id: int, selected: bool, diffuse_rgb: list
-    ) -> None:
-        """See :meth:`IRenderer.apply_selected`.
-
-        Resolves the pipeline and delegates to
-        :meth:`VtkNodePipeline.set_selected`.  *diffuse_rgb* is passed
-        through as given; supplying a default when the part has no stored
-        colour is the coordinator's job, not the renderer's.  An unknown
-        *node_id* is a logged no-op, never a raise.
-
-        Ends with :meth:`_serialize_vtk_object` on the actor's property,
-        after the write, so the state served to the client carries the new
-        lighting terms and colour.  Does not notify the client.
-        """
-        pipe = self._pipelines.get(node_id)
-        if pipe is None:
-            logger.debug(
-                "apply_selected: no pipeline for node %s; skipping.", node_id
-            )
-            return
-        pipe.set_selected(selected, diffuse_rgb)
-        self._serialize_vtk_object(pipe.actor.GetProperty())
-
-    def apply_color_variable(
-        self,
-        node_id: int,
-        array_type: "VisorVtkVariableType",
-        array_name: str,
-        component: int,
-        min_val: float,
-        max_val: float,
-    ) -> None:
-        """See :meth:`IRenderer.apply_color_variable`.
-
-        Resolves the pipeline and delegates to
-        :meth:`VtkNodePipeline.set_color_variable`.  *array_type* must
-        already be a :class:`VisorVtkVariableType`; it is parsed at the
-        trigger boundary, never here, and the pipeline compares it by
-        identity, so any other value is a logged no-op there.  An unknown
-        *node_id* is a logged no-op, never a raise.
-
-        Ends with :meth:`_serialize_part_state`, after the mapper write, so
-        the state served to the client carries the new range.  Does not
-        notify the client.
-        """
-        pipe = self._pipelines.get(node_id)
-        if pipe is None:
-            logger.debug(
-                "apply_color_variable: no pipeline for node %s; skipping.", node_id
-            )
-            return
-        pipe.set_color_variable(array_type, array_name, component, min_val, max_val)
-        self._serialize_part_state(node_id)
-
-    def clear_color_variable(self, node_id: int) -> None:
-        """See :meth:`IRenderer.clear_color_variable`.
-
-        Resolves the pipeline and delegates to
-        :meth:`VtkNodePipeline.clear_color_variable`.  An unknown
-        *node_id* is a logged no-op, never a raise.
-
-        Ends with :meth:`_serialize_part_state`, after the mapper write, so
-        the state served to the client has scalar colouring off.  Does not
-        notify the client.
-        """
-        pipe = self._pipelines.get(node_id)
-        if pipe is None:
-            logger.debug(
-                "clear_color_variable: no pipeline for node %s; skipping.", node_id
-            )
-            return
-        pipe.clear_color_variable()
-        self._serialize_part_state(node_id)
-
-    def _serialize_part_state(self, node_id: int) -> None:
+    def _publish_part_mapper(self, node_id: int) -> None:
         """Make the state served to the client current for one part's mapper.
 
         A mapper write without this leaves the served cache holding the old
@@ -303,18 +106,18 @@ class VisorLocalRenderer(IRenderer):
         *node_id* is a logged no-op.
 
         Names the mapper's id alone, derived with ``GetId`` on the object as
-        :meth:`_serialize_camera_state` derives the camera's; the id lookup
-        and the unregistered-object skip are :meth:`_serialize_vtk_object`'s.
+        :meth:`_publish_camera` derives the camera's; the id lookup
+        and the unregistered-object skip are :meth:`_publish_object`'s.
         """
         pipe = self._pipelines.get(node_id)
         if pipe is None:
             logger.debug(
-                "_serialize_part_state: no pipeline for node %s; skipping.", node_id
+                "_publish_part_mapper: no pipeline for node %s; skipping.", node_id
             )
             return
-        self._serialize_vtk_object(pipe.mapper)
+        self._publish_object(pipe.mapper)
 
-    def _serialize_vtk_object(self, vtk_object: vtkObject) -> None:
+    def _publish_object(self, vtk_object: vtkObject) -> None:
         """Re-serialize one VTK object into the state served to the client.
 
         ``vtklocal`` advertises each object's modification time off the live
@@ -330,52 +133,13 @@ class VisorLocalRenderer(IRenderer):
         object_id = self._object_manager.GetId(vtk_object)
         if object_id == 0:
             logger.debug(
-                "_serialize_vtk_object: %s is not registered yet; skipping.",
+                "_publish_object: %s is not registered yet; skipping.",
                 vtk_object.GetClassName(),
             )
             return
         self._object_manager.UpdateStateFromObject(object_id)
 
-    # ------------------------------------------------------------------
-    # IRenderer: camera
-    # ------------------------------------------------------------------
-
-    def reset_camera(self, bounds: list[float]) -> None:
-        """See :meth:`IRenderer.reset_camera`.
-
-        Ends with :meth:`_serialize_camera_state`, after the reset, so the
-        state served to the client carries the reset camera.  Does not
-        notify the client.
-        """
-        self._vtk_renderer.ResetCamera(bounds)
-        self._last_camera_state = self._read_pipeline_camera()
-        self._serialize_camera_state()
-
-    def sync_camera(self, camera_state: "VisorCameraState") -> None:
-        """See :meth:`IRenderer.sync_camera`; then project onto the pipeline camera.
-
-        Records through ``super()`` before projecting, so a raising VTK setter
-        still leaves the record holding what the caller asked for.  Ends with
-        :meth:`_serialize_camera_state`, after the projection.  Does not
-        notify the client.
-        """
-        super().sync_camera(camera_state)
-        self._apply_to_pipeline_camera(camera_state)
-        self._serialize_camera_state()
-
-    def set_projection(self, parallel: bool) -> None:
-        """See :meth:`IRenderer.set_projection`; then apply it to the pipeline camera.
-
-        Record first, through ``super()``, pipeline second, for the reason
-        :meth:`sync_camera` gives.  The pipeline write is unconditional, with
-        or without a record.  Ends with :meth:`_serialize_camera_state`, after
-        the pipeline write.  Does not notify the client.
-        """
-        super().set_projection(parallel)
-        self._vtk_renderer.GetActiveCamera().SetParallelProjection(parallel)
-        self._serialize_camera_state()
-
-    def _serialize_camera_state(self) -> None:
+    def _publish_camera(self) -> None:
         """Make the state served to the client current for the camera.
 
         ``vtklocal`` advertises each object's modification time off the live
@@ -401,96 +165,11 @@ class VisorLocalRenderer(IRenderer):
             self._object_manager.GetId(self._vtk_renderer.GetActiveCamera())
         )
 
-    # ------------------------------------------------------------------
-    # Pipeline camera helpers
-    #
-    # Neither takes a lock.  The caller-holds convention applies exactly as
-    # it does to every other IRenderer method: the scene coordinator holds
-    # ``VisorSceneBase._vtk_lock`` across every path that reaches these.
-    # ------------------------------------------------------------------
-
-    def _read_pipeline_camera(self) -> VisorCameraState:
-        """Read the active pipeline camera into a fresh camera state.
-
-        ``GetParallelProjection`` returns an ``int``; the explicit ``bool()``
-        keeps the field's type off pydantic's non-strict coercion.
-        """
-        camera = self._vtk_renderer.GetActiveCamera()
-        return VisorCameraState(
-            position=list(camera.GetPosition()),
-            focal_point=list(camera.GetFocalPoint()),
-            view_up=list(camera.GetViewUp()),
-            clipping_range=list(camera.GetClippingRange()),
-            parallel_projection=bool(camera.GetParallelProjection()),
-            view_angle=camera.GetViewAngle(),
-            parallel_scale=camera.GetParallelScale(),
-        )
-
-    def _apply_to_pipeline_camera(self, camera_state: "VisorCameraState") -> None:
-        """Write *camera_state*'s onto the active pipeline camera."""
-        camera = self._vtk_renderer.GetActiveCamera()
-        camera.SetPosition(camera_state.position)
-        camera.SetFocalPoint(camera_state.focal_point)
-        camera.SetViewUp(camera_state.view_up)
-        camera.SetClippingRange(camera_state.clipping_range)
-        camera.SetParallelProjection(camera_state.parallel_projection)
-        camera.SetViewAngle(camera_state.view_angle)
-        camera.SetParallelScale(camera_state.parallel_scale)
-
-    # ------------------------------------------------------------------
-    # IRenderer: widget control (cross-section, bounding box, edges)
-    #
-    # ``set_cross_section_visibility`` and ``set_bounding_box_visibility``
-    # stay no-ops: those widgets are driven client-side via the wasm mirror,
-    # and nothing in LOCAL reads their enablement. Edge visibility differs --
-    # it's an actor property on this renderer's own pipelines, with a reader
-    # here.
-    # ------------------------------------------------------------------
-
-    def set_edges_visible(self, visible: bool) -> None:
-        """See :meth:`IRenderer.set_edges_visible`.
-
-        Fans out over every registered pipeline.  Scene-wide, so there is no
-        node id to resolve and no logged-no-op branch: a scene with no
-        pipelines is a no-op by iteration, not by guard.
-
-        Each pipeline's property is re-serialized with
-        :meth:`_serialize_vtk_object` right after its own write, so the state
-        served to the client carries the new edge flag on every part.  Does
-        not notify the client.
-        """
-        for pipe in self._pipelines.values():
-            pipe.set_edge_visibility(visible)
-            self._serialize_vtk_object(pipe.actor.GetProperty())
-
-    def set_cross_section_visibility(self, visible: bool) -> None:
-        """No-op: the widget's enablement is driven client-side."""
-
-    def sync_cross_section_plane(
-        self, origin: list[float], normal: list[float]
-    ) -> None:
-        """See :meth:`IRenderer.sync_cross_section_plane`; then write both VTK objects.
-
-        Records through ``super()``, then writes both VTK objects.  ``set_origin`` and
-        ``set_normal`` each write the plane *and* the representation, so the
-        clip function and the draggable handle cannot diverge on this path --
-        which is the defect the client's own set/get asymmetry has.
-
-        Ends with :meth:`_serialize_cross_section_state`, after both writes,
-        so the state served to the client carries the new plane.  Does not
-        notify the client.
-        """
-        super().sync_cross_section_plane(origin, normal)
-        self._cross_section_widget.set_origin(origin)
-        self._cross_section_widget.set_normal(normal)
-        self._serialize_cross_section_state()
-
-
-    def _serialize_cross_section_state(self) -> None:
+    def _publish_cross_section(self) -> None:
         """Make the state served to the client current for the plane.
 
         Two ids, named one at a time, each derived the way
-        :meth:`_serialize_camera_state` derives the camera's: ``GetId`` on the
+        :meth:`_publish_camera` derives the camera's: ``GetId`` on the
         object itself, not the id ``register_vtk_object`` returned.  Deriving
         it this way means the equivalence of those two id spaces never has to
         be established.
@@ -511,55 +190,22 @@ class VisorLocalRenderer(IRenderer):
             self._object_manager.GetId(self._cross_section_widget.plane_representation)
         )
 
+    # ------------------------------------------------------------------
+    # IRenderer: widget visibility
+    #
+    # ``set_cross_section_visibility`` and ``set_bounding_box_visibility``
+    # stay no-ops: those widgets are driven client-side via the wasm mirror,
+    # and nothing in LOCAL reads their enablement.
+    # ------------------------------------------------------------------
+
+    def set_cross_section_visibility(self, visible: bool) -> None:
+        """No-op: the widget's enablement is driven client-side."""
+
     def set_bounding_box_visibility(self, visible: bool) -> None:
         """No-op: the widget's enablement is driven client-side."""
 
     # ------------------------------------------------------------------
-    # IRenderer: widget fan-out
-    # ------------------------------------------------------------------
-
-    def update_bounds(self, bounds: list[float]) -> None:
-        """See :meth:`IRenderer.update_bounds`.
-
-        Seeds the cross-section record from the values the widget's own
-        ``update_bounds`` just wrote through ``set_origin``/``set_normal``, so
-        the record is never ``None`` once a scene has been populated and
-        ``get_state`` can assign it unconditionally, as it does the camera's.
-
-        **The seed runs only when there is no record.**  This method is not
-        reached once per scene: ``set_part_visibility`` fans out to
-        ``_update_widget_bounds``, so a part toggle or a dataset add reaches
-        here too.  Seeding unconditionally would therefore discard a plane the
-        user had dragged, on the next toggle, and the widget's own
-        ``update_bounds`` would already have overwritten both VTK objects with
-        the default plane.  With a record present this writes the record
-        *back* to the widget instead -- after the widget's own call, never
-        before -- and leaves the record itself untouched.
-
-        Ordering is load-bearing in both branches.  Seeded before the widget
-        call, the record holds the previous plane and is one populate behind;
-        written back before it, the widget's defaults win and the drag is
-        lost.  Either compiles, and either passes any test that does not
-        assert the order.
-        """
-        self._cross_section_widget.update_bounds(bounds)
-        self._bounding_box_widget.update_bounds(bounds)
-        if self._last_cross_section_state is None:
-            plane = self._cross_section_widget.plane
-            self._last_cross_section_state = VisorCrossSectionState(
-                origin=list(plane.GetOrigin()),
-                normal=list(plane.GetNormal()),
-            )
-        else:
-            self._cross_section_widget.set_origin(self._last_cross_section_state.origin)
-            self._cross_section_widget.set_normal(self._last_cross_section_state.normal)
-
-    def update_actor_count(self, count: int) -> None:
-        """See :meth:`IRenderer.update_actor_count`."""
-        self._bounding_box_widget.update_node_count(count)
-
-    # ------------------------------------------------------------------
-    # IRenderer: picking
+    # Local-only: picking
     # ------------------------------------------------------------------
 
     def pick_geometry(
@@ -569,10 +215,32 @@ class VisorLocalRenderer(IRenderer):
         mode: str,
         world_pos: tuple[float, float, float],
     ) -> dict:
-        """See :meth:`IRenderer.pick_geometry`.
+        """
+        Resolve a client-initiated pick event to a sub-geometry payload.
 
         The actor is found by matching each renderer actor's object-manager
-        id against *actor_wasm_id*.
+        id against *actor_wasm_id*; the coordinator never performs that
+        resolution.
+
+        Parameters
+        ----------
+        actor_wasm_id:
+            Client-supplied opaque actor identifier from the wasm-side picker.
+        cell_id:
+            Cell index within the picked actor's mapper dataset.
+        mode:
+            ``"vertex" | "edge" | "face"``.
+        world_pos:
+            World-space pick position from the client picker, used to select
+            the nearest vertex/edge for multi-vertex/edge cells.
+
+        Returns
+        -------
+        dict
+            Backend-neutral pick result. Always contains ``"found": bool``.
+            When ``found`` is ``True``, contains ``"mode"`` and mode-specific
+            fields (``position`` / ``pointA``+``pointB``+``length`` /
+            ``points``+``area``).
         """
         import math
 
@@ -701,13 +369,18 @@ class VisorLocalRenderer(IRenderer):
         return self._local_view.ref_name
 
     # ------------------------------------------------------------------
-    # Internal init helpers
+    # VtkPipelineRenderer: backend hooks and init helpers
     # ------------------------------------------------------------------
 
-    def _initialize_vtk_renderer(self) -> vtkRenderer:
-        renderer = vtkRenderer()
-        renderer.SetBackground(VisorColors.BackgroundColor)
-        return renderer
+    @property
+    def background_rgb(self) -> tuple[float, float, float]:
+        """The colour the window clears to."""
+        return VisorColors.BackgroundColor
+
+    def _prepare_widgets(self) -> None:
+        """Build the LocalView the widgets register with, and take its object manager."""
+        self._local_view = self._initialize_local_view()
+        self._object_manager = self._local_view.object_manager
 
     def _initialize_render_window(self) -> vtkRenderWindow:
         render_window = vtkRenderWindow()
@@ -716,16 +389,6 @@ class VisorLocalRenderer(IRenderer):
         render_window.SetMultiSamples(0)
         render_window.SetEnableTranslucentSurface(True)
         return render_window
-
-    def _initialize_render_window_interactor(self) -> vtkRenderWindowInteractor:
-        interactor = vtkRenderWindowInteractor()
-        interactor.SetRenderWindow(self._render_window)
-        interactor.SetInteractorStyle(vtkInteractorStyleTrackballCamera())
-        # vtkCellPicker so GetCellId() is available on the WASM side.
-        cell_picker = vtkCellPicker()
-        cell_picker.SetTolerance(0.005)
-        interactor.SetPicker(cell_picker)
-        return interactor
 
     def _initialize_local_view(self) -> LocalView:
         return LocalView(
@@ -737,18 +400,17 @@ class VisorLocalRenderer(IRenderer):
         )
 
     def _initialize_orientation_widget(self) -> VisorOrientationWidget:
-        widget = VisorOrientationWidget(self._vtk_renderer, self._render_window_interactor)
+        widget = super()._initialize_orientation_widget()
         widget.register_with_local_view(self._local_view)
         return widget
 
     def _initialize_cross_section_widget(self) -> VisorCrossSectionWidget:
-        widget = VisorCrossSectionWidget(self._render_window_interactor)
+        widget = super()._initialize_cross_section_widget()
         widget.register_with_local_view(self._local_view)
         return widget
 
     def _initialize_bounding_box_widget(self) -> VisorBoundingBox:
-        widget = VisorBoundingBox(self._vtk_renderer.GetActiveCamera())
-        widget.attach_to_renderer(self._vtk_renderer)
+        widget = super()._initialize_bounding_box_widget()
         widget.register_with_local_view(self._local_view)
         return widget
 
