@@ -1229,6 +1229,10 @@ All client work applies rulings 9, 10, 11, 12 and 13. The jest baseline is captu
     is logged).
 18. C-3 overrides S1's "RemoteApp registers every LocalApp trigger" for pick_geometry, perf_report_wasm and
     perf_report_server_update.
+19. Rendering modes are CLIENT, SERVER and PARAVIEW>  LOCAL is renamed CLIENT where SERVER is added.  Every new name the
+    plan spells Remote is spelled Server (RemoteRenderer -> ServerRenderer, remote_camera_state -> server_camera_state,
+    and so on); trame-rca names are unchanged.  Existing Local names stay in Phase 4 (it is only the enum exposed under
+    `RenderingMode` that changes).
 
 ### 8.1 Bindings (v1)
 
