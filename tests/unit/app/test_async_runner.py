@@ -1,5 +1,6 @@
 import asyncio
 import threading
+import time
 from concurrent.futures import Future as ConcurrentFuture
 
 import pytest
@@ -105,3 +106,22 @@ def test_call_soon_runs_on_runner_thread(runner):
     runner.call_soon(callback)
     assert ran.wait(timeout=5)
     assert thread_ids == [runner.thread.ident]
+
+def test_call_later_runs_on_runner_thread(runner):
+    """Verify that call_later runs the callback on the runner's thread after the delay, without blocking the caller."""
+    ran = threading.Event()
+    thread_ids = []
+
+    def callback():
+        thread_ids.append(threading.get_ident())
+        ran.set()
+
+    delay_s = 0.1
+    before = time.monotonic()
+    runner.call_later(delay_s, callback)
+    elapsed = time.monotonic() - before
+    assert elapsed < delay_s
+    assert not ran.is_set()
+    assert ran.wait(timeout=5)
+    assert thread_ids == [runner.thread.ident]
+
