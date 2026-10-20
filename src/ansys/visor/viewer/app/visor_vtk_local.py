@@ -2,14 +2,14 @@
 VisorVTKLocal
 =============
 A :class:`~ansys.visor.viewer.app.visor_vtk.VisorVTK` subclass selected when
-``rendering_mode=RenderingMode.LOCAL``.
+``rendering_mode=RenderingMode.CLIENT``.
 
 This implementation uses **VTK-WASM** (via trame-vtklocal / LocalView) for
 client-side rendering in the browser.
 
 All lifecycle logic (start/stop, add/remove dataset, save/load state, …) is
 inherited from :class:`~ansys.visor.viewer.app.visor_vtk.VisorVTK`.
-This class only wires the LOCAL-specific scene and trame app.
+This class only wires the CLIENT-specific scene and trame app.
 """
 
 from __future__ import annotations
@@ -25,16 +25,16 @@ logger = VisorDefaultLogger(__name__)
 
 class VisorVTKLocal(VisorVTK):
     """
-    Visor interface for VTK LOCAL mode: browser-side rendering via VTK-WASM.
+    Visor interface for VTK CLIENT mode: browser-side rendering via VTK-WASM.
 
     All public API is inherited from :class:`VisorVTK`.  Only the rendering
     wiring (scene, trame app) is specific to this class.
 
-    Use ``Visor(rendering_mode=RenderingMode.LOCAL)`` to obtain an instance.
+    Use ``Visor(rendering_mode=RenderingMode.CLIENT)`` to obtain an instance.
     """
 
     def _initialize_rendering(self, standalone: bool, trame_log_dir: str | None) -> None:
-        """Wire up the LOCAL scene, and LocalApp."""
+        """Wire up the CLIENT scene, and LocalApp."""
         dark_mode = self._dark_mode if self._dark_mode is not None else settings.default_dark_mode
 
         self._scene = VisorLocalScene(self.server, dark_mode=dark_mode)
