@@ -10,7 +10,6 @@ so a frame request from a caller thread is handed to the loop through the
 
 from __future__ import annotations
 
-import asyncio
 import threading
 
 from trame_rca.view_adapter import RcaViewAdapter
@@ -65,7 +64,7 @@ class ServerLoopBridge(FrameRequester):
         if self._view_handler is None or self._retry_pending:
             return
         self._retry_pending = True
-        asyncio.get_running_loop().call_later(self.RETRY_DELAY_S, self._fire_retry)
+        self._async_runner.call_later(self.RETRY_DELAY_S, self._fire_retry)
 
     def _fire_retry(self) -> None:
         """Clear the pending mark, then schedule a render."""

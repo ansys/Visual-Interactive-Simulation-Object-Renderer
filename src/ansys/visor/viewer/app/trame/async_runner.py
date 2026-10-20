@@ -190,6 +190,11 @@ class AsyncRunner:
         self.__ensure_thread_and_loop()
         self.__loop.call_soon_threadsafe(callback)
 
+    def call_later(self, delay_s: float, callback: Callable[[], None]) -> None:
+        """Run ``callback`` on this runner's loop after ``delay_s`` seconds; safe from any thread and never blocks."""
+        self.__ensure_thread_and_loop()
+        self.__loop.call_soon_threadsafe(self.__loop.call_later, delay_s, callback)
+
     def dispose(self):
         """Stops the background thread and closes the event loop."""
         if self.__loop is None:
