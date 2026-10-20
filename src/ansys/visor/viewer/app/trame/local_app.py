@@ -52,7 +52,7 @@ class LocalApp(SceneTriggerApp):
     @property
     def rendering_mode(self) -> RenderingMode:
         """This app serves client-side rendering via VTK-WASM in the browser."""
-        return RenderingMode.LOCAL
+        return RenderingMode.CLIENT
 
     @trigger("pick_geometry")
     def pick_geometry(self, actor_wasm_id, cell_id, mode: str, world_x: float, world_y: float, world_z: float):

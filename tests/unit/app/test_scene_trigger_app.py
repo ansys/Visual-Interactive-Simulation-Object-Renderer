@@ -6,7 +6,7 @@ Coverage targets
     the move: the 18 shared ones defined on ``SceneTriggerApp`` plus its own
     three local-only ones.  Neither a missing nor a doubled registration
     passes this.
-2.  ``LocalApp`` seeds ``rendering_mode`` into server state as ``"local"``
+2.  ``LocalApp`` seeds ``rendering_mode`` into server state as ``"client"``
     before the server starts.
 
 The coordinator and payload behaviour of the 18 shared triggers is already
@@ -99,13 +99,13 @@ def test_local_app_registers_exactly_these_triggers(mock_server):
     assert names == LOCAL_APP_TRIGGER_NAMES
 
 
-def test_local_app_seeds_rendering_mode_local(mock_server):
-    """``rendering_mode`` is written into state as ``"local"`` before start."""
+def test_local_app_seeds_rendering_mode_client(mock_server):
+    """``rendering_mode`` is written into state as ``"client"`` before start."""
     LocalApp(
         server=mock_server,
         get_scene_details_json=MagicMock(),
         standalone=True,
     )
 
-    assert mock_server.state["rendering_mode"] == "local"
+    assert mock_server.state["rendering_mode"] == "client"
 
