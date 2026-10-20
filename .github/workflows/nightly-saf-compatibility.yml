@@ -1,0 +1,71 @@
+name: SAF Compatibility
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compatibility-scan:
+    name: Scan SAF compatibility
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Load Visor env
+        uses: ./.github/actions/load-visor-env
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.MAIN_PYTHON_VERSION }}
+
+      - name: Install Poetry
+        run: pip install poetry==${{ env.POETRY_VERSION }}
+
+      - name: Build wheel
+        run: poetry build --format wheel
+
+      - name: Upload wheel
+        uses: actions/upload-artifact@v4
+        with:
+          name: visor-wheel
+          path: dist/*.whl
+          if-no-files-found: error
+
+      - name: Scan compatibility with SAF
+        uses: ansys/saf-devops/compatibility-scan@main
+        with:
+          python-version: ${{ env.MAIN_PYTHON_VERSION }}
+          wheel-artifact-name: visor-wheel
+          compatibility-packages: >-
+            ansys-saf-sdk[core-dash]
+            ansys-solutions-dash-super-components
+
+      - name: Publish compatibility report
+        if: always()
+        shell: bash
+        run: |
+          REPORT_FILE="compatibility-scan-summary.html"
+          if [[ ! -f "${REPORT_FILE}" ]]; then
+            echo "## SAF compatibility scan report" >> "${GITHUB_STEP_SUMMARY}"
+            echo "The compatibility scan did not produce a report." >> "${GITHUB_STEP_SUMMARY}"
+            exit 0
+          fi
+
+          {
+            echo "## SAF compatibility scan report"
+            sed \
+              -e '/<!DOCTYPE/d' \
+              -e '/<html/d' \
+              -e '/<\/html>/d' \
+              -e '/<head>/,/<\/head>/d' \
+              -e '/<body>/d' \
+              -e '/<\/body>/d' \
+              "${REPORT_FILE}"
+          } >> "${GITHUB_STEP_SUMMARY}"
