@@ -1,5 +1,5 @@
 # --- Release Stage ---
-FROM python:3.11-slim AS release
+FROM python:3.14-slim AS release
 
 WORKDIR /app
 
