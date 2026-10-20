@@ -6,6 +6,8 @@ ServerRenderer
 Owns an off-screen VTK pipeline and presents each write by asking a
 :class:`FrameRequester` for a streamed frame.  It never calls ``Render()``
 itself: every render happens on the streaming path, under the scene lock.
+Each camera write also hands the camera record to a :class:`CameraPublisher`,
+since a client of a streamed view has no camera of its own to read.
 """
 
 from __future__ import annotations
@@ -18,6 +20,7 @@ import vtkmodules.vtkRenderingOpenGL2  # noqa: F401
 from vtkmodules.vtkCommonCore import vtkObject
 from vtkmodules.vtkRenderingCore import vtkRenderWindow
 
+from ansys.visor.viewer.models.common.visor_camera_state import VisorCameraState
 from ansys.visor.viewer.renderer.pipeline_renderer import VtkPipelineRenderer
 
 INITIAL_WINDOW_SIZE: tuple[int, int] = (300, 300)
@@ -31,23 +34,33 @@ class FrameRequester(Protocol):
         """Ask for a streamed frame; callable from any thread."""
 
 
+class CameraPublisher(Protocol):
+    """Where a ServerRenderer publishes its camera record."""
+
+    def publish_camera(self, camera_state: VisorCameraState | None) -> None:
+        """Publish the camera record to clients, or None when there is none; callable from any thread."""
+
+
 class ServerRenderer(VtkPipelineRenderer):
     """Off-screen VTK pipeline whose writes are presented by requesting a streamed frame."""
 
     _background_rgb: tuple[float, float, float]
     _frame_requester: FrameRequester
+    _camera_publisher: CameraPublisher
     _bounding_box_visible: bool
 
     def __init__(
         self,
         background_rgb: tuple[float, float, float],
         frame_requester: FrameRequester,
+        camera_publisher: CameraPublisher,
     ) -> None:
-        """Build the off-screen pipeline; every write ends in a frame request."""
-        # Both are read during the base build: the background by
-        # _initialize_vtk_renderer, the requester by any publish hook.
+        """Build the off-screen pipeline; every write ends in a frame request, every camera write also publishes the record."""
+        # All three are read during the base build: the background by
+        # _initialize_vtk_renderer, the requester and publisher by any publish hook.
         self._background_rgb = background_rgb
         self._frame_requester = frame_requester
+        self._camera_publisher = camera_publisher
         self._bounding_box_visible = False
         super().__init__()
 
@@ -137,8 +150,9 @@ class ServerRenderer(VtkPipelineRenderer):
         self._frame_requester.request_frame()
 
     def _publish_camera(self) -> None:
-        """Request a frame from the written camera."""
+        """Request a frame from the written camera, then publish the camera record."""
         self._frame_requester.request_frame()
+        self._camera_publisher.publish_camera(self.get_camera_state())
 
     def _publish_cross_section(self) -> None:
         """Request a frame showing the written plane."""

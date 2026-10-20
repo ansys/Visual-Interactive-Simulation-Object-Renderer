@@ -23,6 +23,7 @@ from ansys.visor.viewer.vtk.scene.base import VisorSceneBase
 if TYPE_CHECKING:
     from ansys.visor.viewer.app.trame.server_loop_bridge import ServerLoopBridge
     from ansys.visor.viewer.models.runtime.scene.runtime_app_state import RuntimeAppState
+    from ansys.visor.viewer.renderer.server_renderer import CameraPublisher
 
 BACKGROUND_RGB: dict[bool, tuple[float, float, float]] = {
     False: (247 / 255, 247 / 255, 247 / 255),
@@ -41,9 +42,15 @@ class VisorServerScene(VisorSceneBase):
     _renderer: ServerRenderer
     _rca_window: VisorRcaWindow
 
-    def __init__(self, server: Server, dark_mode: bool, bridge: ServerLoopBridge) -> None:
+    def __init__(
+        self,
+        server: Server,
+        dark_mode: bool,
+        bridge: ServerLoopBridge,
+        camera_publisher: CameraPublisher,
+    ) -> None:
         """Build the ServerRenderer and the RCA window over this scene's lock."""
-        renderer = ServerRenderer(BACKGROUND_RGB[dark_mode], bridge)
+        renderer = ServerRenderer(BACKGROUND_RGB[dark_mode], bridge, camera_publisher)
         super().__init__(server, dark_mode, renderer=renderer)
         self._rca_window = VisorRcaWindow(
             VtkRemoteControlledArea(renderer.render_window),

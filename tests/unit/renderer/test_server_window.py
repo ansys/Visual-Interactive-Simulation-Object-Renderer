@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import threading
 from typing import Callable
-from unittest.mock import call, patch
+from unittest.mock import MagicMock, call, patch
 
 import numpy as np
 import pytest
@@ -88,7 +88,7 @@ def _acquired_by_another_thread(lock) -> bool:
 
 @pytest.fixture
 def renderer() -> ServerRenderer:
-    return ServerRenderer((0.2, 0.4, 0.6), _RecordingFrameRequester())
+    return ServerRenderer((0.2, 0.4, 0.6), _RecordingFrameRequester(), MagicMock(name="camera_publisher"))
 
 
 @pytest.fixture

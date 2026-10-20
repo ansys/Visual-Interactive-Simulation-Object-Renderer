@@ -11,6 +11,7 @@ bridge binds there.  The loop-thread tests use a real AsyncRunner.
 from __future__ import annotations
 
 import threading
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -100,7 +101,7 @@ def lock() -> threading.RLock:
 
 @pytest.fixture
 def window(bound_bridge, lock) -> VisorRcaWindow:
-    renderer = ServerRenderer((0.2, 0.4, 0.6), bound_bridge)
+    renderer = ServerRenderer((0.2, 0.4, 0.6), bound_bridge, MagicMock(name="camera_publisher"))
     return VisorRcaWindow(_NeverCapture(), renderer, lock, bound_bridge.retry_frame)
 
 

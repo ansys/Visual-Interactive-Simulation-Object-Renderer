@@ -53,7 +53,7 @@ def bridge() -> _RecordingBridge:
 @pytest.fixture
 def scene(bridge) -> VisorServerScene:
     """A light-theme scene with no datasets; bridge counts start at zero."""
-    s = VisorServerScene(MagicMock(name="server"), False, bridge)
+    s = VisorServerScene(MagicMock(name="server"), False, bridge, MagicMock(name="camera_publisher"))
     bridge.request_count = 0
     bridge.retry_count = 0
     return s
@@ -70,7 +70,7 @@ def scene(bridge) -> VisorServerScene:
     ids=["light", "dark"],
 )
 def test_initial_background_follows_theme(bridge, dark_mode, expected):
-    s = VisorServerScene(MagicMock(name="server"), dark_mode, bridge)
+    s = VisorServerScene(MagicMock(name="server"), dark_mode, bridge, MagicMock(name="camera_publisher"))
     assert _background(s) == expected
 
 
