@@ -124,6 +124,17 @@ export interface IRenderer {
     ): () => void;
 
     // ---- Per-part visual state ---------------------------------------------
+    //
+    // Colour and selection contract. setDiffuseColorRgbAsync,
+    // resetDiffuseColorAsync and setSelectedAsync each write the full set:
+    // AmbientColor (the selection tint), Ambient and Diffuse as a function of
+    // `selected` only, then DiffuseColor from the rgb they are given. Selection
+    // never replaces the part colour. setColorVariableAsync writes the mapper
+    // only and never touches those four properties; clearColorVariableAsync
+    // writes ScalarVisibility off only. As a result the calls commute, given
+    // consistent arguments: `selected` and the rgb passed to each call match
+    // the part's current state. The caller owns that consistency.
+
     /**
      * r/g/b are normalised (0..1), matching setSelectedAsync's currentDiffuseRgb.
      * `selected` is the caller's current selection state for the node: the renderer
