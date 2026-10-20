@@ -67,6 +67,14 @@ class ServerRenderer(VtkPipelineRenderer):
         """
         self._render_window_interactor.UpdateSize(width, height)
 
+    def set_background_rgb(self, background_rgb: tuple[float, float, float]) -> None:
+        """Clear to this colour from the next frame.
+
+        Requests no frame: the caller requests one once its other writes are done.
+        """
+        self._background_rgb = background_rgb
+        self._vtk_renderer.SetBackground(background_rgb)
+
     # ------------------------------------------------------------------
     # IRenderer: wire contract
     # ------------------------------------------------------------------
