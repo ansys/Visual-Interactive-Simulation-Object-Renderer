@@ -3,7 +3,7 @@
 This module defines :class:`VisorStateMapper`, which is responsible for converting
 between:
 
-- frontend/runtime state (:class:`~ansys.visor.viewer.models.runtime.scene.runtime_app_state.RuntimeAppState`)
+- the server's runtime state (:class:`~ansys.visor.viewer.models.runtime.scene.runtime_app_state.RuntimeAppState`)
 - persisted viewer state (:class:`~ansys.visor.viewer.models.persist.persisted_viewer_state.PersistedViewerStateV1`)
 
 The dataset registry is required to look up :class:`VisorDataset` objects by ID or
@@ -15,55 +15,61 @@ delegated to :meth:`VisorDataset.runtime_to_persisted_state` and
 from __future__ import annotations
 
 from ansys.visor.viewer.core.visor_logging import VisorDefaultLogger
+from ansys.visor.viewer.models.common.visor_camera_state import VisorCameraState
+from ansys.visor.viewer.models.common.visor_cross_section_state import VisorCrossSectionState
 from ansys.visor.viewer.models.persist.persisted_viewer_state import PersistedViewerStateV1
 from ansys.visor.viewer.models.runtime.scene.runtime_app_state import RuntimeAppState
+from ansys.visor.viewer.models.runtime.scene.runtime_scene_state import RuntimeSceneState
+from ansys.visor.viewer.models.runtime.scene.runtime_ui_state import RuntimeUIState
+from ansys.visor.viewer.models.runtime.scene.runtime_view_state import RuntimeViewState
 from ansys.visor.viewer.vtk.datasets.visor_dataset_registry import VisorDatasetRegistry
 
 logger = VisorDefaultLogger(__name__)
 
 
 class VisorStateMapper:
-    """Convert between runtime and persisted viewer state."""
+    """Convert between runtime and persisted viewer state.
 
-    def __init__(self, dataset_registry: VisorDatasetRegistry):
-        """Initialize the mapper."""
+    Loading resolves the file against the server's current state here and
+    nowhere else.
+    """
+
+    def __init__(self, dataset_registry: VisorDatasetRegistry, ui_defaults: RuntimeUIState):
+        """Initialize the mapper.
+
+        *ui_defaults* is the UI record a null field in a loaded file resolves
+        to.  It is copied, so later writes to the caller's record do not reach it.
+        """
         if dataset_registry is None:
             raise ValueError("dataset_registry is required")
+        if ui_defaults is None:
+            raise ValueError("ui_defaults is required")
         self._dataset_registry = dataset_registry
+        self._ui_defaults = ui_defaults.model_copy()
 
     def runtime_to_persisted(self, runtime_app_state: RuntimeAppState) -> PersistedViewerStateV1:
-        """Convert frontend RuntimeAppState to PersistedViewerStateV1.
-
-        Logic parity with ``VisorScene._runtime_to_persisted``.
-        """
-        # UI
-        ui_state = runtime_app_state.ui
-
-        # Scene
+        """Convert the server's RuntimeAppState to PersistedViewerStateV1."""
         scene_state = runtime_app_state.scene
-        # Scene - unit
-        unit = scene_state.unit
-        # Scene - camera
-        camera = scene_state.camera
+        view_state = runtime_app_state.view
+
         # Scene - variables: the server's records, projected onto the persisted entry
         variable_states = {
             variable_id: record.to_variable_state()
             for variable_id, record in scene_state.variable_states.items()
         }
         # Scene - datasets
-        runtime_dataset_states = scene_state.dataset_states
         persisted_dataset_states = {}
-        for dataset_id, dataset_state in runtime_dataset_states.items():
+        for dataset_id, dataset_state in scene_state.dataset_states.items():
             dataset = self._dataset_registry.datasets.get(dataset_id)
             if dataset is None:
                 continue
             persisted_dataset_states[dataset.name] = dataset.runtime_to_persisted_state(dataset_state)
 
         return PersistedViewerStateV1.from_components(
-            ui_state=ui_state,
-            camera=camera,
-            unit=unit,
-            cross_section=scene_state.cross_section,
+            ui_state=runtime_app_state.ui.to_persisted(),
+            camera=view_state.camera,
+            unit=scene_state.unit,
+            cross_section=view_state.cross_section,
             orthographic_enabled=scene_state.orthographic_enabled,
             cross_section_enabled=scene_state.cross_section_enabled,
             edges_enabled=scene_state.edges_enabled,
@@ -72,56 +78,63 @@ class VisorStateMapper:
             variable_states=variable_states,
         )
 
-    def persisted_to_runtime(self, state: PersistedViewerStateV1) -> RuntimeAppState:
-        """Convert PersistedViewerStateV1 back to runtime RuntimeAppState.
+    def persisted_to_runtime(self, state: PersistedViewerStateV1, current: RuntimeAppState) -> RuntimeAppState:
+        """Overlay a loaded file onto the server's *current* state.
 
-        Logic parity with ``VisorScene._persisted_to_runtime``.
+        Each scene-level field the file does not name keeps its current value;
+        one it names as null takes its default; one it names with a value
+        takes that value.  The UI defaults are the ones this mapper was built
+        with, the scene defaults are :meth:`RuntimeSceneState.default`.
 
-        Returns the runtime dataset states on the ``RuntimeAppState``; it does not
-        assign them to ``VisorDataset.state``.  The registry is populated by
-        :meth:`VisorSceneBase._restore_part_states`.
+        The camera and the plane have no default value: null is treated as
+        absent and the current record is kept.  A plane missing its origin or
+        its normal is treated the same way.
 
+        ``orthographic_enabled`` is derived from the resolved camera; the
+        file's flag is not read.
+
+        The dataset states are the file's datasets only, each the dataset's
+        current records overlaid with its loaded entries; a dataset the file
+        does not name is left to its current records.  They are returned, not
+        assigned to ``VisorDataset.state``; :meth:`VisorSceneBase._restore_part_states`
+        installs them.  The variable states are empty: the load path fills
+        them from the server's rebuilt records.
         """
-        # UI settings. Crossed whole: the server owns every field on the
-        # record (theme and the four panel-layout fields alike), so it is
-        # never split here.
-        ui_state = state.ui
+        ui = current.ui.overlaid_with(state.ui, self._ui_defaults)
 
-        # scene state
-        scene_state = state.scene
+        view = RuntimeViewState(
+            camera=self._resolved_camera(state.scene.camera, current.view.camera),
+            cross_section=self._resolved_plane(state.scene.cross_section, current.view.cross_section),
+        )
 
-        # scene - unit
-        unit = scene_state.unit
-
-        # scene - camera
-        camera = scene_state.camera
-
-        # scene - variables: the records are built from the datasets, not from the file.
-        # VisorSceneBase.apply_state overlays the file's ranges onto the rebuilt records.
-        variable_states = {}
-
-        # scene - datasets: Convert persisted dataset states to runtime
         runtime_dataset_states = {}
-        for dataset_name, persisted_dataset_state in scene_state.dataset_states.items():
-            # dataset_key is the dataset name
-
-            # Get the VisorDataset object by name from the registry
+        for dataset_name, persisted_dataset_state in state.scene.dataset_states.items():
             dataset = self._dataset_registry.get_by_name(dataset_name)
             if dataset is None:
                 logger.warning(f"Dataset with name '{dataset_name}' not found in registry. Skipping.")
                 continue
-            runtime_state = dataset.persisted_to_runtime_state(persisted_dataset_state.parts)
-            runtime_dataset_states[dataset.id] = runtime_state
+            runtime_dataset_states[dataset.id] = dataset.persisted_to_runtime_state(persisted_dataset_state.parts)
 
-        return RuntimeAppState.from_components(
-            ui=ui_state,
-            unit=unit,
-            camera=camera,
-            cross_section=scene_state.cross_section,
-            orthographic_enabled=scene_state.orthographic_enabled,
-            cross_section_enabled=scene_state.cross_section_enabled,
-            edges_enabled=scene_state.edges_enabled,
-            bounding_box_enabled=scene_state.bounding_box_enabled,
-            dataset_states=runtime_dataset_states,
-            variable_states=variable_states,
-        )
+        scene = current.scene.overlaid_with(state.scene, RuntimeSceneState.default()).model_copy(update={
+            "orthographic_enabled": view.camera.parallel_projection if view.camera is not None else None,
+            "dataset_states": runtime_dataset_states,
+            "variable_states": {},
+        })
+
+        return RuntimeAppState(ui=ui, view=view, scene=scene)
+
+    @staticmethod
+    def _resolved_camera(
+            persisted: VisorCameraState | None, current: VisorCameraState | None
+    ) -> VisorCameraState | None:
+        """The file's camera, or the current one where the file has none."""
+        return persisted if persisted is not None else current
+
+    @staticmethod
+    def _resolved_plane(
+            persisted: VisorCrossSectionState | None, current: VisorCrossSectionState | None
+    ) -> VisorCrossSectionState | None:
+        """The file's plane, or the current one where the file has none or only half of one."""
+        if persisted is None or persisted.origin is None or persisted.normal is None:
+            return current
+        return persisted

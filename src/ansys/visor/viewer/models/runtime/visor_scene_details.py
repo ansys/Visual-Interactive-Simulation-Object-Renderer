@@ -1,69 +1,46 @@
 """Model for visor scene details, the data transfer object sent to the client."""
 
-from typing import Dict
-
 from pydantic import BaseModel, ConfigDict, Field
 
-from ansys.visor.viewer.models.common.visor_ui_state import VisorUIState
-from ansys.visor.viewer.models.common.visor_variable_record import VisorVariableRecord
-from ansys.visor.viewer.models.runtime.dataset.runtime_dataset_state import RuntimeDatasetState
-from ansys.visor.viewer.models.runtime.scene.runtime_app_state import RuntimeAppState
+from ansys.visor.viewer.models.runtime.scene.runtime_scene_state import RuntimeSceneState
+from ansys.visor.viewer.models.runtime.scene.runtime_ui_state import RuntimeUIState
 from ansys.visor.viewer.models.runtime.vtk.renderer_annotation import RendererAnnotation
 from ansys.visor.viewer.models.runtime.vtk.runtime_vtk_info import RuntimeVTKInfo
 from ansys.visor.viewer.models.runtime.vtk.scene_graph_node_info import SceneGraphNodeInfo
 
 # Bumped whenever the scene-details wire shape changes incompatibly.
-SCENE_DETAILS_SCHEMA_VERSION: int = 3
+SCENE_DETAILS_SCHEMA_VERSION: int = 4
 
 
 class VisorSceneDetails(BaseModel):
+    """What a rebuilt or reconnecting client is served: the UI and scene records and the VTK info.
+
+    Never carries the view records; the client receives the camera and the
+    plane through the VTK object state instead.
+    """
     model_config = ConfigDict(arbitrary_types_allowed=True, populate_by_name=True)
 
     schema_version: int = Field(
         default=SCENE_DETAILS_SCHEMA_VERSION, alias="schemaVersion"
     )
-    app_state: RuntimeAppState | None = Field(default=None, alias="appState")
+    ui: RuntimeUIState
+    scene: RuntimeSceneState
     vtk_info: RuntimeVTKInfo | None = Field(default=None, alias="vtkInfo")
 
     @classmethod
     def from_components(
             cls,
-            ui: VisorUIState,
-            unit: str | None,
-            dataset_states: Dict[int, RuntimeDatasetState],
+            ui: RuntimeUIState,
+            scene: RuntimeSceneState,
             scene_graph_state: SceneGraphNodeInfo | None = None,
             renderer_annotation: RendererAnnotation | None = None,
-            orthographic_enabled: bool | None = None,
-            cross_section_enabled: bool | None = None,
-            edges_enabled: bool | None = None,
-            bounding_box_enabled: bool | None = None,
-            *,
-            variable_states: Dict[str, VisorVariableRecord],
     ) -> "VisorSceneDetails":
-        """Construct an instance from components.
-
-        The UI record is forwarded whole to
-        :meth:`RuntimeAppState.from_components`; this class does not build one
-        and does not read any field of it.
-        """
+        """Assemble the details from the server's UI and scene records and the VTK info."""
         vtk_info = RuntimeVTKInfo(
             scene_graph=scene_graph_state,
             renderer_annotation=renderer_annotation,
         )
-        app_state = RuntimeAppState.from_components(
-            ui=ui,
-            unit=unit,
-            dataset_states=dataset_states,
-            orthographic_enabled=orthographic_enabled,
-            cross_section_enabled=cross_section_enabled,
-            edges_enabled=edges_enabled,
-            bounding_box_enabled=bounding_box_enabled,
-            variable_states=variable_states,
-        )
-        return cls(
-            app_state=app_state,
-            vtk_info=vtk_info,
-        )
+        return cls(ui=ui, scene=scene, vtk_info=vtk_info)
 
 
 VisorSceneDetails.model_rebuild()

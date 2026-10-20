@@ -7,7 +7,7 @@ import VisorAppState from './VisorAppState.tsx';
  * (`ansys.visor.viewer.models.runtime.visor_scene_details`). Bumped whenever
  * the scene-details wire shape changes incompatibly. See proposal §2.
  */
-export const SCENE_DETAILS_SCHEMA_VERSION = 3;
+export const SCENE_DETAILS_SCHEMA_VERSION = 4;
 
 /**
  * Thrown when the payload's `schemaVersion` does not match the client's
@@ -40,7 +40,8 @@ export default class VisorSceneDetails {
             throw new SchemaVersionMismatchError(obj.schemaVersion, SCENE_DETAILS_SCHEMA_VERSION);
         }
         this.schemaVersion = obj.schemaVersion;
-        this.appState = new VisorAppState(obj.appState);
+        // ui and scene sit beside vtkInfo; the details never carry the view.
+        this.appState = new VisorAppState({ ui: obj.ui, scene: obj.scene });
         this.vtkInfo = new VisorVtkInfo(obj.vtkInfo);
     }
 

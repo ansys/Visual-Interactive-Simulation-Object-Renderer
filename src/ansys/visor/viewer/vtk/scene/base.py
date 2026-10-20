@@ -11,12 +11,10 @@ from trame_server import Server
 
 from ansys.visor.viewer.core.metadata import ExtendedMetadata
 from ansys.visor.viewer.core.perf_timer import PerfTimer
-from ansys.visor.viewer.core.visor_colors import VisorColors
 from ansys.visor.viewer.core.visor_enums import VisorVtkVariableType
 from ansys.visor.viewer.core.visor_logging import VisorDefaultLogger
 from ansys.visor.viewer.core.visor_types import VisorDatasetType
 from ansys.visor.viewer.models.common.visor_camera_state import VisorCameraState
-from ansys.visor.viewer.models.common.visor_ui_state import VisorUIState
 from ansys.visor.viewer.models.common.visor_variable_record import (
     VisorVariableRecord,
     VisorVariableRecords,
@@ -25,6 +23,9 @@ from ansys.visor.viewer.models.common.visor_variable_state import VisorVariableS
 from ansys.visor.viewer.models.persist.persisted_viewer_state import PersistedViewerStateV1
 from ansys.visor.viewer.models.runtime.dataset.runtime_dataset_state import RuntimePartProperties
 from ansys.visor.viewer.models.runtime.scene.runtime_app_state import RuntimeAppState
+from ansys.visor.viewer.models.runtime.scene.runtime_scene_state import RuntimeSceneState
+from ansys.visor.viewer.models.runtime.scene.runtime_ui_state import RuntimeUIState
+from ansys.visor.viewer.models.runtime.scene.runtime_view_state import RuntimeViewState
 from ansys.visor.viewer.models.runtime.visor_scene_details import VisorSceneDetails
 from ansys.visor.viewer.renderer.base import IRenderer
 from ansys.visor.viewer.vtk.datasets.visor_dataset import VisorDataset
@@ -103,7 +104,7 @@ class VisorSceneBase(ABC):
     _cross_section_enabled: bool
     _edges_enabled: bool
     _bounding_box_enabled: bool
-    _ui_state: VisorUIState
+    _ui_state: RuntimeUIState
     _variable_records: VisorVariableRecords
 
     def __init__(
@@ -130,13 +131,17 @@ class VisorSceneBase(ABC):
         # Written only by the four panel triggers and the load path, always
         # as absolute values, never toggles.  Projection is deliberately
         # absent here: it's derived from the camera record, not stored twice.
-        self._ui_state = VisorUIState(
+        #
+        # The same values are the defaults a loaded file's null UI field
+        # resolves to; the mapper keeps its own copy of them below.
+        ui_defaults = RuntimeUIState(
             dark_theme=dark_mode,
             panel_top_left_panel_collapsed=False,
             panel_top_right_panel_collapsed=False,
             panel_top_right_legend_collapsed=False,
             panel_top_right_tab_index=0,
         )
+        self._ui_state = ui_defaults.model_copy()
 
         # The server's variable records, keyed by composed identifier.  Created once
         # here and never rebound.  Written only by _rebuild_variable_records_from_registry
@@ -183,7 +188,7 @@ class VisorSceneBase(ABC):
             )
 
         self._initialize_scene_graph()
-        self._state_mapper = VisorStateMapper(self._dataset_registry)
+        self._state_mapper = VisorStateMapper(self._dataset_registry, ui_defaults)
 
     # =========================================================================
     # Abstract hook — subclasses differ on state delivery
@@ -210,20 +215,16 @@ class VisorSceneBase(ABC):
         return self._dataset_registry.count
 
     @property
-    def dark_mode(self) -> bool | None:
+    def dark_mode(self) -> bool:
         """Whether the viewer is in dark theme.
 
         A property over the UI record's ``dark_theme`` field rather than a
         separate attribute, so the theme has exactly one holder.
-
-        Typed ``bool | None`` to match that field: the constructor always
-        supplies a ``bool``, but :meth:`apply_state` writes
-        ``state.ui.dark_theme`` through unguarded, and that field is optional.
         """
         return self._ui_state.dark_theme
 
     @dark_mode.setter
-    def dark_mode(self, dark_mode: bool | None) -> None:
+    def dark_mode(self, dark_mode: bool) -> None:
         """Set the theme on the UI record."""
         self._ui_state.dark_theme = dark_mode
 
@@ -242,71 +243,69 @@ class VisorSceneBase(ABC):
         return it as a :class:`PersistedViewerStateV1`.
 
         No client is consulted, so a save works with no browser connected.
-        The runtime state starts empty and every one of its fields is assigned
-        below; a field left unassigned here would be saved at its model default.
+        The records are read by :meth:`_current_runtime_state`, which the load
+        path also reads as the base it overlays a file onto.
+        """
+        return self._state_mapper.runtime_to_persisted(self._current_runtime_state())
+
+    def _current_runtime_state(self) -> RuntimeAppState:
+        """
+        Snapshot the server's own records as a :class:`RuntimeAppState`; takes ``_vtk_lock``.
 
         Per-part state comes from the registry.  The registry hands out live
         ``RuntimeDatasetState`` objects that the per-part setters mutate from the
-        trame daemon thread, so each one is deep-copied under ``_vtk_lock``.
+        trame daemon thread, so each one is deep-copied under the lock.
 
         The widget toggles come from this object's own store, and the UI record
         is a copy of this object's own record, so a panel trigger landing after
-        the call cannot mutate the state already returned.
+        the call cannot mutate the snapshot.
 
         The camera comes from the renderer's record, which is authoritative, rather than
         from the pipeline ``vtkCamera``: the pipeline is the
         record's projection, and reading it back would re-import whatever drift
-        VTK introduced -- ``ResetCamera`` rewrites ``clipping_range``.  The
-        assignment is unconditional.  A ``None`` record means no camera was ever
-        written, and writing that ``None`` through is what says so; the guard for
-        "absent says nothing" belongs to the load path, in :meth:`apply_state`,
-        not here.
+        VTK introduced -- ``ResetCamera`` rewrites ``clipping_range``.  A
+        ``None`` record means no camera was ever written.  The cross-section
+        plane is taken from the renderer's record on the same terms.  Both are
+        deep copies: the renderer writes its camera record in place on a
+        projection change.
 
-        ``orthographic_enabled`` is derived from that same record, not stored
-        separately, so it can't disagree with the camera. ``None`` means
-        "nothing was ever written."
-
-        The cross-section plane is the camera's twin, taken from the
-        renderer's record on exactly the same terms -- see the camera
-        paragraph above for why the assignment is unconditional and what
-        ``None`` means.  In normal operation there is no ``None`` case to
-        guard because the renderer seeds the record from its own widget the
-        first time bounds are pushed.
+        ``orthographic_enabled`` is derived from the camera record, not stored
+        separately, so it can't disagree with the camera.
 
         Variables and unit are the server's: the variable records and the
         registry's unit.
         """
-        runtime_state = RuntimeAppState()
-
         with self._vtk_lock:
-            registry_dataset_states = {
+            dataset_states = {
                 dataset_id: dataset_state.model_copy(deep=True)
                 for dataset_id, dataset_state in self._dataset_registry.runtime_state_dict.items()
             }
-            camera_record = self._renderer.get_camera_state()
-            runtime_state.scene.camera = camera_record
-            runtime_state.scene.orthographic_enabled = (
-                camera_record.parallel_projection if camera_record is not None else None
+            camera = self._renderer.get_camera_state()
+            cross_section = self._renderer.get_cross_section_plane()
+            camera = camera.model_copy(deep=True) if camera is not None else None
+            cross_section = cross_section.model_copy(deep=True) if cross_section is not None else None
+            return RuntimeAppState(
+                ui=self._ui_state.model_copy(),
+                view=RuntimeViewState(camera=camera, cross_section=cross_section),
+                scene=RuntimeSceneState(
+                    unit=self._dataset_registry.unit,
+                    orthographic_enabled=camera.parallel_projection if camera is not None else None,
+                    cross_section_enabled=self._cross_section_enabled,
+                    edges_enabled=self._edges_enabled,
+                    bounding_box_enabled=self._bounding_box_enabled,
+                    dataset_states=dataset_states,
+                    variable_states=self._variable_records.model_copy(deep=True).variables,
+                ),
             )
-            runtime_state.scene.cross_section = self._renderer.get_cross_section_plane()
-            runtime_state.scene.cross_section_enabled = self._cross_section_enabled
-            runtime_state.scene.edges_enabled = self._edges_enabled
-            runtime_state.scene.bounding_box_enabled = self._bounding_box_enabled
-            runtime_state.ui = self._ui_state.model_copy()
-            runtime_state.scene.variable_states = self._variable_records.model_copy(deep=True).variables
-            runtime_state.scene.unit = self._dataset_registry.unit
-        runtime_state.scene.dataset_states = registry_dataset_states
-
-        persisted = self._state_mapper.runtime_to_persisted(runtime_state)
-        return persisted
 
     def apply_state(self, state: PersistedViewerStateV1):
         """
         Apply a saved viewer state.
 
-        One ``_restore_*`` step per state class, each making the server's own
-        copy of that class match the loaded state: its stored state, and the
-        VTK objects that the state drives.
+        The mapper overlays the file onto the server's current state, once;
+        each ``_restore_*`` step then writes what it resolved, unconditionally:
+        the server's own copy of that class, and the VTK objects that the
+        state drives.
 
         The renderer-speific delivery step is delegated to :meth:`_push_runtime_state`,
         and runs last, once every record above it has been written.
@@ -314,8 +313,7 @@ class VisorSceneBase(ABC):
         Holds ``_vtk_lock`` for the whole body, including the delegated render step.
         """
         with self._vtk_lock:
-            # Transform the frontend PersistedViewerStateV1 -> RuntimeAppState
-            runtime_app_state = self._state_mapper.persisted_to_runtime(state)
+            runtime_app_state = self._state_mapper.persisted_to_runtime(state, self._current_runtime_state())
 
             # Variable records: rebuilt from the registry and overlaid with the file's
             # ranges, then placed on the runtime state for the push, all before
@@ -325,9 +323,9 @@ class VisorSceneBase(ABC):
 
             # One call per state class: updates the server's stored state and its VTK objects.
             self._restore_part_states(runtime_app_state)
-            self._restore_widget_state(runtime_app_state)
-            self._restore_ui_state(runtime_app_state)
-            self._restore_camera_state(runtime_app_state)
+            self._restore_scene_state(runtime_app_state.scene)
+            self._restore_ui_state(runtime_app_state.ui)
+            self._restore_view_state(runtime_app_state.view)
 
             # Finalize here, not on the load path.  On a cold load -- viewer started with no dataset,
             # then a state loaded -- load_state adds the datasets and only then calls apply_state, so a
@@ -341,7 +339,7 @@ class VisorSceneBase(ABC):
             # fire-and-forget set_state.  See VisorLocalScene._push_runtime_state, which is written on
             # the assumption that the full render and wasm sync have already happened by the time it runs.
             #
-            # Correct only after _restore_widget_state: populate_scene reaches IRenderer.update_bounds,
+            # Correct only after _restore_view_state: populate_scene reaches IRenderer.update_bounds,
             # which writes an existing cross-section record back to the widget rather than seeding from
             # the widget's defaults.  With no record -- which is what the load path had on a cold load --
             # that branch seeds the defaults instead.
@@ -371,7 +369,9 @@ class VisorSceneBase(ABC):
         aren't consumed as a mutually consistent snapshot, and locking a
         request-path read against the trigger thread belongs with the
         round-trip/thread-affinity work, not here. Accepted exposure: one
-        stale field in a delivered payload.
+        stale field in a delivered payload.  For the same reason this does not
+        read :meth:`_current_runtime_state`, which takes the lock and also
+        reads the plane, a record the details never carry.
 
         The UI record is passed as a copy and never as the instance, for the
         reason :meth:`get_state` gives: a panel trigger landing after this
@@ -388,22 +388,24 @@ class VisorSceneBase(ABC):
         camera_record = self._renderer.get_camera_state()
         return VisorSceneDetails.from_components(
             ui=self._ui_state.model_copy(),
-            unit=self._dataset_registry.unit,
-            dataset_states=self._dataset_registry.runtime_state_dict,
+            scene=RuntimeSceneState(
+                unit=self._dataset_registry.unit,
+                orthographic_enabled=(
+                    camera_record.parallel_projection if camera_record is not None else None
+                ),
+                cross_section_enabled=self._cross_section_enabled,
+                edges_enabled=self._edges_enabled,
+                bounding_box_enabled=self._bounding_box_enabled,
+                dataset_states=self._dataset_registry.runtime_state_dict,
+                variable_states=self._variable_records.model_copy(deep=True).variables,
+            ),
             scene_graph_state=scene_graph_state,
             renderer_annotation=annotation,
-            orthographic_enabled=(
-                camera_record.parallel_projection if camera_record is not None else None
-            ),
-            cross_section_enabled=self._cross_section_enabled,
-            edges_enabled=self._edges_enabled,
-            bounding_box_enabled=self._bounding_box_enabled,
-            variable_states=self._variable_records.model_copy(deep=True).variables,
         )
 
     def get_scene_details_json(self) -> str:
         """Return the VisorVtkPipelineState as JSON string."""
-        return json.dumps(self.get_scene_details().model_dump(exclude_none=True, by_alias=True))
+        return json.dumps(self.get_scene_details().model_dump(by_alias=True))
 
     def clear(self):
         """Remove all actors from the renderer and reset the scene.
@@ -466,6 +468,12 @@ class VisorSceneBase(ABC):
     def add_dataset(self, input: VisorDatasetType, metadata: ExtendedMetadata) -> int:
         """Set the input dataset and metadata for the scene graph.
 
+        Each part's record, seeded from the metadata when the dataset is
+        registered, is applied to that part's pipeline through
+        :meth:`_apply_part_state` once the variable records are rebuilt, so a
+        colour reference resolves.  Each apply re-serializes the object it
+        wrote; nothing is pushed from here.
+
         Holds ``_vtk_lock``: node registration attaches actors to the VTK
         renderer.
         """
@@ -502,6 +510,15 @@ class VisorSceneBase(ABC):
 
             self._dataset_registry.add(dataset_id, dataset_name, input, node_ids, metadata)
             self._rebuild_variable_records_from_registry()
+
+            dataset = self._dataset_registry.datasets.get(dataset_id)
+            if dataset is None:
+                logger.warning(
+                    "add_dataset: dataset %s is not registered; its part state was not applied.", dataset_id
+                )
+            else:
+                for part_id, part_state in dataset.state.part_states.items():
+                    self._apply_part_state(part_id, part_state)
 
             return dataset_id
 
@@ -586,8 +603,8 @@ class VisorSceneBase(ABC):
         """Re-apply or clear each part's color variable against the current records, skipping a part whose
         effective range is unchanged from *previous*.  Caller holds the scene lock.
 
-        Only a part whose variable id and component are both set is reconciled;
-        a half-set reference is left as it is.  A reference that resolves is
+        Only a part with a colour-variable reference is reconciled.  A
+        reference that resolves is
         re-applied through :meth:`_ColorVariableBinding.apply_to`, unless the
         part participated in the same record in *previous* at the same range.
         A reference that no longer resolves is cleared through
@@ -595,10 +612,10 @@ class VisorSceneBase(ABC):
         mapper and re-serializes it.
         """
         references = [
-            (part_id, part_state.variable_id, part_state.variable_component)
+            (part_id, part_state.color_variable.variable_id, part_state.color_variable.variable_component)
             for dataset in list(self._dataset_registry.datasets.values())
             for part_id, part_state in list(dataset.state.part_states.items())
-            if part_state.variable_id is not None and part_state.variable_component is not None
+            if part_state.color_variable is not None
         ]
         for part_id, variable_id, component in references:
             binding = self._resolve_color_variable(part_id, variable_id, component)
@@ -754,20 +771,20 @@ class VisorSceneBase(ABC):
     def set_part_diffuse_color(self, node_id: int, diffuse_rgb: list[float] | None) -> None:
         """
         Set the custom diffuse colour of the part identified by *node_id*, or
-        clear it with ``None``.
+        reset it with ``None``.
 
-        The store records the absence as absence: ``diffuse_rgb=None`` is
-        written through as ``None``.  The pipeline needs a concrete colour, so
-        the apply falls back to :attr:`VisorColors.DefaultMeshColor` — "no
-        custom colour" means "the scene-wide default".
+        A reset writes the default colour into the record.  Either way the
+        pipeline is given the colour the record then holds.
         """
         with self._vtk_lock:
-            if not self._dataset_registry.set_part_diffuse_color(node_id, diffuse_rgb):
+            if diffuse_rgb is None:
+                written = self._dataset_registry.reset_part_diffuse_color(node_id)
+            else:
+                written = self._dataset_registry.set_part_diffuse_color(node_id, diffuse_rgb)
+            if not written:
                 logger.debug("set_part_diffuse_color: no dataset owns node %s; skipping.", node_id)
                 return
-            applied_rgb = (
-                diffuse_rgb if diffuse_rgb is not None else list(VisorColors.DefaultMeshColor)
-            )
+            applied_rgb = self._dataset_registry.get_part_state(node_id).diffuse_rgb
             self._renderer.apply_diffuse_color(
                 node_id, applied_rgb[0], applied_rgb[1], applied_rgb[2]
             )
@@ -777,9 +794,8 @@ class VisorSceneBase(ABC):
         Select or deselect the part identified by *node_id*.
 
         No colour crosses the trigger for this class: the server reads the
-        part's stored ``diffuse_rgb`` from its own record and falls back to
-        :attr:`VisorColors.DefaultMeshColor` when it is ``None``.  The record
-        is guaranteed to exist here — the setter above returned ``True``,
+        part's stored ``diffuse_rgb`` from its own record.  The record is
+        guaranteed to exist here — the setter above returned ``True``,
         which means it either found the record or upserted one — so
         ``get_part_state`` cannot return ``None`` at this point.
         """
@@ -787,10 +803,7 @@ class VisorSceneBase(ABC):
             if not self._dataset_registry.set_part_selected(node_id, selected):
                 logger.debug("set_part_selected: no dataset owns node %s; skipping.", node_id)
                 return
-            stored_rgb = self._dataset_registry.get_part_state(node_id).diffuse_rgb
-            diffuse_rgb = (
-                stored_rgb if stored_rgb is not None else list(VisorColors.DefaultMeshColor)
-            )
+            diffuse_rgb = self._dataset_registry.get_part_state(node_id).diffuse_rgb
             self._renderer.apply_selected(node_id, selected, diffuse_rgb)
 
     def set_part_color_variable(
@@ -877,7 +890,12 @@ class VisorSceneBase(ABC):
                 part_state = self._dataset_registry.get_part_state(part_id)
                 if part_state is None:
                     continue
-                if part_state.variable_id != variable_id or part_state.variable_component != component:
+                reference = part_state.color_variable
+                if (
+                        reference is None
+                        or reference.variable_id != variable_id
+                        or reference.variable_component != component
+                ):
                     continue
                 binding = self._resolve_color_variable(part_id, variable_id, component)
                 if binding is not None:
@@ -1041,8 +1059,9 @@ class VisorSceneBase(ABC):
         """
         Restore per-part state from a runtime app state, on the load path.
 
-        Replaces the part states of each dataset named in the supplied states,
-        then applies every part to this process's VTK pipeline through ``IRenderer``.
+        Installs the part records of each dataset named in the supplied states, which
+        are that dataset's current records overlaid with the loaded entries, one per
+        part.  Then applies every part to this process's VTK pipeline through ``IRenderer``.
         Datasets the registry does not hold are skipped and logged.  Every other failure
         is a logged no-op.
 
@@ -1062,163 +1081,93 @@ class VisorSceneBase(ABC):
                 continue
 
             for part_id, part_state in dataset_state.part_states.items():
-                self._restore_one_part_state(part_id, part_state)
+                self._apply_part_state(part_id, part_state)
 
-    def _restore_camera_state(self, runtime_app_state: "RuntimeAppState") -> None:
+    def _restore_scene_state(self, scene: RuntimeSceneState) -> None:
         """
-        Restore the camera state from a runtime app state, on the load path.
+        Write the resolved unit and the three widget toggles, on the load path.
 
-        Write the loaded camera to the record and the pipeline camera, so a client rebuilt
-        from server state (refresh) gets it.  Must precede the render step.  The renderer's
-        ``sync_camera`` leaves the served state current on return: the server advertises the
-        camera's live MTime but serves its cached state, so a stale cache would hand a client
-        the pre-load camera.  A state with no camera leaves both alone.
+        The unit is written unconditionally; the mapper has already resolved
+        it against the server's current state.  Each toggle is written only
+        when it differs from the server's current value: the mapper resolves
+        an absent file field to the current one, so a no-op restore of an
+        unnamed toggle would otherwise still re-apply and re-serialize it --
+        for edges, every registered part's actor property -- interleaving
+        unrelated writes between the camera and plane steps
+        :meth:`_restore_view_state` performs next.  A toggle the file does
+        change still goes through its coordinator, store first, renderer
+        second.
+
+        ``orthographic_enabled`` is not written.  Projection arrives on the
+        camera, restored by :meth:`_restore_view_state`.
 
         Callers must hold ``_vtk_lock``.
         """
-        if runtime_app_state.scene.camera is not None:
-            self._renderer.sync_camera(runtime_app_state.scene.camera)
+        self._dataset_registry.set_unit(scene.unit)
+        if scene.cross_section_enabled != self._cross_section_enabled:
+            self.set_cross_section_visibility(scene.cross_section_enabled)
+        if scene.edges_enabled != self._edges_enabled:
+            self.set_edges_visible(scene.edges_enabled)
+        if scene.bounding_box_enabled != self._bounding_box_enabled:
+            self.set_bounding_box_visibility(scene.bounding_box_enabled)
 
-    def _restore_widget_state(self, runtime_app_state: "RuntimeAppState") -> None:
+    def _restore_view_state(self, view: RuntimeViewState) -> None:
         """
-        Restore the camera state from a runtime app state, on the load path.
+        Write the resolved plane and camera, on the load path.
 
-        The widget toggles.  Absent says nothing: a state that does not
-        carry a toggle leaves the server's value alone, which is this
-        path's guard and not get_state's.  Store first, renderer second,
-        matching the coordinator surface below.
+        Each goes through its coordinator, which writes the renderer's record
+        and the VTK objects; the renderer leaves the state it serves current
+        on return, so a client rebuilt from server state gets them.  Must
+        precede the render step.
 
-
-        ``orthographic_enabled`` is deliberately not read.  Projection
-        arrives on the camera, whose sync_camera writes it to the
-        record and the pipeline; the persisted toggle is emitted for
-        compatibility and ignored here, because two readers of one
-        property is the divergence this story removed.
-
-        The cross-section plane is restored here too, and both-or-neither:
-        ``sync_cross_section_plane`` takes an origin and a normal together
-        and the model allows either to be absent, so a half-plane says
-        nothing rather than half-applying.  The renderer's
-        ``sync_cross_section_plane`` leaves the served state current on
-        return, for the reason :meth:`sync_cross_section_plane` gives -- a
-        loaded plane whose served state is stale leaves the client fetching
-        the pre-load one.
+        A ``None`` record is skipped: the renderer had none to resolve against
+        and the file supplied none, so there is nothing to write.
 
         Callers must hold ``_vtk_lock``.
         """
-        scene = runtime_app_state.scene
-        if scene.cross_section_enabled is not None:
-            self._cross_section_enabled = scene.cross_section_enabled
-            self._renderer.set_cross_section_visibility(scene.cross_section_enabled)
-        if scene.edges_enabled is not None:
-            self._edges_enabled = scene.edges_enabled
-            self._renderer.set_edges_visible(scene.edges_enabled)
-        if scene.bounding_box_enabled is not None:
-            self._bounding_box_enabled = scene.bounding_box_enabled
-            self._renderer.set_bounding_box_visibility(scene.bounding_box_enabled)
-        if scene.cross_section is not None:
-            cs = scene.cross_section
-            if cs.origin is not None and cs.normal is not None:
-                self._renderer.sync_cross_section_plane(cs.origin, cs.normal)
+        if view.cross_section is not None:
+            self.sync_cross_section_plane(view.cross_section.origin, view.cross_section.normal)
+        if view.camera is not None:
+            self.sync_camera(view.camera)
 
-    def _restore_ui_state(self, runtime_app_state: "RuntimeAppState") -> None:
+    def _restore_ui_state(self, ui: RuntimeUIState) -> None:
         """
-        Restore the UI panel layout from a runtime app state, on the load path.
-
-        Absent says nothing: a state that does not carry a panel field leaves
-        the server's value alone.  Four independent guards and not one, because
-        a file can carry any subset -- anything written before this record
-        existed carries none of them.
+        Replace the UI record with a copy of the resolved one, on the load path.
 
         Callers must hold ``_vtk_lock``.
         """
-        ui = runtime_app_state.ui
+        self._ui_state = ui.model_copy()
 
-        if ui.dark_theme is not None:
-            self.dark_mode = ui.dark_theme
-        if ui.panel_top_left_panel_collapsed is not None:
-            self._ui_state.panel_top_left_panel_collapsed = ui.panel_top_left_panel_collapsed
-        if ui.panel_top_right_panel_collapsed is not None:
-            self._ui_state.panel_top_right_panel_collapsed = ui.panel_top_right_panel_collapsed
-        if ui.panel_top_right_legend_collapsed is not None:
-            self._ui_state.panel_top_right_legend_collapsed = ui.panel_top_right_legend_collapsed
-        if ui.panel_top_right_tab_index is not None:
-            self._ui_state.panel_top_right_tab_index = ui.panel_top_right_tab_index
-
-    def _restore_one_part_state(self, part_id: int, part_state: RuntimePartProperties) -> None:
+    def _apply_part_state(self, part_id: int, part_state: RuntimePartProperties) -> None:
         """
-        Apply one restored part record to the pipeline.
-
-        A ``None`` field means ""this record says nothing about that property",
-        not "reset it to the default", so nothing is applied for it.
-
-        The color is validated to exactly three elements here; a malformed
-        color is a logged no-op and the same guard covers the color the
-        selection branch reads.  The registry keeps the malformed value it was
-        loaded with; requiring on load would make the next save silently
-        rewrite the user's file.
+        Apply one part record to the pipeline, every field; caller holds ``_vtk_lock``.
         """
-        if part_state.visible is not None:
-            self._renderer.apply_visibility(part_id, part_state.visible)
+        self._renderer.apply_visibility(part_id, part_state.visible)
+        self._renderer.apply_opacity(part_id, part_state.opacity)
 
-        if part_state.opacity is not None:
-            self._renderer.apply_opacity(part_id, part_state.opacity)
+        rgb = part_state.diffuse_rgb
+        self._renderer.apply_diffuse_color(part_id, rgb[0], rgb[1], rgb[2])
+        self._renderer.apply_selected(part_id, part_state.selected, rgb)
 
-        stored_rgb = part_state.diffuse_rgb
-        valid_rgb = None
-        if stored_rgb is not None:
-            if len(stored_rgb) == 3:
-                valid_rgb = stored_rgb
-            else:
-                logger.warning(
-                    "_restore_one_part_state: part %s has a diffuse colour of %s elements, "
-                    "not 3; leaving the pipeline colour unchanged.", part_id, len(stored_rgb)
-                )
+        self._apply_part_color_variable(part_id, part_state)
 
-        if valid_rgb is not None:
-            self._renderer.apply_diffuse_color(part_id, valid_rgb[0], valid_rgb[1], valid_rgb[2])
-
-        if part_state.selected is not None:
-            selection_rgb = (
-                valid_rgb if valid_rgb is not None else list(VisorColors.DefaultMeshColor)
-            )
-            self._renderer.apply_selected(part_id, part_state.selected, selection_rgb)
-
-        self._restore_part_color_variable(part_id, part_state)
-
-    def _restore_part_color_variable(self, part_id: int, part_state: RuntimePartProperties) -> None:
+    def _apply_part_color_variable(self, part_id: int, part_state: RuntimePartProperties) -> None:
         """
-        Restore one part's color-variable reference through the resolve helper, or clear it.
+        Apply one part's color-variable reference through the resolve helper, or clear it.
 
-        The reference is a compound value, set and cleared as a unit, so if
-        either the identifier or component is missing, it is a logged no-op.
-
-        Otherwise the reference resolves against the held records, which the
-        load path has rebuilt and overlaid with the file's ranges before this
-        runs.  A refused reference is a logged no-op; the mapper is re-serialized
+        No reference clears the mapper.  A reference resolves against the
+        held records, which must already be current when this runs.  A
+        refused reference is a logged no-op; the mapper is re-serialized
         after an applied or cleared one.
         """
-        variable_id = part_state.variable_id
-        component = part_state.variable_component
-
-        if variable_id is None:
-            if component is not None:
-                logger.warning(
-                    "_restore_part_color_variable: part %s stores component %s with no variable "
-                    "identifier; not clearing and not applying.", part_id, component
-                )
-                return
+        reference = part_state.color_variable
+        if reference is None:
             self._renderer.clear_color_variable(part_id)
             return
 
-        if component is None:
-            logger.warning(
-                "_restore_part_color_variable: part %s stores variable '%s' with no component; "
-                "skipping.", part_id, variable_id
-            )
-            return
-
-        binding = self._resolve_color_variable(part_id, variable_id, component)
+        binding = self._resolve_color_variable(
+            part_id, reference.variable_id, reference.variable_component
+        )
         if binding is None:
             return
         binding.apply_to(self._renderer)

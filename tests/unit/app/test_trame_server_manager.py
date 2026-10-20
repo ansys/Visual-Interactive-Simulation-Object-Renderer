@@ -4,14 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from ansys.visor.viewer.app.trame.trame_server_manager import TrameServerManager
-from ansys.visor.viewer.models.runtime.visor_scene_details import VisorSceneDetails
-from ansys.visor.viewer.models.runtime.vtk.runtime_vtk_info import RuntimeVTKInfo
 
-visor_vtk_pipeline_state = VisorSceneDetails(
-        vtk_info=RuntimeVTKInfo(
-            scene_graph=None,
-        ),
-    )
 
 class DummyServer:
     def __init__(self, running=True, controller=True):

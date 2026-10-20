@@ -1,4 +1,5 @@
 import VisorDatasetState from './VisorDatasetState.tsx';
+import VisorPartState from './VisorPartState.tsx';
 import {
     ensureBoolean,
     ensureString,
@@ -87,6 +88,25 @@ export default class VisorSceneState {
 
     removeDataset(idStr: string): boolean {
         return delete this._datasetStates[idStr];
+    }
+
+    /**
+     * The delivered record for a part: matched by id, or by name for a
+     * name-keyed record; null when the delivery carries none.
+     */
+    findPartState(partId: number, partName: string): VisorPartState | null {
+        const idStr = partId.toString();
+        for (const datasetState of this.getDatasetStates()) {
+            for (const partState of datasetState.getPartStates()) {
+                const matches = partState.keyedByName
+                    ? partState.name === partName
+                    : partState.id === idStr;
+                if (matches) {
+                    return partState;
+                }
+            }
+        }
+        return null;
     }
 
     /**
@@ -201,10 +221,6 @@ export default class VisorSceneState {
                 data = parseState(state)!;
             }
 
-            this._camera.copy(data.camera, replace);
-
-            this._crossSection.copy(data.crossSection, replace);
-
             this.setUnit(data.unit === undefined ? this._unit : data.unit, replace);
             this.setCrossSectionEnabled(
                 data.crossSectionEnabled === undefined
@@ -222,8 +238,9 @@ export default class VisorSceneState {
                 data.edgesEnabled === undefined ? this._edgesEnabled : data.edgesEnabled,
                 replace
             );
+            // A null orthographicEnabled means no camera record exists yet: not delivered.
             this.setOrthographicEnabled(
-                data.orthographicEnabled === undefined
+                data.orthographicEnabled == null
                     ? this._orthographicEnabled
                     : data.orthographicEnabled,
                 replace
@@ -281,8 +298,6 @@ export default class VisorSceneState {
         }
         return {
             unit: this.unit,
-            camera: this.camera.toDict(),
-            crossSection: this.crossSection.toDict(),
             orthographicEnabled: this.orthographicEnabled,
             crossSectionEnabled: this.crossSectionEnabled,
             edgesEnabled: this.edgesEnabled,

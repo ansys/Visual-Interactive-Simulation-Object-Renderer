@@ -30,6 +30,10 @@ export default class VisorAppState {
 
             this._ui.copy(data.ui, replace);
             this._scene.copy(data.scene, replace);
+            // The camera and the plane arrive under view and are held on the
+            // scene's camera and crossSection records.
+            this._scene.camera.copy(data.view?.camera, replace);
+            this._scene.crossSection.copy(data.view?.crossSection, replace);
         }
         return this;
     }
@@ -42,6 +46,10 @@ export default class VisorAppState {
         return {
             ui: this.ui.toDict(),
             scene: this.scene.toDict(),
+            view: {
+                camera: this.scene.camera.toDict(),
+                crossSection: this.scene.crossSection.toDict(),
+            },
         };
     }
 }

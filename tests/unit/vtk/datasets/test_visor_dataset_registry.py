@@ -6,6 +6,7 @@ import pytest
 from ansys.visor.viewer.models.runtime.dataset.runtime_dataset_state import (
     RuntimeDatasetState,
     RuntimePartProperties,
+    VariableReference,
 )
 from ansys.visor.viewer.vtk.datasets.visor_dataset_registry import VisorDatasetRegistry
 
@@ -38,6 +39,11 @@ def make_part_dataset(dataset_id, part_ids, part_states=None):
     dataset.part_index.part_ids = list(part_ids)
     dataset.state = RuntimeDatasetState(id=dataset_id, part_states=part_states or {})
     return dataset
+
+
+def _record(part_id, **overrides):
+    """A complete record for *part_id* with *overrides* applied."""
+    return RuntimePartProperties.default_for(part_id).model_copy(update=overrides)
 
 
 def test_count_returns_number_of_datasets(registry):
@@ -223,7 +229,7 @@ def test_find_dataset_id_for_part_not_found_returns_none(registry):
 
 def test_get_part_state_returns_existing_record(registry):
     """Verify get_part_state returns the recorded state for a known part."""
-    existing = RuntimePartProperties(id=10, opacity=0.7)
+    existing = _record(10, opacity=0.7)
     ds_a = make_part_dataset(dataset_id=1, part_ids=[10], part_states={10: existing})
     registry.datasets = {1: ds_a}
 
@@ -251,7 +257,7 @@ def test_get_part_state_unknown_part_id_returns_none(registry):
 
 def test_set_part_visibility_mutates_record_and_rejects_unknown_part(registry):
     """Verify set_part_visibility writes True/False, and False + no raise for unknown part_id."""
-    ds_a = make_part_dataset(dataset_id=1, part_ids=[10], part_states={10: RuntimePartProperties(id=10)})
+    ds_a = make_part_dataset(dataset_id=1, part_ids=[10], part_states={10: _record(10)})
     registry.datasets = {1: ds_a}
 
     assert registry.set_part_visibility(10, False) is True
@@ -262,7 +268,7 @@ def test_set_part_visibility_mutates_record_and_rejects_unknown_part(registry):
 
 def test_set_part_opacity_mutates_record_and_rejects_unknown_part(registry):
     """Verify set_part_opacity writes the value, and False + no raise for unknown part_id."""
-    ds_a = make_part_dataset(dataset_id=1, part_ids=[10], part_states={10: RuntimePartProperties(id=10)})
+    ds_a = make_part_dataset(dataset_id=1, part_ids=[10], part_states={10: _record(10)})
     registry.datasets = {1: ds_a}
 
     assert registry.set_part_opacity(10, 0.4) is True
@@ -271,26 +277,9 @@ def test_set_part_opacity_mutates_record_and_rejects_unknown_part(registry):
     assert registry.set_part_opacity(999999, 0.4) is False
 
 
-def test_set_part_diffuse_color_mutates_and_clears(registry):
-    """Verify set_part_diffuse_color writes an RGB list, clears with None, and rejects unknown parts."""
-    ds_a = make_part_dataset(
-        dataset_id=1, part_ids=[10],
-        part_states={10: RuntimePartProperties(id=10, diffuse_rgb=[1.0, 0.0, 0.0])},
-    )
-    registry.datasets = {1: ds_a}
-
-    assert registry.set_part_diffuse_color(10, [0.0, 1.0, 0.0]) is True
-    assert registry.get_part_state(10).diffuse_rgb == [0.0, 1.0, 0.0]
-
-    assert registry.set_part_diffuse_color(10, None) is True
-    assert registry.get_part_state(10).diffuse_rgb is None
-
-    assert registry.set_part_diffuse_color(999999, [1.0, 1.0, 1.0]) is False
-
-
 def test_set_part_selected_mutates_record_and_rejects_unknown_part(registry):
     """Verify set_part_selected writes the value, and False + no raise for unknown part_id."""
-    ds_a = make_part_dataset(dataset_id=1, part_ids=[10], part_states={10: RuntimePartProperties(id=10)})
+    ds_a = make_part_dataset(dataset_id=1, part_ids=[10], part_states={10: _record(10)})
     registry.datasets = {1: ds_a}
 
     assert registry.set_part_selected(10, True) is True
@@ -301,32 +290,30 @@ def test_set_part_selected_mutates_record_and_rejects_unknown_part(registry):
 
 def test_set_part_color_variable_sets_id_and_component_together(registry):
     """Verify set_part_color_variable sets variable_id and variable_component in one call."""
-    seed = RuntimePartProperties(id=10)
-    assert seed.variable_id is None
-    assert seed.variable_component is None
+    seed = _record(10)
     ds_a = make_part_dataset(dataset_id=1, part_ids=[10], part_states={10: seed})
     registry.datasets = {1: ds_a}
 
     assert registry.set_part_color_variable(10, "POINT::pressure::1", 2) is True
 
     result = registry.get_part_state(10)
-    assert result.variable_id == "POINT::pressure::1"
-    assert result.variable_component == 2
+    assert result.color_variable == VariableReference(variable_id="POINT::pressure::1", variable_component=2)
 
     assert registry.set_part_color_variable(999999, "POINT::x::1", 0) is False
 
 
 def test_clear_part_color_variable_clears_id_and_component_together(registry):
     """Verify clear_part_color_variable clears variable_id and variable_component in one call."""
-    seed = RuntimePartProperties(id=10, variable_id="POINT::pressure::1", variable_component=2)
+    seed = _record(
+        10, color_variable=VariableReference(variable_id="POINT::pressure::1", variable_component=2)
+    )
     ds_a = make_part_dataset(dataset_id=1, part_ids=[10], part_states={10: seed})
     registry.datasets = {1: ds_a}
 
     assert registry.clear_part_color_variable(10) is True
 
     result = registry.get_part_state(10)
-    assert result.variable_id is None
-    assert result.variable_component is None
+    assert result.color_variable is None
 
     assert registry.clear_part_color_variable(999999) is False
 
@@ -350,6 +337,20 @@ def test_setter_upserts_part_state_when_part_id_known_but_absent_from_part_state
     assert created.opacity == 0.6
 
 
+def test_upsert_creates_a_complete_default_record(registry):
+    """A setter on a part with no record leaves every other field at its default literal."""
+    ds_a = make_part_dataset(dataset_id=1, part_ids=[10], part_states={})
+    registry.datasets = {1: ds_a}
+
+    registry.set_part_opacity(10, 0.6)
+
+    created = ds_a.state.part_states[10]
+    assert created.visible is True
+    assert created.selected is False
+    assert created.diffuse_rgb == [0.8, 0.8, 0.8]
+    assert created.color_variable is None
+
+
 def test_replace_part_states_replaces_known_and_skips_unknown_without_aborting(registry):
     """
     Verify replace_part_states replaces the state of a known dataset id and
@@ -360,7 +361,7 @@ def test_replace_part_states_replaces_known_and_skips_unknown_without_aborting(r
     original_state = ds_a.state
     registry.datasets = {1: ds_a}
 
-    new_state_for_known = RuntimeDatasetState(id=1, part_states={10: RuntimePartProperties(id=10, opacity=0.9)})
+    new_state_for_known = RuntimeDatasetState(id=1, part_states={10: _record(10, opacity=0.9)})
     new_state_for_unknown = RuntimeDatasetState(id=999, part_states={})
 
     registry.replace_part_states({1: new_state_for_known, 999: new_state_for_unknown})
