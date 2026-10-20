@@ -92,6 +92,7 @@ def mock_server():
     server.http_headers.set_header = MagicMock()
     server.name = "TestServer"
     server._www = None
+    server.state = {}
     return server
 
 
@@ -250,7 +251,7 @@ def test_set_part_color_variable_non_member_association_is_a_logged_no_op(
     app, api, association
 ):
     """A non-member association warns and delegates nothing -- no upper-casing."""
-    with patch("ansys.visor.viewer.app.trame.local_app.logger") as mock_logger:
+    with patch("ansys.visor.viewer.app.trame.scene_trigger_app.logger") as mock_logger:
         app.set_part_color_variable(
             {
                 "nodeId": 7,
@@ -305,7 +306,7 @@ def test_trigger_returns_none(app, name):
 @pytest.mark.parametrize("name", TRIGGER_NAMES)
 def test_trigger_is_a_logged_no_op_when_no_coordinator_injected(app_without_api, name):
     """With nothing injected, each trigger logs and returns without raising."""
-    with patch("ansys.visor.viewer.app.trame.local_app.logger") as mock_logger:
+    with patch("ansys.visor.viewer.app.trame.scene_trigger_app.logger") as mock_logger:
         assert getattr(app_without_api, name)(PAYLOADS[name]) is None
 
     assert mock_logger.debug.call_count == 2
@@ -332,7 +333,7 @@ def test_missing_required_key_is_a_logged_no_op(app, api, name):
     """A payload short one required key delegates nothing and warns once."""
     payload = {k: v for k, v in PAYLOADS[name].items() if k != MISSING_KEY[name]}
 
-    with patch("ansys.visor.viewer.app.trame.local_app.logger") as mock_logger:
+    with patch("ansys.visor.viewer.app.trame.scene_trigger_app.logger") as mock_logger:
         assert getattr(app, name)(payload) is None
 
     getattr(api, name).assert_not_called()
@@ -341,7 +342,7 @@ def test_missing_required_key_is_a_logged_no_op(app, api, name):
 
 def test_wrong_typed_bool_value_is_a_logged_no_op(app, api):
     """2 is not a bool: pydantic accepts 0 and 1 only, so this fails."""
-    with patch("ansys.visor.viewer.app.trame.local_app.logger") as mock_logger:
+    with patch("ansys.visor.viewer.app.trame.scene_trigger_app.logger") as mock_logger:
         assert app.set_part_visibility({"nodeId": 7, "visible": 2}) is None
 
     api.set_part_visibility.assert_not_called()
@@ -350,7 +351,7 @@ def test_wrong_typed_bool_value_is_a_logged_no_op(app, api):
 
 def test_wrong_typed_int_value_is_a_logged_no_op(app, api):
     """A non-numeric string is not coerced to int: 'x' fails nodeId."""
-    with patch("ansys.visor.viewer.app.trame.local_app.logger") as mock_logger:
+    with patch("ansys.visor.viewer.app.trame.scene_trigger_app.logger") as mock_logger:
         assert app.set_part_visibility({"nodeId": "x", "visible": False}) is None
 
     api.set_part_visibility.assert_not_called()
@@ -365,7 +366,7 @@ def test_non_dict_payload_is_a_logged_no_op_not_a_type_error(app, api, payload):
     ``Model(**payload)``: the latter raises TypeError on a non-mapping,
     which would escape the guard and land on the trame daemon thread.
     """
-    with patch("ansys.visor.viewer.app.trame.local_app.logger") as mock_logger:
+    with patch("ansys.visor.viewer.app.trame.scene_trigger_app.logger") as mock_logger:
         assert app.set_part_visibility(payload) is None
 
     api.set_part_visibility.assert_not_called()
@@ -381,7 +382,7 @@ def test_unknown_extra_key_is_forwarded_not_rejected(app, api):
 
 def test_set_part_diffuse_color_absent_key_is_a_validation_failure(app, api):
     """An absent diffuseRgb is malformed -- distinct from an explicit null."""
-    with patch("ansys.visor.viewer.app.trame.local_app.logger") as mock_logger:
+    with patch("ansys.visor.viewer.app.trame.scene_trigger_app.logger") as mock_logger:
         assert app.set_part_diffuse_color({"nodeId": 7}) is None
 
     api.set_part_diffuse_color.assert_not_called()
@@ -397,7 +398,7 @@ def test_set_part_diffuse_color_two_element_colour_is_a_logged_no_op(app, api):
     IndexError on the trame daemon thread.  Rejecting it here means nothing
     is delegated, so nothing is written.
     """
-    with patch("ansys.visor.viewer.app.trame.local_app.logger") as mock_logger:
+    with patch("ansys.visor.viewer.app.trame.scene_trigger_app.logger") as mock_logger:
         assert app.set_part_diffuse_color({"nodeId": 7, "diffuseRgb": [1.0, 0.0]}) is None
 
     api.set_part_diffuse_color.assert_not_called()
@@ -406,7 +407,7 @@ def test_set_part_diffuse_color_two_element_colour_is_a_logged_no_op(app, api):
 
 def test_set_part_opacity_out_of_range_is_a_logged_no_op(app, api):
     """An opacity outside [0.0, 1.0] never reaches VTK to be clamped."""
-    with patch("ansys.visor.viewer.app.trame.local_app.logger") as mock_logger:
+    with patch("ansys.visor.viewer.app.trame.scene_trigger_app.logger") as mock_logger:
         assert app.set_part_opacity({"nodeId": 7, "opacity": 5.0}) is None
 
     api.set_part_opacity.assert_not_called()
@@ -455,7 +456,7 @@ def test_the_registered_callable_still_accepts_a_raw_dict(app, api, mock_server)
 @pytest.mark.parametrize("name", TRIGGER_NAMES)
 def test_invalid_payload_logs_warning_and_not_debug(app, api, name):
     """The validation no-op is a warning and is not confused with the other."""
-    with patch("ansys.visor.viewer.app.trame.local_app.logger") as mock_logger:
+    with patch("ansys.visor.viewer.app.trame.scene_trigger_app.logger") as mock_logger:
         assert getattr(app, name)({"junk": True}) is None
 
     getattr(api, name).assert_not_called()
@@ -466,7 +467,7 @@ def test_invalid_payload_logs_warning_and_not_debug(app, api, name):
 @pytest.mark.parametrize("name", TRIGGER_NAMES)
 def test_missing_coordinator_logs_debug_and_not_warning(app_without_api, name):
     """The not-injected no-op is a debug and is not confused with the other."""
-    with patch("ansys.visor.viewer.app.trame.local_app.logger") as mock_logger:
+    with patch("ansys.visor.viewer.app.trame.scene_trigger_app.logger") as mock_logger:
         assert getattr(app_without_api, name)(PAYLOADS[name]) is None
 
     assert mock_logger.debug.call_count == 2
@@ -502,7 +503,7 @@ def test_set_variable_range_registered_trigger_delegates_payload_values(app, api
 
 def test_set_variable_range_invalid_payload_is_a_logged_no_op(app, api):
     """A payload with no max delegates nothing and warns once."""
-    with patch("ansys.visor.viewer.app.trame.local_app.logger") as mock_logger:
+    with patch("ansys.visor.viewer.app.trame.scene_trigger_app.logger") as mock_logger:
         assert app.set_variable_range(
             {"variableId": "POINT::pressure::1", "component": 0, "min": 2.5}
         ) is None

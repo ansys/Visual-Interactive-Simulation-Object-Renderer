@@ -67,6 +67,7 @@ def mock_server():
     server.http_headers.set_header = MagicMock()
     server.name = "TestServer"
     server._www = None
+    server.state = {}
     return server
 
 
@@ -139,7 +140,7 @@ def test_set_panel_top_right_tab_index_missing_tab_index_is_a_logged_no_op(app, 
     share one decorator, and reverting ``@parse_payload`` on this one is the
     case this test exists to report.
     """
-    with patch("ansys.visor.viewer.app.trame.local_app.logger") as log:
+    with patch("ansys.visor.viewer.app.trame.scene_trigger_app.logger") as log:
         result = app.set_panel_top_right_tab_index({})
 
     assert result is None
