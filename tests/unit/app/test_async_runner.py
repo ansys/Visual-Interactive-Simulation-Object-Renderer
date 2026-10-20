@@ -92,3 +92,16 @@ def test_thread_is_daemon(runner):
 def test_thread_is_alive_after_creation(runner):
     """Verify that the runner thread is alive after creation."""
     assert runner.thread.is_alive()
+
+def test_call_soon_runs_on_runner_thread(runner):
+    """Verify that call_soon runs the callback on the runner's thread, not the caller's."""
+    ran = threading.Event()
+    thread_ids = []
+
+    def callback():
+        thread_ids.append(threading.get_ident())
+        ran.set()
+
+    runner.call_soon(callback)
+    assert ran.wait(timeout=5)
+    assert thread_ids == [runner.thread.ident]
