@@ -2,8 +2,8 @@
 Unit tests for ServerLoopBridge.
 
 Ruling-6 tests drive a real VisorRcaWindow whose reschedule is the bridge's
-``retry_frame``, with the scene lock held by a second thread.  The running loop
-is replaced by a recording double, so delayed calls are recorded, not run.
+``retry_frame``, with the scene lock held by a second thread.  The runner is
+replaced by a recording double, so delayed calls are recorded, not run.
 The recording runner reports the test's own thread as its loop thread, so the
 bridge binds there.  The loop-thread tests use a real AsyncRunner.
 """
@@ -11,7 +11,6 @@ bridge binds there.  The loop-thread tests use a real AsyncRunner.
 from __future__ import annotations
 
 import threading
-from unittest.mock import patch
 
 import pytest
 
@@ -46,21 +45,18 @@ class _RecordingViewHandler:
 
 
 class _RecordingRunner:
-    """Records the callbacks handed to call_soon, without running them; its loop thread is the creating thread."""
+    """Records the callbacks handed to call_soon and call_later, without running them.
+
+    Its loop thread is the creating thread.
+    """
 
     def __init__(self) -> None:
         self.callbacks: list = []
+        self.records: list[tuple[float, object]] = []
         self.thread = threading.current_thread()
 
     def call_soon(self, callback) -> None:
         self.callbacks.append(callback)
-
-
-class _RecordingLoop:
-    """Records call_later calls, without running them."""
-
-    def __init__(self) -> None:
-        self.records: list[tuple[float, object]] = []
 
     def call_later(self, delay: float, callback) -> None:
         self.records.append((delay, callback))
@@ -98,16 +94,6 @@ def bound_bridge(runner, handler) -> ServerLoopBridge:
 
 
 @pytest.fixture
-def loop():
-    recording_loop = _RecordingLoop()
-    with patch(
-        "ansys.visor.viewer.app.trame.server_loop_bridge.asyncio.get_running_loop",
-        return_value=recording_loop,
-    ):
-        yield recording_loop
-
-
-@pytest.fixture
 def lock() -> threading.RLock:
     return threading.RLock()
 
@@ -118,22 +104,22 @@ def window(bound_bridge, lock) -> VisorRcaWindow:
     return VisorRcaWindow(_NeverCapture(), renderer, lock, bound_bridge.retry_frame)
 
 
-def test_two_locked_calls_leave_one_pending_retry(window, lock, loop):
+def test_two_locked_calls_leave_one_pending_retry(window, lock, runner):
     with lock_held_by_another_thread(lock):
         window.img_cols_rows
         window.img_cols_rows
-    assert [delay for delay, _ in loop.records] == [0.1]
+    assert [delay for delay, _ in runner.records] == [0.1]
 
 
-def test_retry_fires_then_rearms(window, lock, loop, handler):
+def test_retry_fires_then_rearms(window, lock, runner, handler):
     with lock_held_by_another_thread(lock):
         window.img_cols_rows
-    _, fire_retry = loop.records[0]
+    _, fire_retry = runner.records[0]
     fire_retry()
     assert handler.count == 1
     with lock_held_by_another_thread(lock):
         window.img_cols_rows
-    assert len(loop.records) == 2
+    assert len(runner.records) == 2
 
 
 def test_request_frame_runs_on_loop_thread():
