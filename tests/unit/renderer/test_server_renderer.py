@@ -160,6 +160,16 @@ def test_set_viewport_size_resizes_window(renderer):
     assert renderer.render_window.GetSize() == (64, 48)
 
 
+def test_set_background_rgb_sets_vtk_background(renderer):
+    renderer.set_background_rgb((0.25, 0.5, 0.75))
+    assert renderer._vtk_renderer.GetBackground() == (0.25, 0.5, 0.75)
+
+
+def test_set_background_rgb_sets_background_rgb(renderer):
+    renderer.set_background_rgb((0.25, 0.5, 0.75))
+    assert renderer.background_rgb == (0.25, 0.5, 0.75)
+
+
 def test_cross_section_visibility_turns_widget_on(renderer):
     renderer.set_cross_section_visibility(True)
     assert renderer._cross_section_widget.is_on is True

@@ -16,7 +16,6 @@ Behavioural coverage of the remaining shared logic lives in
 test_local_scene.py, exercised through the concrete VisorLocalScene subclass.
 """
 import json
-import threading
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -48,6 +47,7 @@ from ansys.visor.viewer.vtk.node_pipeline import VtkNodePipeline
 from ansys.visor.viewer.vtk.scene.base import VisorSceneBase
 from ansys.visor.viewer.vtk.variables.visor_part_variables import VisorPartVariables
 from ansys.visor.viewer.vtk.variables.visor_variables import VisorVariable
+from tests.helpers.utils.locks import LockSpy as _LockSpy
 
 NODE_ID = 7
 SECOND_NODE_ID = 8
@@ -83,35 +83,6 @@ class _ConcreteScene(VisorSceneBase):
 
     def _push_runtime_state(self, runtime_app_state) -> None:
         return None
-
-
-class _LockSpy:
-    """Re-entrant lock that records its own acquisition depth.
-
-    Wraps a real RLock so nesting still behaves, and exposes ``depth`` so a
-    test can assert the lock was *held* at the moment some inner call ran,
-    rather than merely acquired at some point.
-    """
-
-    def __init__(self):
-        self._lock = threading.RLock()
-        self.enter_count = 0
-        self.exit_count = 0
-        self.depth = 0
-        self.max_depth = 0
-
-    def __enter__(self):
-        self._lock.acquire()
-        self.enter_count += 1
-        self.depth += 1
-        self.max_depth = max(self.max_depth, self.depth)
-        return self
-
-    def __exit__(self, exc_type, exc, tb):
-        self.depth -= 1
-        self.exit_count += 1
-        self._lock.release()
-        return False
 
 
 def _make_part_dataset(dataset_id: int, part_ids, part_states=None, part_variables=None):

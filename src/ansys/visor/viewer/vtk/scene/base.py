@@ -83,8 +83,8 @@ class VisorSceneBase(ABC):
     in *state delivery* between rendering backends:
 
     * :meth:`_push_runtime_state` — wasm path calls a JS
-      ``set_state``; RCA path pushes camera onto ``vtkCamera``; headless
-      is a no-op.
+      ``set_state``; server-rendering path re-colours the background from
+      the restored theme and requests a frame; headless is a no-op.
 
     The saved state is built here, from the server's own records, for every
     backend; no backend asks a client for it.
@@ -197,7 +197,9 @@ class VisorSceneBase(ABC):
         shared per-part state has already been restored.
 
         * Wasm path: ``render_window_only()`` + JS ``set_state`` call.
-        * RCA path: push camera onto ``vtkCamera`` + ``render_window_only()``.
+        * Server-rendering path: re-colour the background from the restored
+          theme, then request a frame.  The camera is already projected by
+          the view restore that precedes this hook.
         * Headless path: no-op.
         """
 
