@@ -50,7 +50,7 @@ def parse_args():
         help=(
             "Rendering mode to use. Choices: "
             + ", ".join(e.name for e in RenderingMode)
-            + ". Default: LOCAL. Use HEADLESS for headless/no-GPU mode."
+            + ". Default: CLIENT."
         ),
     )
     init_parser.add_argument(

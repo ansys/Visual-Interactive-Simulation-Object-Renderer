@@ -19,7 +19,7 @@ def test_get_instance_creates_new(monkeypatch):
     with patch("ansys.visor.viewer.api.visor_cache.Visor", return_value=mock_visor) as mock_cls:
         inst, warnings = VisorCache.get_instance(
             "url1",
-            rendering_mode=RenderingMode.LOCAL,
+            rendering_mode=RenderingMode.CLIENT,
             standalone=False,
             dark_mode=False,
             trame_log_dir="dir"
@@ -29,7 +29,7 @@ def test_get_instance_creates_new(monkeypatch):
         assert "url1" in VisorCache._instances
         mock_cls.assert_called_once_with(
             url="url1",
-            rendering_mode=RenderingMode.LOCAL,
+            rendering_mode=RenderingMode.CLIENT,
             standalone=False,
             dark_mode=False,
             trame_log_dir="dir"
@@ -46,7 +46,7 @@ def test_get_instance_returns_existing(monkeypatch):
     with patch("ansys.visor.viewer.api.visor_cache.Visor") as mock_cls:
         inst, warnings = VisorCache.get_instance(
             "url2",
-            rendering_mode=RenderingMode.LOCAL,
+            rendering_mode=RenderingMode.CLIENT,
             standalone=False,
             dark_mode=False
         )

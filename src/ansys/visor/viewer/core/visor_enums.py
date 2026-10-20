@@ -43,9 +43,11 @@ class RenderingMode(Enum):
     How the chosen rendering engine is deployed.
 
     Attributes:
-        LOCAL:    Client-side rendering via VTK-WASM in the browser.
+        CLIENT:   Client-side rendering via VTK-WASM in the browser.
+        SERVER:   Server-side off-screen rendering streamed to the browser through trame-rca.
     """
-    LOCAL    = "local"
+    CLIENT   = "client"
+    SERVER   = "server"
 
     @classmethod
     def from_string(cls, value: Union[str, "RenderingMode"]) -> "RenderingMode":
@@ -54,8 +56,8 @@ class RenderingMode(Enum):
 
         Examples
         --------
-        >>> RenderingMode.from_string("local")
-        <RenderingMode.LOCAL: 'local'>
+        >>> RenderingMode.from_string("client")
+        <RenderingMode.CLIENT: 'client'>
         """
         if isinstance(value, cls):
             return value
