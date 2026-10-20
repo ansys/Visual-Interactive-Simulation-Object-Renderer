@@ -9,6 +9,7 @@ OpenGL context; runs unmarked in the gates.
 from __future__ import annotations
 
 import threading
+from unittest.mock import MagicMock
 
 from trame_rca.rca.vtk_rca import VtkRemoteControlledArea
 
@@ -27,7 +28,7 @@ class _RecordingFrameRequester:
 
 
 def test_first_frame_is_background():
-    renderer = ServerRenderer((0.2, 0.4, 0.6), _RecordingFrameRequester())
+    renderer = ServerRenderer((0.2, 0.4, 0.6), _RecordingFrameRequester(), MagicMock(name="camera_publisher"))
     capture = VtkRemoteControlledArea(renderer.render_window)
     window = VisorRcaWindow(capture, renderer, threading.RLock(), lambda: None)
 
