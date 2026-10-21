@@ -1229,7 +1229,7 @@ All client work applies rulings 9, 10, 11, 12 and 13. The jest baseline is captu
     is logged).
 18. C-3 overrides S1's "RemoteApp registers every LocalApp trigger" for pick_geometry, perf_report_wasm and
     perf_report_server_update.
-19. Rendering modes are CLIENT, SERVER and PARAVIEW>  LOCAL is renamed CLIENT where SERVER is added.  Every new name the
+19. Rendering modes are CLIENT, SERVER and PARAVIEW.  LOCAL is renamed CLIENT where SERVER is added.  Every new name the
     plan spells Remote is spelled Server (RemoteRenderer -> ServerRenderer, remote_camera_state -> server_camera_state,
     and so on); trame-rca names are unchanged.  Existing Local names stay in Phase 4 (it is only the enum exposed under
     `RenderingMode` that changes).
@@ -1283,94 +1283,4 @@ The rulings above are verbatim. Each line below names the increments of Section 
 26. → S3.3, S5 (camera comparisons after a reset).
 27. → S6 (resize path owns its own frame request).
 28. → S4.1 (non-blocking `scene_version` bump).
-
-
-- **S1.2:** none. No trigger, wire field or interface changed beyond what Section 5.1 and C-3 already contract
-  (`IRenderer` and `VisorSceneBase` lose `pick_geometry`; `VtkPipelineRenderer` with its four `_publish_*` hooks).
-  The rulings made in S1.2 (9–11) are test-target, docstring and init-split decisions, local to S1.2/S1.3.
-- **S1.3:**
-  - `pick_part_at(x, y)` takes render-window device pixels, with the origin at the bottom left. It returns the
-    node id of the part under that pixel, or `None`. Relied on by S1.6a (`VisorRemoteScene.pick_part_at`), S1.6b
-    (`PickPartAtPayload`) and S3.4 (the client's conversion from its canvas coordinates).
-  - `pick_part_at` is defined on `VtkPipelineRenderer` (ruling 12), so `VisorLocalRenderer` also has it, uncalled.
-    It picks part actors only. It honours the cross-section clip: a part clipped away at that pixel is not returned,
-    and the clip stays on when the widget is off, by design (ruling 22).
-  - The interface 5.2 calls `RemoteSink` is `FrameRequester` (`request_frame() -> None` only). The `ServerRenderer`
-    constructor parameter is `frame_requester`, not `sink` (ruling 16). S1.4's `RemoteLoopBridge.request_frame`
-    must satisfy it, and S1.6a constructs `ServerRenderer(background_rgb, frame_requester)`.
-  - S1.7 planned `RemoteSink.publish_camera` as an additive extension of the sink (5.2, S1.7). Under ruling 16 the
-    protocol is named for frame requests only. Where `publish_camera` lives (a second protocol and constructor
-    argument, or an extension of `FrameRequester`) is open for S1.7.
-  - Section 8 ruling 19 names: `RemoteRenderer` → `ServerRenderer` and `renderer/remote_renderer.py` →
-    `renderer/server_renderer.py`. The 4.1 plan text for S1.4, S1.6a and S1.7 still spells the old names.
-  - `set_viewport_size` requests no frame, because the resize path that calls it schedules its own. S1.4 calls it
-    under the lock inside `img_cols_rows`.
-- **S1.4:**
-  - The bridge is `ServerLoopBridge(FrameRequester)` in `app/trame/server_loop_bridge.py`, built as
-    `ServerLoopBridge(async_runner)` with the `AsyncRunner` that runs the trame server (rulings 23, 24, 27). S1.6a passes
-    it to `ServerRenderer(background_rgb, frame_requester)` and uses `bridge.retry_frame` as the window's
-    `reschedule`; S1.6b constructs it with the server manager's runner and calls `bind(handler)` in `on_server_ready`.
-    The runner today is the private `TrameServerManager._async_runner`; how S1.6b reaches it is open for S1.6b.
-  - `bind` checks that it runs on the `AsyncRunner`'s thread and raises `RuntimeError` otherwise (ruling 30); it no
-    longer reads `asyncio.get_running_loop()`. S1.6b must call it from `on_server_ready` on that thread. The carried
-    unknown "Whether `on_server_ready` runs on the loop thread" (Section 9; also 1.2 item 1 and 5.5) is settled by
-    that raise, which S1.6b's `test_first_frame_is_pushed` exercises. Those three passages still name
-    `get_running_loop()` as the mechanism.
-  - `write_state` is not on the bridge (ruling 28). 5.5's `write_state` and S1.7's "on the loop thread through
-    `write_state`" become a state write through `AsyncRunner.call_soon`; where that method lives is open for S1.7.
-  - `AsyncRunner` gains `call_soon(callback) -> None` (ruling 27), an interface S1.6b and S1.7 rely on.
-  - The window is `VisorRcaWindow(capture, renderer: ServerRenderer, vtk_lock: SceneLock, reschedule)` in
-    `renderer/server_window.py`; S1.6a builds it as 5.3 states, with `VtkRemoteControlledArea(renderer.render_window)`.
-- **S1.6a:**
-  - The scene is `VisorServerScene` in `vtk/scene/server_scene.py` (ruling 32), not 5.6's `VisorRemoteScene`. S1.6b
-    relies on its interface: `VisorServerScene(server, dark_mode, bridge: ServerLoopBridge)` with all three
-    required, `rca_window -> VisorRcaWindow`, `pick_part_at(x, y) -> int | None` (under the lock), and
-    `set_dark_mode(dark_mode: bool) -> None` (under the lock; one frame request). S1.6b must therefore build the
-    `ServerLoopBridge` before the scene. Its `vtk_patches` entry in `test_visor_vtk.py` patches
-    `visor_vtk_remote.VisorServerScene`, not `VisorRemoteScene`.
-  - `ServerRenderer` gains `set_background_rgb(background_rgb) -> None`, which requests no frame (ruling 34).
-  - `BACKGROUND_RGB` in `server_scene.py` copies `--visor-viewer-background` from `public/css/theme-{light,dark}.css`
-    (ruling 33). A later change to those CSS values does not reach the server and nothing fails; S3.1's frame check
-    is where a mismatch would first be visible.
-- **S1.6b:**
-  - `RenderingMode` is `CLIENT = "client"` and `SERVER = "server"`; `LOCAL` is gone with no alias (ruling 39). A caller
-    passing `"local"` or `"LOCAL"` to `Visor(...)`, the HTTP `InitProps.rendering_mode` or `visor-cli server init
-    --rendering-mode` now gets `ValueError` / an argparse choice error; the CLI choices are `{CLIENT,SERVER}`. The
-    state key `rendering_mode` carries `"client"` or `"server"` (it carried `"local"` after S1.5); nothing on the
-    client reads it yet (search `rendering_mode` in `visor-client/src`: no match). S2c.3 and any later reader of the
-    key rely on these values.
-  - `ServerApp` registers the 18 shared triggers plus `pick_part_at({x: int, y: int}) -> int | None` and
-    `set_dark_theme({dark: bool}) -> None`; a payload that does not validate is a logged no-op returning `None`.
-    S3.1 (the `set_dark_theme` call) and S3.4 (the pick) rely on them.
-  - The trame-rca area is `RCA_AREA_NAME = "view"`, created on the viewer's own server before start; its view handler
-    is built in `on_server_ready` with `encoder="jpeg"`, `target_fps=30.0`, `interactive_quality=60`,
-    `still_quality=90`, and `ServerLoopBridge.bind` is called on it there. S3.1 and S3.2 subscribe and send to `"view"`.
-  - `TrameServerManager.async_runner` is public (ruling 40); S1.7's state write through `AsyncRunner.call_soon` can
-    reach the runner through it.
-  - Settled: `on_server_ready` runs on the runner's loop thread (1.2 item 1, 5.5 and Section 9 carried it).
-  - The 4.1 plan text for S1.7 still spells `remote_camera_state`, `RemoteRenderer`, `remote_renderer.py` and
-    `remote_loop_bridge.py`; under Section 8 ruling 19 these are `server_camera_state`, `ServerRenderer`,
-    `server_renderer.py` and `server_loop_bridge.py`.
-- **S1.7:**
-  - State key `server_camera_state` (`SERVER_CAMERA_STATE_KEY` in `app/trame/server_state_publisher.py`). The key is
-    absent until the first camera write. From then on it holds either the record, as the seven camelCase fields
-    `position`, `focalPoint`, `viewUp`, `clippingRange`, `parallelProjection`, `viewAngle`, `parallelScale`, or `None`,
-    which is written when a camera write finds no record (ruling 48). A client must treat absent and `None` alike.
-    Written after every `reset_camera`, `sync_camera` and `set_projection`, including the `load_state` path through
-    `_restore_view_state`, set and flushed on the trame loop thread. Not seeded at construction. S3.3 relies on this.
-  - A client `sync_camera` is echoed back on `server_camera_state`. S3.3's cache must not re-send `sync_camera` on
-    receipt, or it loops.
-  - `ServerRenderer(background_rgb, frame_requester, camera_publisher)` and `VisorServerScene(server, dark_mode,
-    bridge, camera_publisher)`: one more required argument each (ruling 46). `CameraPublisher` is in
-    `renderer/server_renderer.py`; `ServerStatePublisher(async_runner, state)` implements it. `ServerLoopBridge` is
-    unchanged.
-  - S4.1: the `scene_version` bump has the same owner, as a `ServerStatePublisher` method that reads, increments and
-    writes inside one `AsyncRunner.call_soon` callback, so concurrent caller-thread bumps are serialised. Phase plan
-    S4.1 says "through non-blocking `run_coroutine` (Q-1)"; `run_coroutine` raises on the loop thread (Section 3
-    row 4), and `call_soon` replaces it (ruling 27). `VisorVTKServer` holds the publisher where the
-    `_post_scene_change_hook` will be.
-  - VTK 9.7 `ResetCamera` sets the view angle to `30.0` in both modes (measured; ruling 47). A client-chosen view
-    angle does not survive a reset.
-
-
 
