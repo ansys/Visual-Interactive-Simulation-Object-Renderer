@@ -7,6 +7,7 @@ import VisorAppState from '../state/appstate/VisorAppState.tsx';
 import RemoteVtkScene from '../wasm/RemoteVtkScene';
 import { WasmRenderer } from '../renderer/WasmRenderer';
 import { requireWasmAnnotation } from '../renderer/RendererAnnotation';
+import { attachCameraSyncReporter } from '../CameraSyncReporter';
 import { VisorArgs } from './useVisorArgs';
 
 /** What the client-mode hook gives App. */
@@ -21,6 +22,7 @@ export function useClientVtk(visorArgs: VisorArgs): ClientVtk {
     const [schemaMismatchError, setSchemaMismatchError] =
         useState<SchemaVersionMismatchError | null>(null);
     const wasmView = useRef<RemoteVtkScene | null>(null);
+    const cameraSyncRemover = useRef<(() => void) | null>(null);
 
     useEffect(() => {
         (async () => {
@@ -73,28 +75,34 @@ export function useClientVtk(visorArgs: VisorArgs): ClientVtk {
                 requireWasmAnnotation(sceneDetails.vtkInfo.rendererAnnotation),
                 wasmView.current.trameTriggerAsync
             );
+            // Report each settled camera window to the server, from exactly
+            // one renderer.  The `VtkScene` behind both renderers is the same
+            // object across a rebuild, so a subscription left live reports
+            // every later gesture once per surviving renderer, each report
+            // individually valid.  There is deliberately no `await` between
+            // attaching the new reporter and removing the old one, so no
+            // suspension point sees two.
+            const releaseOldReporter = cameraSyncRemover.current;
+            cameraSyncRemover.current = attachCameraSyncReporter(
+                renderer,
+                wasmView.current.trameTriggerAsync
+            );
+            releaseOldReporter?.();
             newFrontend = new VisorFrontend(
                 renderer,
                 sceneDetails.vtkInfo.sceneGraph,
                 sceneDetails.appState.scene,
                 wasmView.current.trameTriggerAsync
             );
-            // Release the frontend being replaced, here and not later: the
-            // `VtkScene` behind both renderers is the same object across a
-            // rebuild, so an unreleased subscription stays live and the next
-            // gesture is reported once per surviving frontend.  There is
-            // deliberately no `await` between the new frontend subscribing (the
-            // constructor above) and the old one releasing, so the window in
-            // which two subscriptions coexist contains no suspension point.
-            if (oldFrontend != null) {
-                oldFrontend.releaseCameraSettledListener();
-            }
 
             if (visorArgs.darkMode != null) {
                 // Explicit Dash prop takes precedence over the server's dark_mode value.
                 sceneDetails.appState.ui.setDarkTheme(visorArgs.darkMode);
             }
             await newFrontend.setAppStateAsync(sceneDetails.appState, false);
+            if (oldFrontend != null) {
+                oldFrontend.release();
+            }
             (window as any).__visorState = newFrontend;
             setSchemaMismatchError(null);
             setVisorFrontend(newFrontend); // rebuild/remount React UI
