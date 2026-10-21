@@ -1,32 +1,43 @@
 export class Panel_TopRight_Util {
     constructor(
-        expandPanel: () => void,
-        collapsePanel: () => void,
-        expandLegend: () => void,
-        collapseLegend: () => void,
+        applyPanelCollapsed: (collapsed: boolean) => void,
+        applyLegendCollapsed: (collapsed: boolean) => void,
+        applyTabIndex: (index: number) => void,
         getIsPanelCollapsed: () => boolean,
         getIsLegendCollapsed: () => boolean,
-        selectTab: (tabIndex: number) => void,
         getTabIndex: () => number,
         refreshSelectionAsync: () => Promise<void>
     ) {
-        this.expandPanel = expandPanel;
-        this.collapsePanel = collapsePanel;
-        this.expandLegend = expandLegend;
-        this.collapseLegend = collapseLegend;
+        this.#applyPanelCollapsed = applyPanelCollapsed;
+        this.#applyLegendCollapsed = applyLegendCollapsed;
+        this.#applyTabIndex = applyTabIndex;
         this.#getIsPanelCollapsed = getIsPanelCollapsed;
         this.#getIsLegendCollapsed = getIsLegendCollapsed;
-        this.selectTab = selectTab;
         this.#getTabIndex = getTabIndex;
         this.refreshSelectionAsync = refreshSelectionAsync;
     }
 
-    readonly collapsePanel: () => void;
-    readonly expandPanel: () => void;
-    readonly collapseLegend: () => void;
-    readonly expandLegend: () => void;
+    readonly #applyPanelCollapsed: (collapsed: boolean) => void;
+    readonly #applyLegendCollapsed: (collapsed: boolean) => void;
+    readonly #applyTabIndex: (index: number) => void;
     readonly #getIsPanelCollapsed: () => boolean;
     readonly #getIsLegendCollapsed: () => boolean;
+    readonly #getTabIndex: () => number;
+
+    /** Collapse or expand the panel; send nothing. */
+    applyPanelCollapsed(collapsed: boolean): void {
+        this.#applyPanelCollapsed(collapsed);
+    }
+
+    /** Collapse or expand the legend overlay; send nothing. */
+    applyLegendCollapsed(collapsed: boolean): void {
+        this.#applyLegendCollapsed(collapsed);
+    }
+
+    /** Select the tab; send nothing.  Other indices do nothing, as today. */
+    applyTabIndex(index: number): void {
+        this.#applyTabIndex(index);
+    }
 
     get isPanelCollapsed() {
         return this.#getIsPanelCollapsed();
@@ -35,9 +46,6 @@ export class Panel_TopRight_Util {
     get isLegendCollapsed() {
         return this.#getIsLegendCollapsed();
     }
-
-    readonly selectTab: (tabIndex: number) => void;
-    readonly #getTabIndex: () => number;
 
     get tabIndex() {
         return this.#getTabIndex();
