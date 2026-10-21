@@ -131,7 +131,7 @@ def test_set_projection_with_no_record_is_a_logged_no_op():
     """
     renderer = NullRenderer()
 
-    with patch("ansys.visor.viewer.renderer.null_renderer.logger") as log:
+    with patch("ansys.visor.viewer.renderer.base.logger") as log:
         renderer.set_projection(True)
 
     assert renderer.get_camera_state() is None

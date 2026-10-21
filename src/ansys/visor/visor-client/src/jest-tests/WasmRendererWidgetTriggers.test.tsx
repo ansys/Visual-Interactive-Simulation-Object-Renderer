@@ -1,7 +1,6 @@
 import { WasmRenderer } from '../renderer/WasmRenderer';
 import type { WasmRendererAnnotation } from '../renderer/RendererAnnotation';
 import type VtkScene from '../wasm/VtkScene';
-import type { VisorSceneNodeExtended } from '../state/VisorSceneGraph.tsx';
 import type { TrameTriggerSender } from '../renderer/IRenderer';
 
 /**
@@ -52,16 +51,19 @@ const FAN_OUT_ACTOR_IDS = [11, 12, 13];
 const PARALLEL = 1;
 const PERSPECTIVE = 0;
 
-function makeAnnotation(): WasmRendererAnnotation {
+/**
+ * The annotation the renderer is built from.
+ *
+ * `EdgesWidget` fans the global toggle out to every node id the annotation
+ * carries, calling the renderer's own per-node `setEdgeVisibilityAsync`. Every
+ * node shares one set of handles: the fan-out is addressed by node id, and
+ * nothing here resolves a pick back to a node.
+ */
+function makeAnnotation(nodeIds: number[] = [NODE_ID]): WasmRendererAnnotation {
+    const handles = { actorId: ACTOR_ID, propertyId: PROPERTY_ID, mapperId: MAPPER_ID };
     return {
         rendererKind: 'wasm',
-        nodes: {
-            [String(NODE_ID)]: {
-                actorId: ACTOR_ID,
-                propertyId: PROPERTY_ID,
-                mapperId: MAPPER_ID,
-            },
-        },
+        nodes: Object.fromEntries(nodeIds.map((id) => [String(id), handles])),
         widgets: {
             orientationWidgetId: ORIENTATION_WIDGET_ID,
             crossSectionPlaneId: PLANE_ID,
@@ -84,7 +86,7 @@ function makeFakeWasmObjects() {
         EdgeVisibilityOff: jest.fn(async () => undefined),
     };
     // Stands in for the plane, the plane representation, the plane widget,
-    // the bounding-box outline and axes actors, and the box algorithm. The
+    // and the bounding-box outline and axes actors. The
     // bounding-box widget queries `GetVisibility` when toggling with no
     // argument, which is the path every test here takes.
     const widget = {
@@ -93,7 +95,6 @@ function makeFakeWasmObjects() {
         Off: jest.fn(async () => undefined),
         GetVisibility: jest.fn(async () => 0),
         SetVisibility: jest.fn(async () => undefined),
-        SetBounds: jest.fn(async () => undefined),
         // Distinctive hand-written literals. They stand in for the
         // *representation's* origin and normal, and they are deliberately
         // nothing any default would produce, so a payload carrying them can
@@ -113,26 +114,10 @@ function makeFakeWasmObjects() {
     return { actor, property, widget, orientationWidget };
 }
 
-/**
- * A scene-graph stand-in for `attachSceneGraph`.
- *
- * `EdgesWidget` enumerates `descendantActorNodesOrSelfArray` and calls the
- * renderer's own per-actor `setEdgeVisibilityAsync` for each node's `id`;
- * `BoundingBoxWidget` enumerates the same array when recomputing bounds.
- * Neither is the subject of the send tests -- what those pin is the *send*
- * that follows the local write, and they pass an empty actor list so the
- * fan-out reaches nothing.
- */
-function makeSceneGraphDouble(actorIds: number[] = []) {
-    return {
-        descendantActorNodesOrSelfArray: actorIds.map((id) => ({ id })),
-    };
-}
-
 async function makeRenderer(
     sender: TrameTriggerSender | null,
     parallelProjection: number = PERSPECTIVE,
-    actorIds: number[] = []
+    nodeIds: number[] = [NODE_ID]
 ) {
     const objects = makeFakeWasmObjects();
     const camera = {
@@ -164,12 +149,10 @@ async function makeRenderer(
     };
     const renderer = await WasmRenderer.createAsync(
         scene as unknown as VtkScene,
-        makeAnnotation(),
+        makeAnnotation(nodeIds),
         sender
     );
-    const sceneGraph = makeSceneGraphDouble(actorIds);
-    renderer.attachSceneGraph(sceneGraph as unknown as VisorSceneNodeExtended);
-    return { renderer, camera, scene, sceneGraph, ...objects };
+    return { renderer, camera, scene, ...objects };
 }
 
 /** A sender that records its calls and resolves. */
