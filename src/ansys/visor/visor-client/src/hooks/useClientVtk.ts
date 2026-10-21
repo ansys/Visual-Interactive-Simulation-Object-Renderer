@@ -1,13 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { VisorFrontend } from '../VisorFrontend.tsx';
-import VisorSceneDetails, {
-    SchemaVersionMismatchError,
-} from '../state/appstate/VisorSceneDetails.tsx';
+import { SchemaVersionMismatchError } from '../state/appstate/VisorSceneDetails.tsx';
 import VisorAppState from '../state/appstate/VisorAppState.tsx';
 import RemoteVtkScene from '../wasm/RemoteVtkScene';
 import { WasmRenderer } from '../renderer/WasmRenderer';
 import { requireWasmAnnotation } from '../renderer/RendererAnnotation';
 import { attachCameraSyncReporter } from '../CameraSyncReporter';
+import { buildFrontendAsync } from '../buildFrontendAsync';
 import { VisorArgs } from './useVisorArgs';
 
 /** What the client-mode hook gives App. */
@@ -60,9 +59,34 @@ export function useClientVtk(visorArgs: VisorArgs): ClientVtk {
             const sceneDetailsJson = await wasmView.current.trameTriggerAsync(
                 'get_visor_scene_details_json'
             );
-            let sceneDetails: VisorSceneDetails;
+            const wasm = wasmView.current;
             try {
-                sceneDetails = new VisorSceneDetails(sceneDetailsJson);
+                newFrontend = await buildFrontendAsync(
+                    sceneDetailsJson,
+                    async (sceneDetails) => {
+                        const renderer = await WasmRenderer.createAsync(
+                            wasm.vtkScene,
+                            requireWasmAnnotation(sceneDetails.vtkInfo.rendererAnnotation),
+                            wasm.trameTriggerAsync
+                        );
+                        // Report each settled camera window to the server, from exactly
+                        // one renderer.  The `VtkScene` behind both renderers is the same
+                        // object across a rebuild, so a subscription left live reports
+                        // every later gesture once per surviving renderer, each report
+                        // individually valid.  There is deliberately no `await` between
+                        // attaching the new reporter and removing the old one, so no
+                        // suspension point sees two.
+                        const releaseOldReporter = cameraSyncRemover.current;
+                        cameraSyncRemover.current = attachCameraSyncReporter(
+                            renderer,
+                            wasm.trameTriggerAsync
+                        );
+                        releaseOldReporter?.();
+                        return renderer;
+                    },
+                    wasm.trameTriggerAsync,
+                    visorArgs.darkMode
+                );
             } catch (err) {
                 if (err instanceof SchemaVersionMismatchError) {
                     setSchemaMismatchError(err);
@@ -70,36 +94,6 @@ export function useClientVtk(visorArgs: VisorArgs): ClientVtk {
                 }
                 throw err;
             }
-            const renderer = await WasmRenderer.createAsync(
-                wasmView.current.vtkScene,
-                requireWasmAnnotation(sceneDetails.vtkInfo.rendererAnnotation),
-                wasmView.current.trameTriggerAsync
-            );
-            // Report each settled camera window to the server, from exactly
-            // one renderer.  The `VtkScene` behind both renderers is the same
-            // object across a rebuild, so a subscription left live reports
-            // every later gesture once per surviving renderer, each report
-            // individually valid.  There is deliberately no `await` between
-            // attaching the new reporter and removing the old one, so no
-            // suspension point sees two.
-            const releaseOldReporter = cameraSyncRemover.current;
-            cameraSyncRemover.current = attachCameraSyncReporter(
-                renderer,
-                wasmView.current.trameTriggerAsync
-            );
-            releaseOldReporter?.();
-            newFrontend = new VisorFrontend(
-                renderer,
-                sceneDetails.vtkInfo.sceneGraph,
-                sceneDetails.appState.scene,
-                wasmView.current.trameTriggerAsync
-            );
-
-            if (visorArgs.darkMode != null) {
-                // Explicit Dash prop takes precedence over the server's dark_mode value.
-                sceneDetails.appState.ui.setDarkTheme(visorArgs.darkMode);
-            }
-            await newFrontend.setAppStateAsync(sceneDetails.appState, false);
             if (oldFrontend != null) {
                 oldFrontend.release();
             }
