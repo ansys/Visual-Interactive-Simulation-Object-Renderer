@@ -47,6 +47,8 @@ T4. THe npm and npx PowerShell shims are blocked by the execution policy; call n
 7. Plan first, no code in the same turn.  Wait for approval.
 7a. Write the approved plan in one turn.  Do not re-read a file already read in this session, except the rule-8
    re-read before the gate.
+7b. Never call the ask_user tool.  Every question goes in the response text as a proposed ruling, with its
+   recommendation and the alternative it rejects, and the turn ends there.  A stop condition is reported the same way.
 8. Full re-read of every touched file before the gate.  Edits here silently fail to persist; cross-check with
 `grep_search`, since `read_file` has reported edits that were not applied.  
 8a. The editing tools destroy files, and `insert_edit_into_file` is not a safe fallback.  Both it and
