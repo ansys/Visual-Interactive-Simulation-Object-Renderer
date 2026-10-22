@@ -6,6 +6,7 @@
  * remote one.
  */
 import CameraGestureTracker from './CameraGestureTracker.js';
+import { MouseButtonState } from '../input/MouseButtonState';
 
 export default class VtkScene {
     /**
@@ -421,12 +422,7 @@ export default class VtkScene {
 
         /**@type{boolean}*/
         let eventFiring = false;
-        /**@type{boolean}*/
-        let mouseLeftDown = false;
-        /**@type{boolean}*/
-        let mouseMiddleDown = false;
-        /**@type{boolean}*/
-        let mouseRightDown = false;
+        const buttons = new MouseButtonState();
 
         /**
          * @param {MouseEvent} e
@@ -453,29 +449,18 @@ export default class VtkScene {
             }
             try {
                 eventFiring = true;
-                if (e.button === 0) {
-                    mouseLeftDown = down;
-                } else if (e.button === 1) {
-                    mouseMiddleDown = down;
-                } else if (e.button === 2) {
-                    mouseRightDown = down;
-                }
+                buttons.setButton(e.button, down);
                 canvas.dispatchEvent(new MouseEvent('mouseup', getEventDict(e, 0)));
                 canvas.dispatchEvent(new MouseEvent('mouseup', getEventDict(e, 1)));
                 canvas.dispatchEvent(new MouseEvent('mouseup', getEventDict(e, 2)));
-                if (mouseLeftDown && mouseRightDown) {
-                    canvas.dispatchEvent(new MouseEvent('mousedown', getEventDict(e, 1)));
-                    e.stopPropagation();
-                } else if (mouseRightDown) {
-                    canvas.dispatchEvent(new MouseEvent('mousedown', getEventDict(e, 2)));
-                    e.stopPropagation();
-                } else if (mouseLeftDown) {
-                    canvas.dispatchEvent(new MouseEvent('mousedown', getEventDict(e, 0)));
-                    // don't call e.stopPropagation() here because we need to
-                    // send the left-mouse-button event to the VTK canvas.
-                } else if (mouseMiddleDown) {
-                    canvas.dispatchEvent(new MouseEvent('mousedown', getEventDict(e, 0)));
-                    e.stopPropagation();
+                const effective = buttons.effectiveButton();
+                if (effective != null) {
+                    canvas.dispatchEvent(new MouseEvent('mousedown', getEventDict(e, effective)));
+                    // While left drives button 0 the event goes on to the VTK
+                    // canvas (and to the picker); every other combination stops it.
+                    if (effective !== 0 || !buttons.isDown(0)) {
+                        e.stopPropagation();
+                    }
                 }
             } finally {
                 eventFiring = false;
