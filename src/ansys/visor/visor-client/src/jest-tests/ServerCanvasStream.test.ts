@@ -131,4 +131,16 @@ describe('ServerCanvas stream', () => {
 
         expect(session.call).not.toHaveBeenCalled();
     });
+
+    test('a resize listener hears each non-zero element size and no zero one', () => {
+        const session = makeSession();
+        const canvas = new ServerCanvas(session, 'view');
+        const listener = jest.fn();
+        canvas.addResizeListener(listener);
+
+        observeSize(0, 300);
+        observeSize(400, 300);
+
+        expect(listener).toHaveBeenCalledTimes(1);
+    });
 });
