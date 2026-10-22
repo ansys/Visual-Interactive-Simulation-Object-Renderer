@@ -39,6 +39,9 @@ if TYPE_CHECKING:
 
 logger = VisorDefaultLogger(__name__)
 
+PART_PICK_TOLERANCE: float = 0.005
+"""Cell-picker tolerance, as a fraction of the render-window diagonal."""
+
 
 class VtkPipelineRenderer(IRenderer):
     """Owns the VTK renderer, window, interactor, widgets and per-node pipelines, and writes part, camera and widget state through them."""
@@ -427,6 +430,33 @@ class VtkPipelineRenderer(IRenderer):
         self._bounding_box_widget.update_node_count(count)
 
     # ------------------------------------------------------------------
+    # Part picking
+    # ------------------------------------------------------------------
+
+    def pick_part_at(self, x: int, y: int) -> int | None:
+        """Return the node id of the part under a render-window pixel, origin bottom-left, or None.
+
+        *x* and *y* are render-window device pixels.  Only part actors are
+        pickable: the pick list holds every registered pipeline's actor and
+        nothing else, so the bounding-box outline and the widgets never hide a
+        part behind them.  A software ray cast; it does not render.  Takes no
+        lock: the caller holds the scene lock, as for every other method.
+        """
+        picker = vtkCellPicker()
+        picker.SetTolerance(PART_PICK_TOLERANCE)
+        picker.InitializePickList()
+        for pipe in self._pipelines.values():
+            picker.AddPickList(pipe.actor)
+        picker.PickFromListOn()
+        if not picker.Pick(x, y, 0, self._vtk_renderer):
+            return None
+        picked_actor = picker.GetActor()
+        for node_id, pipe in self._pipelines.items():
+            if pipe.actor is picked_actor:
+                return node_id
+        return None
+
+    # ------------------------------------------------------------------
     # Internal init helpers
     # ------------------------------------------------------------------
 
@@ -441,7 +471,7 @@ class VtkPipelineRenderer(IRenderer):
         interactor.SetInteractorStyle(vtkInteractorStyleTrackballCamera())
         # vtkCellPicker so GetCellId() is available on the WASM side.
         cell_picker = vtkCellPicker()
-        cell_picker.SetTolerance(0.005)
+        cell_picker.SetTolerance(PART_PICK_TOLERANCE)
         interactor.SetPicker(cell_picker)
         return interactor
 
