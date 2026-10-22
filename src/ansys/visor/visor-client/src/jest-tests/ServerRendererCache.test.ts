@@ -53,6 +53,7 @@ function stubCanvas(): IServerCanvas {
         frameSize: null,
         addFrameListener: () => () => {},
         addClickListener: () => () => {},
+        addResizeListener: () => () => {},
     };
 }
 
@@ -117,5 +118,48 @@ describe('ServerRenderer camera cache', () => {
         await expect(renderer.getCameraStateAsync()).rejects.toMatchObject({
             name: 'CameraStateUnavailableError',
         });
+    });
+});
+
+describe('ServerRenderer canvas resize', () => {
+    let originalDevicePixelRatio: number;
+
+    beforeEach(() => {
+        originalDevicePixelRatio = window.devicePixelRatio;
+        Object.defineProperty(window, 'devicePixelRatio', { configurable: true, value: 1.5 });
+    });
+
+    afterEach(() => {
+        Object.defineProperty(window, 'devicePixelRatio', {
+            configurable: true,
+            value: originalDevicePixelRatio,
+        });
+    });
+
+    test('a canvas resize gives camera listeners the snapshot at the truncated device-pixel height', () => {
+        const element = document.createElement('div');
+        Object.defineProperty(element, 'clientHeight', { configurable: true, value: 100 });
+        const resizeListeners: (() => void)[] = [];
+        const canvas: IServerCanvas = {
+            element,
+            frameSize: null,
+            addFrameListener: () => () => {},
+            addClickListener: () => () => {},
+            addResizeListener: (callback) => {
+                resizeListeners.push(callback);
+                return () => {};
+            },
+        };
+        const state = new FakeState(cameraRecord([0, 0, 9], [0, 0, 0]));
+        const renderer = new ServerRenderer(canvas, state as ServerStateSource, jest.fn());
+        const listener = jest.fn();
+        renderer.addCameraChangedListener(listener);
+        Object.defineProperty(element, 'clientHeight', { configurable: true, value: 301 });
+
+        resizeListeners.forEach((callback) => callback());
+
+        expect(listener).toHaveBeenCalledTimes(1);
+        expect(listener.mock.calls[0][0].viewPortHeight).toBe(451);
+        expect(listener.mock.calls[0][0].unitsPerPixel).toBeCloseTo(0.004434589800443459, 12);
     });
 });

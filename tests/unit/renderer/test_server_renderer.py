@@ -205,6 +205,12 @@ def test_set_viewport_size_resizes_window(renderer):
     assert renderer.render_window.GetSize() == (64, 48)
 
 
+def test_set_viewport_size_fits_orientation_widget(renderer):
+    renderer.set_viewport_size(1200, 700)
+    representation = renderer._orientation_widget._VisorOrientationWidget__widget.GetRepresentation()
+    assert representation.GetSize() == (105, 105)
+
+
 def test_set_background_rgb_sets_vtk_background(renderer):
     renderer.set_background_rgb((0.25, 0.5, 0.75))
     assert renderer._vtk_renderer.GetBackground() == (0.25, 0.5, 0.75)

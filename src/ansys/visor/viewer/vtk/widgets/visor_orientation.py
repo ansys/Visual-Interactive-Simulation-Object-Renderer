@@ -9,6 +9,9 @@ from ansys.visor.viewer.core.visor_logging import VisorDefaultLogger
 
 logger = VisorDefaultLogger(__name__)
 
+SIZE_FRACTION: float = 0.15
+"""Widget edge as a fraction of the window's shorter side."""
+
 
 class VisorOrientationWidget:
     """
@@ -20,6 +23,7 @@ class VisorOrientationWidget:
 
     Methods:
         register_with_local_view(local_view)
+        fit_to_window(width, height)
 
     Properties:
         is_on (bool): Whether the widget is on or not.
@@ -46,6 +50,16 @@ class VisorOrientationWidget:
     def is_on(self):
         """Return whether the widget is on or not."""
         return self.__widget.GetEnabled() == 1
+
+    def fit_to_window(self, width: int, height: int) -> None:
+        """Size the widget to SIZE_FRACTION of the window's shorter side, in render-window pixels."""
+        size = self.size_for_window(width, height)
+        self.__widget.GetRepresentation().SetSize(size, size)
+
+    @staticmethod
+    def size_for_window(width: int, height: int) -> int:
+        """Square edge for a window of this size, rounded half up."""
+        return int(min(width, height) * SIZE_FRACTION + 0.5)
 
     def register_with_local_view(self, local_view: LocalView):
         """Register the widget with the local view."""
