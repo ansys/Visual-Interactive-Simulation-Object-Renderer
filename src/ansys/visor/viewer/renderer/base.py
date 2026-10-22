@@ -9,7 +9,7 @@ without touching scene coordination.
 
 Contract covers node lifecycle, per-part visual mutations,
 camera, widget control (cross-section, bounding box, edges), widget fan-out
-(scene bounds, actor count), picking, and render.
+(scene bounds, actor count), and render.
 
 """
 
@@ -297,44 +297,6 @@ class IRenderer(ABC):
     def update_actor_count(self, count: int) -> None:
         """Propagate the current part-node count to widgets."""
 
-    # ------------------------------------------------------------------------
-    # Picking
-    # ------------------------------------------------------------------------
-
-    @abstractmethod
-    def pick_geometry(
-        self,
-        actor_wasm_id: int,
-        cell_id: int,
-        mode: str,
-        world_pos: tuple[float, float, float],
-    ) -> dict:
-        """
-        Resolve a client-initiated pick event to a sub-geometry payload.
-
-        The renderer resolves the client-supplied opaque actor identifier to
-        an internal actor; the coordinator never performs that resolution.
-
-        Parameters
-        ----------
-        actor_wasm_id:
-            Client-supplied opaque actor identifier from the wasm-side picker.
-        cell_id:
-            Cell index within the picked actor's mapper dataset.
-        mode:
-            ``"vertex" | "edge" | "face"``.
-        world_pos:
-            World-space pick position from the client picker, used to select
-            the nearest vertex/edge for multi-vertex/edge cells.
-
-        Returns
-        -------
-        dict
-            Backend-neutral pick result. Always contains ``"found": bool``.
-            When ``found`` is ``True``, contains ``"mode"`` and mode-specific
-            fields (``position`` / ``pointA``+``pointB``+``length`` /
-            ``points``+``area``).
-        """
 
     # ------------------------------------------------------------------------
     # Render

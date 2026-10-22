@@ -341,7 +341,7 @@ class TestNodeLifecycle:
         mock_pipe = MagicMock(name="pipeline")
 
         with patch(
-            "ansys.visor.viewer.renderer.local_renderer.VtkNodePipeline.from_dataset",
+            "ansys.visor.viewer.renderer.pipeline_renderer.VtkNodePipeline.from_dataset",
             return_value=mock_pipe,
         ) as mock_from_ds:
             renderer.register_node(node, dataset)
@@ -355,7 +355,7 @@ class TestNodeLifecycle:
         mock_pipe = MagicMock(name="pipeline")
 
         with patch(
-            "ansys.visor.viewer.renderer.local_renderer.VtkNodePipeline.from_dataset",
+            "ansys.visor.viewer.renderer.pipeline_renderer.VtkNodePipeline.from_dataset",
             return_value=mock_pipe,
         ):
             renderer.register_node(node, MagicMock())
@@ -369,7 +369,7 @@ class TestNodeLifecycle:
         mock_pipe = MagicMock(name="pipeline")
 
         with patch(
-            "ansys.visor.viewer.renderer.local_renderer.VtkNodePipeline.from_dataset",
+            "ansys.visor.viewer.renderer.pipeline_renderer.VtkNodePipeline.from_dataset",
             return_value=mock_pipe,
         ):
             renderer.register_node(node, MagicMock())
@@ -385,7 +385,7 @@ class TestNodeLifecycle:
         mock_pipe = MagicMock(name="pipeline")
 
         with patch(
-            "ansys.visor.viewer.renderer.local_renderer.VtkNodePipeline.from_dataset",
+            "ansys.visor.viewer.renderer.pipeline_renderer.VtkNodePipeline.from_dataset",
             return_value=mock_pipe,
         ):
             renderer.register_node(node, MagicMock())
@@ -399,7 +399,7 @@ class TestNodeLifecycle:
         mock_pipe = MagicMock(name="pipeline")
 
         with patch(
-            "ansys.visor.viewer.renderer.local_renderer.VtkNodePipeline.from_dataset",
+            "ansys.visor.viewer.renderer.pipeline_renderer.VtkNodePipeline.from_dataset",
             return_value=mock_pipe,
         ):
             renderer.register_node(node, MagicMock())
@@ -413,7 +413,7 @@ class TestNodeLifecycle:
         mock_pipe = MagicMock(name="pipeline")
 
         with patch(
-            "ansys.visor.viewer.renderer.local_renderer.VtkNodePipeline.from_dataset",
+            "ansys.visor.viewer.renderer.pipeline_renderer.VtkNodePipeline.from_dataset",
             return_value=mock_pipe,
         ) as mock_from_ds:
             renderer.register_node(node, MagicMock())
@@ -460,7 +460,7 @@ class TestNodeLifecycle:
         mock_pipe = MagicMock(name="pipeline")
 
         with patch(
-            "ansys.visor.viewer.renderer.local_renderer.VtkNodePipeline.from_dataset",
+            "ansys.visor.viewer.renderer.pipeline_renderer.VtkNodePipeline.from_dataset",
             return_value=mock_pipe,
         ):
             renderer.register_node(node, MagicMock())
@@ -526,7 +526,7 @@ class TestGlobalEdgeVisibility:
         renderer._pipelines.clear()
 
         with patch(
-            "ansys.visor.viewer.renderer.local_renderer.logger"
+            "ansys.visor.viewer.renderer.pipeline_renderer.logger"
         ) as mock_logger:
             assert renderer.set_edges_visible(True) is None
 
@@ -586,7 +586,7 @@ class TestDelegatedApplyBodies:
         renderer._pipelines[4] = pipe
 
         with patch(
-            "ansys.visor.viewer.renderer.local_renderer.logger"
+            "ansys.visor.viewer.renderer.pipeline_renderer.logger"
         ) as mock_logger:
             renderer.apply_visibility(9999, False)  # must not raise
 
@@ -612,7 +612,7 @@ class TestDelegatedApplyBodies:
         renderer._pipelines[4] = pipe
 
         with patch(
-            "ansys.visor.viewer.renderer.local_renderer.logger"
+            "ansys.visor.viewer.renderer.pipeline_renderer.logger"
         ) as mock_logger:
             renderer.apply_opacity(9999, 0.25)  # must not raise
 
@@ -638,7 +638,7 @@ class TestDelegatedApplyBodies:
         renderer._pipelines[4] = pipe
 
         with patch(
-            "ansys.visor.viewer.renderer.local_renderer.logger"
+            "ansys.visor.viewer.renderer.pipeline_renderer.logger"
         ) as mock_logger:
             renderer.apply_diffuse_color(9999, 1.0, 0.0, 0.0)  # must not raise
 
@@ -664,7 +664,7 @@ class TestDelegatedApplyBodies:
         renderer._pipelines[4] = pipe
 
         with patch(
-            "ansys.visor.viewer.renderer.local_renderer.logger"
+            "ansys.visor.viewer.renderer.pipeline_renderer.logger"
         ) as mock_logger:
             renderer.apply_selected(9999, True, [1.0, 0.0, 0.0])  # must not raise
 
@@ -694,7 +694,7 @@ class TestDelegatedApplyBodies:
         renderer._pipelines[4] = pipe
 
         with patch(
-            "ansys.visor.viewer.renderer.local_renderer.logger"
+            "ansys.visor.viewer.renderer.pipeline_renderer.logger"
         ) as mock_logger:
             renderer.apply_color_variable(
                 9999, VisorVtkVariableType.POINT, "pressure", 1, 0.0, 7.5
@@ -750,7 +750,7 @@ class TestDelegatedApplyBodies:
         renderer._pipelines[4] = pipe
 
         with patch(
-            "ansys.visor.viewer.renderer.local_renderer.logger"
+            "ansys.visor.viewer.renderer.pipeline_renderer.logger"
         ) as mock_logger:
             renderer.clear_color_variable(9999)  # must not raise
 
