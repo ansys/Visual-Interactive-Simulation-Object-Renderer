@@ -4,7 +4,7 @@ export type NodeId = number;
 /**
  * Renderer-agnostic camera snapshot. Superset of what UI panels read and what
  * getAppStateAsync/setAppStateAsync round-trip. Every field is a plain value
- * so a RemoteRenderer can cache and serve it without querying a wasm object.
+ * so a ServerRenderer can cache and serve it without querying a wasm object.
  */
 export type VisorCameraState = Readonly<{
     // Derived display properties (UI panels, camera-changed listeners)
@@ -77,7 +77,7 @@ export interface IRenderer {
     // ---- Canvas / lifecycle -------------------------------------------------
     /** DOM element hosting the render output (canvas + overlay). */
     readonly domElement: HTMLDivElement;
-    /** Kick a frame flush. Wasm: wasm.update() + Render(). Remote: no-op / RPC. */
+    /** Kick a frame flush. Wasm: wasm.update() + Render(). Server: no-op. */
     renderAsync(): Promise<void>;
     /** Resize output to its container. Call after container size changes. */
     resizeAsync(): Promise<void>;
