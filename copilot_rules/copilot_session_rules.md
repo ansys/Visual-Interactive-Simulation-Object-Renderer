@@ -49,6 +49,9 @@ T4. THe npm and npx PowerShell shims are blocked by the execution policy; call n
    re-read before the gate.
 7b. Never call the ask_user tool.  Every question goes in the response text as a proposed ruling, with its
    recommendation and the alternative it rejects, and the turn ends there.  A stop condition is reported the same way.
+7c. End every plan-first response wtih "Rulings needed": a numbered list continuing the plan's numbering. 
+    Each item is a title, one or two lines of context, "Recommended:" and "Rejected:" with a one-line reason each.
+    Nothing that needs a ruling appears only in the body.
 8. Full re-read of every touched file before the gate.  Edits here silently fail to persist; cross-check with
 `grep_search`, since `read_file` has reported edits that were not applied.  
 8a. The editing tools destroy files, and `insert_edit_into_file` is not a safe fallback.  Both it and
