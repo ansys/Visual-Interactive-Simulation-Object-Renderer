@@ -90,6 +90,16 @@ class ServerRenderer(VtkPipelineRenderer):
         self._background_rgb = background_rgb
         self._vtk_renderer.SetBackground(background_rgb)
 
+    def record_pipeline_camera(self) -> None:
+        """Record the pipeline camera through the ``sync_camera`` step and publish it.
+
+        The step is :meth:`sync_camera`'s without its frame request: the
+        caller is producing a frame already.  Takes no lock; the caller holds
+        the scene lock.
+        """
+        self._write_camera(self._read_pipeline_camera())
+        self._publish_camera_record()
+
     # ------------------------------------------------------------------
     # IRenderer: wire contract
     # ------------------------------------------------------------------
@@ -152,8 +162,12 @@ class ServerRenderer(VtkPipelineRenderer):
         self._frame_requester.request_frame()
 
     def _publish_camera(self) -> None:
-        """Request a frame from the written camera, then publish the camera record."""
+        """Publish the camera record, then request a frame from the written camera."""
+        self._publish_camera_record()
         self._frame_requester.request_frame()
+
+    def _publish_camera_record(self) -> None:
+        """Hand the camera record to the camera publisher; requests no frame."""
         self._camera_publisher.publish_camera(self.get_camera_state())
 
     def _publish_cross_section(self) -> None:

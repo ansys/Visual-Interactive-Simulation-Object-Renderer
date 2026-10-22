@@ -289,14 +289,21 @@ class VtkPipelineRenderer(IRenderer):
     def sync_camera(self, camera_state: "VisorCameraState") -> None:
         """See :meth:`IRenderer.sync_camera`; then project onto the pipeline camera.
 
-        Records through ``super()`` before projecting, so a raising VTK setter
-        still leaves the record holding what the caller asked for.  Ends with
-        :meth:`_publish_camera`, after the projection.  Does not
-        notify the client.
+        Records and projects through :meth:`_write_camera`, then ends with
+        :meth:`_publish_camera`, after the projection.  Does not notify the
+        client.
+        """
+        self._write_camera(camera_state)
+        self._publish_camera()
+
+    def _write_camera(self, camera_state: "VisorCameraState") -> None:
+        """Record *camera_state* through :meth:`IRenderer.sync_camera`, then project it onto the pipeline camera; publishes nothing.
+
+        Records before projecting, so a raising VTK setter still leaves the
+        record holding what the caller asked for.
         """
         super().sync_camera(camera_state)
         self._apply_to_pipeline_camera(camera_state)
-        self._publish_camera()
 
     def set_projection(self, parallel: bool) -> None:
         """See :meth:`IRenderer.set_projection`; then apply it to the pipeline camera.
