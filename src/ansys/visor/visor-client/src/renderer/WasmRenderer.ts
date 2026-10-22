@@ -14,6 +14,7 @@ import { CrossSectionWidget } from '../widgets/crossSectionWidget.ts';
 import { BoundingBoxWidget } from '../widgets/boundingBoxWidget.ts';
 import { OrthographicWidget } from '../widgets/orthographicWidget.ts';
 import { EdgesWidget } from '../widgets/edgesWidget.ts';
+import { OrientationWidget } from '../widgets/orientationWidget.ts';
 import { SceneTriggerSends } from './SceneTriggerSends';
 
 const SELECTION_TINT_RGB: Readonly<number[]> = [0 / 255, 62 / 255, 111 / 255];
@@ -59,6 +60,10 @@ export class WasmRenderer implements IRenderer {
             outlineQueryId: annotation.widgets.boundingBoxOutlineActorId,
         });
         this.#edgesWidget = new EdgesWidget(this);
+        this.#orientationWidget = new OrientationWidget(
+            vtkScene,
+            annotation.widgets.orientationWidgetId
+        );
 
         const planeWidget = vtkScene.getVtkObject(wasmPlaneWidgetId);
         planeWidget.observe('InteractionEvent', this.#crossSectionWidget.interactionHandler);
@@ -150,6 +155,7 @@ export class WasmRenderer implements IRenderer {
     readonly #orthographicWidget: OrthographicWidget;
     readonly #boundingBoxWidget: BoundingBoxWidget;
     readonly #edgesWidget: EdgesWidget;
+    readonly #orientationWidget: OrientationWidget;
 
     // ---- Canvas / lifecycle -------------------------------------------------
     readonly domElement: HTMLDivElement;
@@ -160,6 +166,7 @@ export class WasmRenderer implements IRenderer {
 
     async resizeAsync(): Promise<void> {
         await this.#vtkScene.resizeAsync();
+        await this.#orientationWidget.fitToWindowAsync();
         this.#vtkScene.render();
     }
 
