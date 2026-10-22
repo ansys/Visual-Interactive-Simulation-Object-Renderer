@@ -12,7 +12,6 @@ import { IRenderer, VisorCameraState } from './renderer/IRenderer';
 import type { TrameTriggerSender } from './renderer/IRenderer';
 import { Panel_TopRight_Util } from './components/ui-panels/Panel_TopRight_Util.tsx';
 import { Panel_TopLeft_Util } from './components/ui-panels/Panel_TopLeft_Util.tsx';
-import { OrientationWidget } from './widgets/orientationWidget.ts';
 import { FullscreenWidget } from './widgets/fullscreenWidget.ts';
 import { UiScaffoldUtil } from './components/UiScaffold.tsx';
 
@@ -62,8 +61,6 @@ export class VisorFrontend {
         // use "void" here to suppress the "no await" IDE warning
         // void orientationWidget.SetShouldResetCamera(false);
 
-        // const orientationWidget = new OrientationWidget(vtkScene, vtkInfo.orientationWidgetWasmId);
-
         let themeDarkCss: string | null | undefined = null;
         let themeLightCss: string | null | undefined = null;
         let themeStyleElem: HTMLStyleElement | null | undefined = null;
@@ -79,7 +76,6 @@ export class VisorFrontend {
         };
         this.resizeAsync = async () => {
             await renderer.resizeAsync();
-            // await orientationWidget.resizeAsync();
         };
         this.domElement = renderer.domElement;
         this.getCameraStateAsync = () => renderer.getCameraStateAsync();
