@@ -12,8 +12,8 @@ before the first), asks for a retry, and keeps the deferred size and events for
 the next frame that gets the lock.
 
 A forwarded batch that ends a gesture (a button release or a wheel step) has
-the renderer record and publish the pipeline camera once, in the same locked
-section, after the batch.
+the renderer record and publish the pipeline camera, and record a dragged
+cross-section plane, once, in the same locked section, after the batch.
 """
 
 from __future__ import annotations
@@ -114,6 +114,7 @@ class VisorRcaWindow:
     def _record_gesture_end(self) -> None:
         """Record and publish what a finished gesture changed; caller holds the lock."""
         self._renderer.record_pipeline_camera()
+        self._renderer.record_cross_section_plane()
 
     def _placeholder(self) -> tuple[NDArray, int, int]:
         """A frame of the renderer's background at the last recorded size, (300, 300) before any."""
