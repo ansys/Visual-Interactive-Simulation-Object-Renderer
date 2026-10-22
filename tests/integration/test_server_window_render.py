@@ -133,3 +133,57 @@ def test_drag_publishes_camera_at_release_only(window, publisher):
     window.img_cols_rows
     assert len(publisher.cameras) == 1
 
+
+# ---------------------------------------------------------------------------
+# A cross-section drag moves the clip plane and records it at gesture end
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def plane_window(renderer, requester) -> VisorRcaWindow:
+    """The sphere scene with the widget placed on its bounds and turned on; one frame drawn, requests cleared."""
+    renderer.update_bounds([-0.5, 0.5, -0.5, 0.5, -0.5, 0.5])
+    renderer.set_cross_section_visibility(True)
+    w = VisorRcaWindow(VtkRemoteControlledArea(renderer.render_window), renderer, threading.RLock(), lambda: None)
+    w.img_cols_rows
+    requester.count = 0
+    return w
+
+
+def _drag_plane_handle(window: VisorRcaWindow) -> None:
+    """Press on the plane's normal arrow at the view centre and move up, then draw a frame; no release."""
+    window.process_interaction_event(_event("LeftButtonPress", 150, 150))
+    for step in range(1, 6):
+        window.process_interaction_event(_event("MouseMove", 150, 150 + 15 * step))
+    window.img_cols_rows
+
+
+def _release_plane_handle(window: VisorRcaWindow) -> None:
+    window.process_interaction_event(_event("LeftButtonRelease", 150, 225))
+    window.img_cols_rows
+
+
+def test_plane_drag_moves_clip_plane_before_release(plane_window, renderer):
+    _drag_plane_handle(plane_window)
+    assert renderer._cross_section_widget.plane.GetNormal() != (0.0, 0.0, 1.0)
+
+
+def test_plane_drag_records_plane_at_release_only(plane_window, renderer):
+    _drag_plane_handle(plane_window)
+    assert renderer.get_cross_section_plane().normal == [0.0, 0.0, 1.0]
+    _release_plane_handle(plane_window)
+    assert renderer.get_cross_section_plane().normal != [0.0, 0.0, 1.0]
+
+
+def test_plane_drag_release_requests_no_frame(plane_window, requester):
+    _drag_plane_handle(plane_window)
+    _release_plane_handle(plane_window)
+    assert requester.count == 0
+
+
+def test_gesture_before_bounds_leaves_plane_seed(window, renderer):
+    window.process_interaction_event(_event("MouseWheel", 150, 150, spinY=1))
+    window.img_cols_rows
+    renderer.update_bounds([-0.5, 0.5, -0.5, 0.5, -0.5, 0.5])
+    assert renderer.get_cross_section_plane().origin == [0.0, 0.0, -0.625]
+

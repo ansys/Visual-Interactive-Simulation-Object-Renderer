@@ -63,6 +63,7 @@ class ServerRenderer(VtkPipelineRenderer):
         self._camera_publisher = camera_publisher
         self._bounding_box_visible = False
         super().__init__()
+        self._cross_section_widget.link_plane_to_handle()
 
     # ------------------------------------------------------------------
     # Server-only surface
@@ -98,6 +99,21 @@ class ServerRenderer(VtkPipelineRenderer):
         """
         self._write_camera(self._read_pipeline_camera())
         self._publish_camera_record()
+
+    def record_cross_section_plane(self) -> None:
+        """Record a dragged clip plane through the ``sync_cross_section_plane`` step; requests no frame.
+
+        Does nothing when no drag step ran since the last call.  Reads the
+        clip plane, not the handle: the handle clamps its origin to the widget
+        bounds and normalises its normal, so reading it would rewrite a loaded
+        plane that no drag touched.  Nothing is published: the plane's only
+        publish is a frame request, and the caller is producing a frame
+        already.  Takes no lock; the caller holds the scene lock.
+        """
+        if not self._cross_section_widget.take_handle_moved():
+            return
+        plane = self._cross_section_widget.plane
+        self._write_cross_section(list(plane.GetOrigin()), list(plane.GetNormal()))
 
     # ------------------------------------------------------------------
     # IRenderer: wire contract
