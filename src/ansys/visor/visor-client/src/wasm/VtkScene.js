@@ -7,6 +7,7 @@
  */
 import CameraGestureTracker from './CameraGestureTracker.js';
 import { MouseButtonState } from '../input/MouseButtonState';
+import { ViewerClickDispatcher } from '../input/ViewerClickDispatcher';
 
 export default class VtkScene {
     /**
@@ -126,7 +127,7 @@ export default class VtkScene {
             remover();
         }
         this.#cameraChangedListeners.clear();
-        this.#viewerClickedListeners.clear();
+        this.#viewerClicks.clear();
         this.#frameRenderedListeners.clear();
         this.#cameraGestureTracker?.dispose();
     };
@@ -134,8 +135,7 @@ export default class VtkScene {
     #cameraGestureTracker = null;
     /**@type{Map<Function,()=>void>}*/
     #userObserverRemovers = new Map();
-    /**@type{Map<Function,(actorId:number,ctrlKey:boolean,shiftKey:boolean,normX:number,normY:number)=>void>}*/
-    #viewerClickedListeners = new Map();
+    #viewerClicks = new ViewerClickDispatcher();
     /**@type{Map<Function,(camera:FrontendVtkObject)=>void>}*/
     #cameraChangedListeners = new Map();
     /**@type{Map<Function,(fps:number)=>void>}*/
@@ -176,9 +176,7 @@ export default class VtkScene {
      * @return {()=>void}
      */
     addViewerClickedListener = (handler) => {
-        const remover = () => this.#viewerClickedListeners.delete(remover);
-        this.#viewerClickedListeners.set(remover, handler);
-        return remover;
+        return this.#viewerClicks.addListener(handler);
     };
     /**
      * Pick geometry at the last clicked position.
@@ -359,10 +357,8 @@ export default class VtkScene {
      */
     #setupPicker = () => {
         const { renderer, interactor, picker, canvasDiv } = this;
-        const viewerClickedListeners = this.#viewerClickedListeners;
         ///////////////////////////////////////////
         ///////////////////////////////////////////
-        let pickingPending = false;
         /**@type{number|null}*/
         let lastMouseX = null;
         /**@type{number|null}*/
@@ -377,7 +373,7 @@ export default class VtkScene {
         });
         canvasDiv.addEventListener('mouseup', async (e) => {
             try {
-                if (lastMouseX == null || lastMouseY == null || pickingPending) {
+                if (lastMouseX == null || lastMouseY == null) {
                     return;
                 } else {
                     const margin = 0;
@@ -387,20 +383,22 @@ export default class VtkScene {
                         return;
                     }
                 }
-                pickingPending = true;
                 const rect = canvasDiv.getBoundingClientRect();
-                const normX = (e.clientX - rect.left) / rect.width;
-                const normY_vtk = 1.0 - (e.clientY - rect.top) / rect.height;
-                const [x, y] = await interactor.GetEventPosition();
-                this.#lastPickDisplayPos = [x, y];
-                const found = await picker.Pick([x, y, 0], renderer);
-                const actor = found ? await picker.getActor() : null;
-                for (const callback of viewerClickedListeners.values()) {
-                    callback(actor?.id ?? null, e.ctrlKey, e.shiftKey, normX, normY_vtk);
-                }
+                const click = {
+                    normX: (e.clientX - rect.left) / rect.width,
+                    normY: 1.0 - (e.clientY - rect.top) / rect.height,
+                    ctrlKey: e.ctrlKey,
+                    shiftKey: e.shiftKey,
+                };
+                await this.#viewerClicks.dispatchAsync(click, async () => {
+                    const [x, y] = await interactor.GetEventPosition();
+                    this.#lastPickDisplayPos = [x, y];
+                    const found = await picker.Pick([x, y, 0], renderer);
+                    const actor = found ? await picker.getActor() : null;
+                    return actor?.id ?? null;
+                });
             } finally {
                 lastMouseX = lastMouseY = null;
-                pickingPending = false;
             }
         });
     };
