@@ -10,6 +10,10 @@ only while holding the scene lock, taken without blocking.  When another thread
 holds the lock, the window returns the last frame (or a background placeholder
 before the first), asks for a retry, and keeps the deferred size and events for
 the next frame that gets the lock.
+
+A forwarded batch that ends a gesture (a button release or a wheel step) has
+the renderer record and publish the pipeline camera, and record a dragged
+cross-section plane, once, in the same locked section, after the batch.
 """
 
 from __future__ import annotations
@@ -21,6 +25,15 @@ from numpy.typing import NDArray
 from trame_rca.rca.protocol import RemoteControlledAreaProtocol
 
 from ansys.visor.viewer.renderer.server_renderer import INITIAL_WINDOW_SIZE, ServerRenderer
+
+GESTURE_END_EVENT_TYPES: frozenset[str] = frozenset(
+    {"LeftButtonRelease", "MiddleButtonRelease", "RightButtonRelease", "MouseWheel"}
+)
+"""Forwarded event types after which a gesture's camera change is complete.
+
+trame-rca drops a release with no matching press before it reaches the window,
+so each gesture forwards one release.
+"""
 
 
 class SceneLock(Protocol):
@@ -88,13 +101,20 @@ class VisorRcaWindow:
         self._pending_events.append(event)
 
     def _apply_deferred(self) -> None:
-        """Apply the last recorded size once, then forward every queued event in order; caller holds the lock."""
+        """Apply the last size, forward queued events in order, then record a gesture end once if any forwarded event ends one; caller holds the lock."""
         if self._pending_size is not None:
             self._renderer.set_viewport_size(*self._pending_size)
             self._pending_size = None
         events, self._pending_events = self._pending_events, []
         for event in events:
             self._capture.process_interaction_event(event)
+        if any(event["type"] in GESTURE_END_EVENT_TYPES for event in events):
+            self._record_gesture_end()
+
+    def _record_gesture_end(self) -> None:
+        """Record and publish what a finished gesture changed; caller holds the lock."""
+        self._renderer.record_pipeline_camera()
+        self._renderer.record_cross_section_plane()
 
     def _placeholder(self) -> tuple[NDArray, int, int]:
         """A frame of the renderer's background at the last recorded size, (300, 300) before any."""
