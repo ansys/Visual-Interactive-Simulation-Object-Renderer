@@ -29,7 +29,6 @@ function App() {
     const server = useServerVtk(probe.mode === 'server' ? probe.trame : null, visorArgs);
     const active = probe.mode === 'server' ? server : client;
     const { visorFrontend: visorState, schemaMismatchError } = active;
-    const { serverCanvas } = server;
 
     useEffect(() => {
         (async () => {
@@ -59,15 +58,6 @@ function App() {
                         `${schemaMismatchError.payloadVersion}, client expects version ` +
                         `${schemaMismatchError.expectedVersion}.`}
                 </div>
-            ) : serverCanvas != null ? (
-                // Server mode has no frontend to host the canvas, so its
-                // element is mounted here directly.
-                <div
-                    style={{ width: '100%', height: '100%' }}
-                    ref={(container) => {
-                        container?.replaceChildren(serverCanvas.element);
-                    }}
-                />
             ) : (
                 visorState != null && (
                     <UiScaffold
