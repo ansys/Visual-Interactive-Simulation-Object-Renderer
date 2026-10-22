@@ -97,14 +97,6 @@ export interface IRenderer {
     // ---- Subscriptions (return unsubscribe closures) ------------------------
     /** Fires whenever the camera changes. Callback receives a full snapshot. */
     addCameraChangedListener(callback: (state: VisorCameraState) => void): () => void;
-    /**
-     * Fires once per gesture, after the last camera change has stopped changing for
-     * CAMERA_SETTLE_MS, with the origin of that change. The callback receives
-     * the origin only; read the camera with getCameraStateAsync if needed.
-     * A `gesture` report is the user's own camera; a `programmatic` one is a
-     * camera the application or the server applied.
-     */
-    addCameraSettledListener(callback: (origin: CameraOrigin) => void): () => void;
     /** Fires each frame with the current FPS. */
     addFrameRenderedListener(callback: (fps: number) => void): () => void;
     /**
