@@ -74,11 +74,12 @@ class ServerRenderer(VtkPipelineRenderer):
         return self._render_window
 
     def set_viewport_size(self, width: int, height: int) -> None:
-        """Resize the window and its interactor to the client canvas in device pixels.
+        """Resize the window and its interactor to the client canvas in device pixels, and fit the orientation widget to it.
 
         Requests no frame: the resize path that calls this schedules its own.
         """
         self._render_window_interactor.UpdateSize(width, height)
+        self._orientation_widget.fit_to_window(width, height)
 
     def set_background_rgb(self, background_rgb: tuple[float, float, float]) -> None:
         """Clear to this colour from the next frame.
