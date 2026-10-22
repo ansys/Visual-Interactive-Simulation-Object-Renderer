@@ -14,6 +14,7 @@ import { CrossSectionWidget } from '../widgets/crossSectionWidget.ts';
 import { BoundingBoxWidget } from '../widgets/boundingBoxWidget.ts';
 import { OrthographicWidget } from '../widgets/orthographicWidget.ts';
 import { EdgesWidget } from '../widgets/edgesWidget.ts';
+import { SceneTriggerSends } from './SceneTriggerSends';
 
 const SELECTION_TINT_RGB: Readonly<number[]> = [0 / 255, 62 / 255, 111 / 255];
 
@@ -30,7 +31,7 @@ export class WasmRenderer implements IRenderer {
         triggerSender: TrameTriggerSender | null
     ) {
         this.#vtkScene = vtkScene;
-        this.#triggerSender = triggerSender;
+        this.#sends = new SceneTriggerSends(triggerSender);
 
         const wasmPlaneId = annotation.widgets.crossSectionPlaneId;
         const wasmPlaneRepId = annotation.widgets.crossSectionPlaneRepresentationId;
@@ -83,17 +84,16 @@ export class WasmRenderer implements IRenderer {
          * keys are `origin` and `normal`, snake_case and unaliased, three
          * floats each, which is what the server's payload model requires.
          *
-         * Deliberately not defensive: `#sendWidgetTriggerAsync` already
+         * Deliberately not defensive: `SceneTriggerSends` already
          * swallows and logs a send rejection, and a `catch` around the two
          * reads would turn a broken representation read into a silent
          * no-report, which is the one outcome that reads as "the observer was
          * never wired".
          */
         planeWidget.observe('EndInteractionEvent', async () => {
-            await this.#sendWidgetTriggerAsync('sync_cross_section_plane', {
-                origin: await this.#crossSectionWidget.getOriginAsync(),
-                normal: await this.#crossSectionWidget.getNormalAsync(),
-            });
+            const origin = await this.#crossSectionWidget.getOriginAsync();
+            const normal = await this.#crossSectionWidget.getNormalAsync();
+            await this.#sends.sendCrossSectionPlaneAsync(origin, normal);
         });
 
         /**
@@ -143,7 +143,7 @@ export class WasmRenderer implements IRenderer {
     }
 
     readonly #vtkScene: VtkScene;
-    readonly #triggerSender: TrameTriggerSender | null;
+    readonly #sends: SceneTriggerSends;
     readonly #actorIdToNodeId = new Map<number, NodeId>();
     readonly #nodeIdToHandles = new Map<NodeId, WasmNodeHandles>();
     readonly #crossSectionWidget: CrossSectionWidget;
@@ -225,6 +225,13 @@ export class WasmRenderer implements IRenderer {
         });
     }
 
+    /**
+     * Fires once per gesture, after the last camera change has stopped changing for
+     * CAMERA_SETTLE_MS, with the origin of that change. The callback receives
+     * the origin only; read the camera with getCameraStateAsync if needed.
+     * A `gesture` report is the user's own camera; a `programmatic` one is a
+     * camera the application or the server applied.
+     */
     addCameraSettledListener(callback: (origin: CameraOrigin) => void): () => void {
         return this.#vtkScene.addCameraSettledListener(callback);
     }
@@ -379,121 +386,34 @@ export class WasmRenderer implements IRenderer {
     }
 
     // ---- Per-part mutations routed to the server -----------------------------
-    /**
-     * Send one per-part payload to its server trigger.
-     *
-     * No sender injected -> no-op. This is the state every non-browser context
-     * is in, and it is deliberate rather than defensive: the renderer is
-     * constructible without a transport.
-     *
-     * A rejection is logged and swallowed, never rethrown. These sends run
-     * inside UI handlers that behaved a certain way before this call existed,
-     * and both stacks currently apply the same mutation independently, so a
-     * transport failure must not change what the user sees or break an
-     * interaction. The catch is deliberately unnarrowed: any rejection, of any
-     * shape, is a failed send. The log line below is therefore the *only*
-     * signal that a send failed -- the render will look correct either way --
-     * so its prefix is fixed and greppable, and it names both the trigger and
-     * the node so a failure can be attributed without a debugger.
-     */
-    async #sendTriggerAsync(
-        triggerName: string,
-        nodeId: NodeId,
-        payload: Record<string, unknown>
-    ): Promise<void> {
-        if (this.#triggerSender == null) {
-            return;
-        }
-        try {
-            await this.#triggerSender(triggerName, payload);
-        } catch (err) {
-            console.error(
-                `[VISOR] per-part trigger send failed: trigger='${triggerName}' nodeId=${nodeId}`,
-                err
-            );
-        }
-    }
-
-    /**
-     * Send one view-level widget payload to its server trigger.
-     *
-     * Sibling of `#sendTriggerAsync` above; same no-sender/no-op and
-     * logged-and-swallowed-rejection rationale, not repeated here.
-     *
-     * Separate only because a widget trigger has no `nodeId` to name in the
-     * error line, so the log prefix here is distinct and greppable on its own.
-     */
-    async #sendWidgetTriggerAsync(
-        triggerName: string,
-        payload: Record<string, unknown>
-    ): Promise<void> {
-        if (this.#triggerSender == null) {
-            return;
-        }
-        try {
-            await this.#triggerSender(triggerName, payload);
-        } catch (err) {
-            console.error(`[VISOR] widget trigger send failed: trigger='${triggerName}'`, err);
-        }
-    }
-
     async sendPartVisibilityAsync(nodeId: NodeId, visible: boolean): Promise<void> {
-        await this.#sendTriggerAsync('set_part_visibility', nodeId, {
-            nodeId,
-            visible,
-        });
+        await this.#sends.sendPartVisibilityAsync(nodeId, visible);
     }
 
     async sendPartOpacityAsync(nodeId: NodeId, opacity: number): Promise<void> {
-        await this.#sendTriggerAsync('set_part_opacity', nodeId, {
-            nodeId,
-            opacity,
-        });
+        await this.#sends.sendPartOpacityAsync(nodeId, opacity);
     }
 
     async sendPartDiffuseColorAsync(
         nodeId: NodeId,
         diffuseRgb: readonly number[] | null
     ): Promise<void> {
-        // The key is always present: `diffuseRgb: null` is how a reset is
-        // expressed. Omitting it is a different message, and not a valid one.
-        await this.#sendTriggerAsync('set_part_diffuse_color', nodeId, {
-            nodeId,
-            diffuseRgb,
-        });
+        await this.#sends.sendPartDiffuseColorAsync(nodeId, diffuseRgb);
     }
 
     async sendPartSelectedAsync(nodeId: NodeId, selected: boolean): Promise<void> {
-        // No colour crosses this trigger by design; the server reads the
-        // part's stored colour from its own record.
-        await this.#sendTriggerAsync('set_part_selected', nodeId, {
-            nodeId,
-            selected,
-        });
+        await this.#sends.sendPartSelectedAsync(nodeId, selected);
     }
 
     async sendPartColorVariableAsync(
         nodeId: NodeId,
         descriptor: ColorVariableDescriptor
     ): Promise<void> {
-        // `variableId` is the client-built opaque token, forwarded verbatim;
-        // nothing on either side parses it. The association travels as its own
-        // typed 'POINT'|'CELL' field, and the array name as its own field,
-        // precisely so that no one has to. The range is not sent: the server
-        // applies its own record's range for the referenced slot.
-        await this.#sendTriggerAsync('set_part_color_variable', nodeId, {
-            nodeId,
-            variableId: descriptor.variableId,
-            association: descriptor.variableType,
-            arrayName: descriptor.variableName,
-            component: descriptor.component,
-        });
+        await this.#sends.sendPartColorVariableAsync(nodeId, descriptor);
     }
 
     async sendClearPartColorVariableAsync(nodeId: NodeId): Promise<void> {
-        await this.#sendTriggerAsync('clear_part_color_variable', nodeId, {
-            nodeId,
-        });
+        await this.#sends.sendClearPartColorVariableAsync(nodeId);
     }
 
     // ---- View-level widgets -------------------------------------------------
@@ -511,9 +431,7 @@ export class WasmRenderer implements IRenderer {
      */
     async setCrossSectionVisibilityAsync(visible?: boolean): Promise<void> {
         await this.#crossSectionWidget.setVisibilityAsync(visible);
-        await this.#sendWidgetTriggerAsync('set_cross_section_visibility', {
-            visible: this.isCrossSectionVisible(),
-        });
+        await this.#sends.sendCrossSectionVisibilityAsync(this.isCrossSectionVisible());
     }
 
     isCrossSectionVisible(): boolean {
@@ -542,9 +460,7 @@ export class WasmRenderer implements IRenderer {
 
     async setBoundingBoxVisibilityAsync(visible?: boolean): Promise<void> {
         await this.#boundingBoxWidget.setVisibilityAsync(visible);
-        await this.#sendWidgetTriggerAsync('set_bounding_box_visibility', {
-            visible: this.isBoundingBoxVisible(),
-        });
+        await this.#sends.sendBoundingBoxVisibilityAsync(this.isBoundingBoxVisible());
     }
 
     isBoundingBoxVisible(): boolean {
@@ -557,9 +473,7 @@ export class WasmRenderer implements IRenderer {
 
     async setOrthographicModeAsync(enable?: boolean): Promise<void> {
         await this.#orthographicWidget.setOrthographicModeAsync(enable);
-        await this.#sendWidgetTriggerAsync('set_projection', {
-            parallel: this.isOrthographicEnabled(),
-        });
+        await this.#sends.sendProjectionAsync(this.isOrthographicEnabled());
     }
 
     isOrthographicEnabled(): boolean {
@@ -572,9 +486,7 @@ export class WasmRenderer implements IRenderer {
 
     async setEdgeVisibilityGlobalAsync(visible?: boolean): Promise<void> {
         await this.#edgesWidget.setEdgesVisibleAsync(visible);
-        await this.#sendWidgetTriggerAsync('set_edges_visible', {
-            visible: this.#edgesWidget.enabled,
-        });
+        await this.#sends.sendEdgesVisibleAsync(this.#edgesWidget.enabled);
     }
 
     areEdgesVisibleGlobally(): boolean {
