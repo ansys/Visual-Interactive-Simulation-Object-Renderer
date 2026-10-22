@@ -120,7 +120,7 @@ class VisorVTK(Visor):
 
     def __new__(
         cls,
-        rendering_mode: RenderingMode = RenderingMode.LOCAL,
+        rendering_mode: RenderingMode = RenderingMode.CLIENT,
         **kwargs,
     ) -> "VisorVTK":
         # If we are already constructing a concrete subclass, skip dispatch.
@@ -130,9 +130,11 @@ class VisorVTK(Visor):
         rendering_mode = RenderingMode.from_string(rendering_mode)
 
         from ansys.visor.viewer.app.visor_vtk_local import VisorVTKLocal
+        from ansys.visor.viewer.app.visor_vtk_server import VisorVTKServer
 
         mode_map: dict[RenderingMode, type] = {
-            RenderingMode.LOCAL:    VisorVTKLocal,
+            RenderingMode.CLIENT:   VisorVTKLocal,
+            RenderingMode.SERVER:   VisorVTKServer,
         }
 
         subclass = mode_map.get(rendering_mode)
@@ -148,7 +150,7 @@ class VisorVTK(Visor):
     def __init__(
             self,
             url: str | None = None,
-            rendering_mode: RenderingMode = RenderingMode.LOCAL,
+            rendering_mode: RenderingMode = RenderingMode.CLIENT,
             standalone: bool = True,
             dark_mode: bool | None = None,
             trame_log_dir: str | None = None,

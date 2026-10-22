@@ -28,12 +28,12 @@ class InitProps(BaseModel):
     )
     standalone: bool | None = Field(None, description="Standalone", examples=[True])
     dark_mode: bool | None = Field(None, description="Dark mode enabled", examples=[False])
-    rendering_mode: RenderingMode | None = Field(None, description="Rendering mode (LOCAL)", examples=["LOCAL"])
+    rendering_mode: RenderingMode | None = Field(None, description="Rendering mode (CLIENT or SERVER)", examples=["CLIENT"])
 
     @field_validator("rendering_mode", mode="before")
     @classmethod
     def coerce_rendering_mode(cls, v):
-        """Accept both the enum member and its name as a string (e.g. 'LOCAL', 'REMOTE')."""
+        """Accept both the enum member and its name as a string (e.g. 'CLIENT', 'SERVER')."""
         if v is None or isinstance(v, RenderingMode):
             return v
         if isinstance(v, str):

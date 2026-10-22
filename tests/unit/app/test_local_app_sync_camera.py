@@ -85,6 +85,7 @@ def mock_server():
     server.http_headers.set_header = MagicMock()
     server.name = "TestServer"
     server._www = None
+    server.state = {}
     return server
 
 
@@ -158,7 +159,7 @@ def test_sync_camera_programmatic_delegates_nothing(app, api):
 
 def test_sync_camera_gesture_logs_one_debug_line_with_origin_and_position(app):
     """An applied arrival is one line, naming the origin and the position."""
-    with patch("ansys.visor.viewer.app.trame.local_app.logger") as log:
+    with patch("ansys.visor.viewer.app.trame.scene_trigger_app.logger") as log:
         app.sync_camera({"origin": "gesture", "camera": _camera()})
 
     assert log.debug.call_count == 2
@@ -170,7 +171,7 @@ def test_sync_camera_gesture_logs_one_debug_line_with_origin_and_position(app):
 
 def test_sync_camera_programmatic_logs_one_debug_line_with_the_origin(app):
     """A dropped arrival is one line too, so drops are countable."""
-    with patch("ansys.visor.viewer.app.trame.local_app.logger") as log:
+    with patch("ansys.visor.viewer.app.trame.scene_trigger_app.logger") as log:
         app.sync_camera({"origin": "programmatic", "camera": _camera()})
 
     assert log.debug.call_count == 1
@@ -187,7 +188,7 @@ def test_sync_camera_with_a_six_field_camera_is_a_logged_no_op(app, api):
     camera = _camera()
     del camera["parallelScale"]
 
-    with patch("ansys.visor.viewer.app.trame.local_app.logger") as log:
+    with patch("ansys.visor.viewer.app.trame.scene_trigger_app.logger") as log:
         result = app.sync_camera({"origin": "gesture", "camera": camera})
 
     assert result is None
@@ -203,7 +204,7 @@ def test_sync_camera_with_an_unrecognised_origin_is_a_logged_no_op(app, api):
     programmatic report -- and a typo in the *other* direction would be
     indistinguishable from a genuine gesture.
     """
-    with patch("ansys.visor.viewer.app.trame.local_app.logger") as log:
+    with patch("ansys.visor.viewer.app.trame.scene_trigger_app.logger") as log:
         result = app.sync_camera({"origin": "Gesture", "camera": _camera()})
 
     assert result is None
@@ -250,7 +251,7 @@ def test_sync_camera_accepts_the_clients_twelve_field_snapshot(app, api):
 
 def test_sync_camera_is_a_logged_no_op_when_no_coordinator_injected(app_without_api):
     """With nothing injected the trigger logs and returns without raising."""
-    with patch("ansys.visor.viewer.app.trame.local_app.logger") as log:
+    with patch("ansys.visor.viewer.app.trame.scene_trigger_app.logger") as log:
         result = app_without_api.sync_camera({"origin": "gesture", "camera": _camera()})
 
     assert result is None

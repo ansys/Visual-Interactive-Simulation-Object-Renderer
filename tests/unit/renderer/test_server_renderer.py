@@ -2,8 +2,8 @@
 Unit tests for ServerRenderer.
 
 Every test builds a real ServerRenderer (an off-screen VTK window that is
-never rendered) with a recording frame requester.  Expected values are
-hand-written literals.
+never rendered) with a recording frame requester and a recording camera
+publisher.  Expected values are hand-written literals.
 """
 
 from __future__ import annotations
@@ -33,6 +33,16 @@ class _RecordingFrameRequester:
         self.count += 1
 
 
+class _RecordingCameraPublisher:
+    """Records every published camera record."""
+
+    def __init__(self) -> None:
+        self.cameras: list = []
+
+    def publish_camera(self, camera_state) -> None:
+        self.cameras.append(camera_state)
+
+
 def _unit_sphere():
     source = vtkSphereSource()
     source.SetRadius(1.0)
@@ -52,9 +62,14 @@ def requester() -> _RecordingFrameRequester:
 
 
 @pytest.fixture
-def renderer(requester) -> ServerRenderer:
+def publisher() -> _RecordingCameraPublisher:
+    return _RecordingCameraPublisher()
+
+
+@pytest.fixture
+def renderer(requester, publisher) -> ServerRenderer:
     """ServerRenderer with one unit-sphere part registered and the camera reset to it."""
-    r = ServerRenderer((0.2, 0.4, 0.6), requester)
+    r = ServerRenderer((0.2, 0.4, 0.6), requester, publisher)
     _register_part(r)
     r.reset_camera(PART_BOUNDS)
     requester.count = 0
@@ -118,6 +133,36 @@ def test_render_requests_a_frame(renderer, requester):
 
 
 # ---------------------------------------------------------------------------
+# Camera writes publish the camera record
+# ---------------------------------------------------------------------------
+
+
+def test_sync_camera_publishes_record(renderer, publisher):
+    # A record of its own: sync_camera stores it by identity, and a later
+    # set_projection on that renderer would mutate a shared one in place.
+    renderer.sync_camera(
+        VisorCameraState(
+            position=[0.0, 0.0, 9.0],
+            focal_point=[0.0, 0.0, 0.0],
+            view_up=[0.0, 1.0, 0.0],
+            clipping_range=[1.0, 20.0],
+            parallel_projection=False,
+            view_angle=25.0,
+            parallel_scale=3.0,
+        )
+    )
+    assert publisher.cameras[-1].model_dump(by_alias=True) == {
+        "position": [0.0, 0.0, 9.0],
+        "focalPoint": [0.0, 0.0, 0.0],
+        "viewUp": [0.0, 1.0, 0.0],
+        "clippingRange": [1.0, 20.0],
+        "parallelProjection": False,
+        "viewAngle": 25.0,
+        "parallelScale": 3.0,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Never renders
 # ---------------------------------------------------------------------------
 
@@ -136,8 +181,8 @@ class _ObservedServerRenderer(ServerRenderer):
         return window
 
 
-def test_never_renders(requester):
-    r = _ObservedServerRenderer((0.2, 0.4, 0.6), requester)
+def test_never_renders(requester, publisher):
+    r = _ObservedServerRenderer((0.2, 0.4, 0.6), requester, publisher)
     _register_part(r)
     r.reset_camera(PART_BOUNDS)
     for write in _WRITES.values():
@@ -160,21 +205,31 @@ def test_set_viewport_size_resizes_window(renderer):
     assert renderer.render_window.GetSize() == (64, 48)
 
 
+def test_set_background_rgb_sets_vtk_background(renderer):
+    renderer.set_background_rgb((0.25, 0.5, 0.75))
+    assert renderer._vtk_renderer.GetBackground() == (0.25, 0.5, 0.75)
+
+
+def test_set_background_rgb_sets_background_rgb(renderer):
+    renderer.set_background_rgb((0.25, 0.5, 0.75))
+    assert renderer.background_rgb == (0.25, 0.5, 0.75)
+
+
 def test_cross_section_visibility_turns_widget_on(renderer):
     renderer.set_cross_section_visibility(True)
     assert renderer._cross_section_widget.is_on is True
 
 
-def test_bounding_box_visibility_reapplied_on_part_count(requester):
-    r = ServerRenderer((0.2, 0.4, 0.6), requester)
+def test_bounding_box_visibility_reapplied_on_part_count(requester, publisher):
+    r = ServerRenderer((0.2, 0.4, 0.6), requester, publisher)
     r.set_bounding_box_visibility(True)
     assert _outline_actor(r).GetVisibility() == 0
     r.update_actor_count(1)
     assert _outline_actor(r).GetVisibility() == 1
 
 
-def test_bounding_box_hidden_when_part_count_drops_to_zero(requester):
-    r = ServerRenderer((0.2, 0.4, 0.6), requester)
+def test_bounding_box_hidden_when_part_count_drops_to_zero(requester, publisher):
+    r = ServerRenderer((0.2, 0.4, 0.6), requester, publisher)
     r.set_bounding_box_visibility(True)
     r.update_actor_count(1)
     r.update_actor_count(0)
