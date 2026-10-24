@@ -1,0 +1,47 @@
+
+
+.. _sphx_glr_examples_01-basic-vtk-object-input:
+
+.. _basic-vtk-object-gallery:
+
+Basic examples using VTK objects
+################################
+
+These basic examples show how to use VISOR to visualize an asset using a VTK object.
+
+
+.. raw:: html
+
+    <div class="sphx-glr-thumbnails">
+
+.. thumbnail-parent-div-open
+
+.. raw:: html
+
+    <div class="sphx-glr-thumbcontainer" tooltip="To launch the VISOR visualization, instantiate the viewer and call the start method with a vtkDataSet object.">
+
+.. only:: html
+
+  .. image:: /examples/01-basic-vtk-object-input/images/thumb/sphx_glr_00-visor-vtk-input_thumb.png
+    :alt:
+
+  :ref:`sphx_glr_examples_01-basic-vtk-object-input_00-visor-vtk-input.py`
+
+.. raw:: html
+
+      <div class="sphx-glr-thumbnail-title">Launch VISOR with a VTK object</div>
+    </div>
+
+
+.. thumbnail-parent-div-close
+
+.. raw:: html
+
+    </div>
+
+
+.. toctree::
+   :hidden:
+
+   /examples/01-basic-vtk-object-input/00-visor-vtk-input
+
