@@ -564,6 +564,10 @@ export class WasmRenderer implements IRenderer {
         return this.#crossSectionWidget.enabled;
     }
 
+    async applyCrossSectionVisibilityAsync(visible: boolean): Promise<void> {
+        await this.#crossSectionWidget.setVisibilityAsync(visible);
+    }
+
     async updateCrossSectionBoundsAsync(): Promise<void> {
         await this.#crossSectionWidget.updateBoundsAsync();
     }
@@ -597,6 +601,11 @@ export class WasmRenderer implements IRenderer {
         return this.#boundingBoxWidget!.enabled;
     }
 
+    async applyBoundingBoxVisibilityAsync(visible: boolean): Promise<void> {
+        this.#requireSceneGraphAttached('applyBoundingBoxVisibilityAsync');
+        await this.#boundingBoxWidget!.setVisibilityAsync(visible);
+    }
+
     async updateBoundingBoxBoundsAsync(): Promise<void> {
         this.#requireSceneGraphAttached('updateBoundingBoxBoundsAsync');
         await this.#boundingBoxWidget!.updateBoundsAsync();
@@ -613,6 +622,10 @@ export class WasmRenderer implements IRenderer {
         return this.#orthographicWidget.enabled;
     }
 
+    async applyOrthographicModeAsync(enable: boolean): Promise<void> {
+        await this.#orthographicWidget.setOrthographicModeAsync(enable);
+    }
+
     async setEdgeVisibilityGlobalAsync(visible?: boolean): Promise<void> {
         this.#requireSceneGraphAttached('setEdgeVisibilityGlobalAsync');
         await this.#edgesWidget!.setEdgesVisibleAsync(visible);
@@ -624,6 +637,11 @@ export class WasmRenderer implements IRenderer {
     areEdgesVisibleGlobally(): boolean {
         this.#requireSceneGraphAttached('areEdgesVisibleGlobally');
         return this.#edgesWidget!.enabled;
+    }
+
+    async applyEdgeVisibilityGlobalAsync(visible: boolean): Promise<void> {
+        this.#requireSceneGraphAttached('applyEdgeVisibilityGlobalAsync');
+        await this.#edgesWidget!.setEdgesVisibleAsync(visible);
     }
 
     async toggleFullScreenAsync(): Promise<void> {

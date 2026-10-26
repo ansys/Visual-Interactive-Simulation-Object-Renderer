@@ -217,6 +217,10 @@ export class NullRenderer implements IRenderer {
         return false;
     }
 
+    async applyCrossSectionVisibilityAsync(_visible: boolean): Promise<void> {
+        // no-op
+    }
+
     async updateCrossSectionBoundsAsync(): Promise<void> {
         // no-op
     }
@@ -245,6 +249,10 @@ export class NullRenderer implements IRenderer {
         return false;
     }
 
+    async applyBoundingBoxVisibilityAsync(_visible: boolean): Promise<void> {
+        // no-op
+    }
+
     async updateBoundingBoxBoundsAsync(): Promise<void> {
         // no-op
     }
@@ -257,12 +265,20 @@ export class NullRenderer implements IRenderer {
         return false;
     }
 
+    async applyOrthographicModeAsync(_enable: boolean): Promise<void> {
+        // no-op
+    }
+
     async setEdgeVisibilityGlobalAsync(_visible?: boolean): Promise<void> {
         // no-op
     }
 
     areEdgesVisibleGlobally(): boolean {
         return false;
+    }
+
+    async applyEdgeVisibilityGlobalAsync(_visible: boolean): Promise<void> {
+        // no-op
     }
 
     async toggleFullScreenAsync(): Promise<void> {

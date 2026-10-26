@@ -263,6 +263,37 @@ describe('WasmRenderer widget sends: no sender, and a failing sender', () => {
     });
 });
 
+describe('WasmRenderer widget apply methods write the widget and send nothing', () => {
+    test('the four apply methods send nothing', async () => {
+        const sender = makeSender();
+        const { renderer } = await makeRenderer(sender);
+
+        await renderer.applyCrossSectionVisibilityAsync(true);
+        await renderer.applyEdgeVisibilityGlobalAsync(true);
+        await renderer.applyBoundingBoxVisibilityAsync(true);
+        await renderer.applyOrthographicModeAsync(true);
+
+        expect(sender).not.toHaveBeenCalled();
+    });
+
+    test('the four apply methods leave each widget reading the applied value', async () => {
+        // Every widget starts at `false`, so `true` is a change on each.
+        const { renderer } = await makeRenderer(makeSender());
+
+        await renderer.applyCrossSectionVisibilityAsync(true);
+        await renderer.applyEdgeVisibilityGlobalAsync(true);
+        await renderer.applyBoundingBoxVisibilityAsync(true);
+        await renderer.applyOrthographicModeAsync(true);
+
+        expect({
+            crossSection: renderer.isCrossSectionVisible(),
+            edges: renderer.areEdgesVisibleGlobally(),
+            boundingBox: renderer.isBoundingBoxVisible(),
+            orthographic: renderer.isOrthographicEnabled(),
+        }).toEqual({ crossSection: true, edges: true, boundingBox: true, orthographic: true });
+    });
+});
+
 describe('WasmRenderer edge fan-out reaches every actor on every call', () => {
     test('setEdgeVisibilityGlobalAsync issues one per-actor call per actor on every call, not only when the value changes', async () => {
         // The per-node cache that D1 deleted lived on the scene-graph node

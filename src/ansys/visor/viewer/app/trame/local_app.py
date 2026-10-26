@@ -629,7 +629,7 @@ class LocalApp:
         """Frontend -> Backend: the top-right panel reports its active tab.
 
         The index is forwarded verbatim and is never range-checked here; the
-        client's ``selectTab`` is the guard, so a future third tab is a UI
+        client's ``applyTabIndex`` is the guard, so a future third tab is a UI
         change rather than a validation failure at this boundary.
         """
         api = self._mutation_api("set_panel_top_right_tab_index", payload)
