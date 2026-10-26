@@ -134,6 +134,21 @@ def test_drag_publishes_camera_at_release_only(window, publisher):
     assert len(publisher.cameras) == 1
 
 
+
+
+def test_click_on_orientation_ball_records_snapped_camera(window, renderer):
+    """A hover move, press and release on the +X ball record the camera at the end of the snap."""
+    window.img_cols_rows
+    window.process_interaction_event(_event("MouseMove", 114, 72))
+    window.process_interaction_event(_event("LeftButtonPress", 114, 72))
+    window.process_interaction_event(_event("LeftButtonRelease", 114, 72))
+    window.img_cols_rows
+    record = renderer.get_camera_state()
+    assert record.position == pytest.approx([9.0, 0.0, 0.0], abs=1e-6)
+    assert record.view_up == pytest.approx([0.0, 0.0, 1.0], abs=1e-6)
+
+
+
 # ---------------------------------------------------------------------------
 # A cross-section drag moves the clip plane and records it at gesture end
 # ---------------------------------------------------------------------------
