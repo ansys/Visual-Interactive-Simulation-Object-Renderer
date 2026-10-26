@@ -84,13 +84,21 @@ function sentTypes(session: ReturnType<typeof makeSession>): unknown[] {
 }
 
 describe('ServerCanvas events', () => {
-    test('a left press sends three releases, then the press with y flipped', () => {
+    test('a left press with no button held sends a MouseMove, three releases, then the press with y flipped', () => {
         const { session, canvas } = makeCanvas();
 
         mouse(canvas, 'mousedown', 0, 15, 30);
 
         const modifiers = { ctrlKey: false, altKey: false, shiftKey: false };
         expect(session.call.mock.calls).toEqual([
+            [
+                'trame.rca.event',
+                [
+                    'view',
+                    'ServerCanvas',
+                    { type: 'MouseMove', x: 10, y: 80, w: 200, h: 100, ...modifiers },
+                ],
+            ],
             [
                 'trame.rca.event',
                 [

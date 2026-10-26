@@ -216,8 +216,11 @@ export class ServerCanvas implements IServerCanvas {
         }
     };
 
-    /** Forward the new button state; a left press may start a click. */
+    /** Forward the new button state, first moving to the press point when no button was held, so a widget under the pointer is hovered; a left press may start a click. */
     #onMouseDown = (e: MouseEvent): void => {
+        if (this.#buttons.effectiveButton() == null) {
+            this.#sendInteraction(this.#interactionEvent('MouseMove', e));
+        }
         this.#buttons.setButton(e.button, true);
         this.#sendButtons(e);
         if (e.button === 0) {
