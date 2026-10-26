@@ -213,3 +213,5 @@ doc/source/examples
 doc/source/http_api_reference/openapi.json
 doc/source/sg_execution_times.rst
 
+# Workspace file for Visual Studio Code
+visor.code-workspace
