@@ -20,6 +20,9 @@ from ansys.visor.viewer.renderer.server_renderer import CameraPublisher
 SERVER_CAMERA_STATE_KEY: str = "server_camera_state"
 """State key carrying the server's camera record, as its camelCase fields, or None."""
 
+SCENE_VERSION_KEY: str = "scene_version"
+"""State key counting scene changes; absent until the first change, then 1, 2, ..."""
+
 
 class ServerStatePublisher(CameraPublisher):
     """Writes server-originated state keys from any thread onto the trame event loop."""
@@ -40,6 +43,19 @@ class ServerStatePublisher(CameraPublisher):
         """
         camera_record = None if camera_state is None else camera_state.model_dump(by_alias=True)
         self._async_runner.call_soon(lambda: self._write(SERVER_CAMERA_STATE_KEY, camera_record))
+
+    def bump_scene_version(self) -> None:
+        """Increment scene_version on the loop thread: read, add one, write and flush in one callback; callable from any thread.
+
+        The read happens inside the callback, so bumps queued together from
+        any threads are serialised on the loop and each one counts.
+        """
+        self._async_runner.call_soon(self._write_next_scene_version)
+
+    def _write_next_scene_version(self) -> None:
+        """Read scene_version (absent counts as 0), write it plus one, and flush; loop thread only."""
+        current = self._state[SCENE_VERSION_KEY]
+        self._write(SCENE_VERSION_KEY, (current or 0) + 1)
 
     def _write(self, key: str, value: object) -> None:
         """Set one state key and flush it; loop thread only."""

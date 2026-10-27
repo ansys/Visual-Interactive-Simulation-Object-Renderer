@@ -16,7 +16,7 @@ from ansys.visor.viewer.app.visor_vtk_server import VisorVTKServer
 
 @pytest.fixture
 def wiring():
-    """Build a VisorVTKServer against doubles; yield (app_cls, scene_cls, bridge_cls, mgr, publishers)."""
+    """Build a VisorVTKServer against doubles; yield (app_cls, scene_cls, bridge_cls, mgr, publishers, viewer)."""
     with patch("ansys.visor.viewer.app.visor_vtk.TrameServerManager") as mgr_cls, \
          patch("ansys.visor.viewer.app.visor_vtk_server.ServerApp") as app_cls, \
          patch("ansys.visor.viewer.app.visor_vtk_server.VisorServerScene") as scene_cls, \
@@ -35,20 +35,20 @@ def wiring():
             return publishers[-1][1]
 
         publisher_cls.side_effect = build_publisher
-        VisorVTKServer()
-        yield app_cls, scene_cls, bridge_cls, mgr, publishers
+        viewer = VisorVTKServer()
+        yield app_cls, scene_cls, bridge_cls, mgr, publishers, viewer
 
 
 def test_scene_and_app_share_one_bridge(wiring):
     """The scene's renderer requests frames through the bridge the app binds."""
-    app_cls, scene_cls, _bridge_cls, _mgr, _publishers = wiring
+    app_cls, scene_cls, _bridge_cls, _mgr, _publishers, _viewer = wiring
 
     assert scene_cls.call_args.kwargs["bridge"] is app_cls.call_args.kwargs["bridge"]
 
 
 def test_app_receives_the_scene_members(wiring):
     """The app is given the scene itself, its RCA window, and its pick and theme methods."""
-    app_cls, scene_cls, _bridge_cls, _mgr, _publishers = wiring
+    app_cls, scene_cls, _bridge_cls, _mgr, _publishers, _viewer = wiring
     scene = scene_cls.return_value
     kwargs = app_cls.call_args.kwargs
 
@@ -60,9 +60,18 @@ def test_app_receives_the_scene_members(wiring):
 
 def test_scene_publishes_camera_into_the_viewer_state(wiring):
     """The scene gets the one publisher, built over this viewer's runner and server state."""
-    _app_cls, scene_cls, _bridge_cls, mgr, publishers = wiring
+    _app_cls, scene_cls, _bridge_cls, mgr, publishers, _viewer = wiring
 
     assert [args for args, _ in publishers] == [(mgr.async_runner, mgr.server.state)]
     assert scene_cls.call_args.kwargs["camera_publisher"] is publishers[0][1]
+
+
+def test_scene_change_bumps_the_one_publisher(wiring):
+    """The scene-change hook bumps scene_version through the publisher the scene was given."""
+    _app_cls, _scene_cls, _bridge_cls, _mgr, publishers, viewer = wiring
+
+    viewer._post_scene_change_hook()
+
+    publishers[0][1].bump_scene_version.assert_called_once_with()
 
 

@@ -25,19 +25,21 @@ from ansys.visor.viewer.vtk.scene.server_scene import VisorServerScene
 class VisorVTKServer(VisorVTK):
     """Visor interface for VTK SERVER mode: server-side off-screen rendering streamed through trame-rca."""
 
+    _state_publisher: ServerStatePublisher
+
     def _initialize_rendering(self, standalone: bool, trame_log_dir: str | None) -> None:
         """Wire the bridge, the state publisher, the server scene and ServerApp.
 
         One bridge serves both: the scene's renderer requests frames through
         it, and the app binds it to the view handler when the server is ready.
         The publisher writes the renderer's camera record into this viewer's
-        server state.
+        server state, and the scene_version bump after each scene change.
         """
         bridge = ServerLoopBridge(self._server_manager.async_runner)
-        publisher = ServerStatePublisher(self._server_manager.async_runner, self.server.state)
+        self._state_publisher = ServerStatePublisher(self._server_manager.async_runner, self.server.state)
 
         self._scene = VisorServerScene(
-            self.server, dark_mode=self._dark_mode, bridge=bridge, camera_publisher=publisher
+            self.server, dark_mode=self._dark_mode, bridge=bridge, camera_publisher=self._state_publisher
         )
 
         self._trame_app = ServerApp(
@@ -51,4 +53,8 @@ class VisorVTKServer(VisorVTK):
             rca_window=self._scene.rca_window,
             bridge=bridge,
         )
+
+    def _post_scene_change_hook(self) -> None:
+        """Bump scene_version so connected clients rebuild; requests no frame, the operation already did."""
+        self._state_publisher.bump_scene_version()
 
