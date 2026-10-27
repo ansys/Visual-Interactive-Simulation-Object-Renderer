@@ -32,14 +32,15 @@ class VisorVTKServer(VisorVTK):
 
         One bridge serves both: the scene's renderer requests frames through
         it, and the app binds it to the view handler when the server is ready.
-        The publisher writes the renderer's camera record into this viewer's
-        server state, and the scene_version bump after each scene change.
+        The publisher writes the renderer's camera and cross-section plane
+        records into this viewer's server state, and the scene_version bump
+        after each scene change.
         """
         bridge = ServerLoopBridge(self._server_manager.async_runner)
         self._state_publisher = ServerStatePublisher(self._server_manager.async_runner, self.server.state)
 
         self._scene = VisorServerScene(
-            self.server, dark_mode=self._dark_mode, bridge=bridge, camera_publisher=self._state_publisher
+            self.server, dark_mode=self._dark_mode, bridge=bridge, view_record_publisher=self._state_publisher
         )
 
         self._trame_app = ServerApp(
