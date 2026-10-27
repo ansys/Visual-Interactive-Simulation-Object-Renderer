@@ -47,6 +47,10 @@ class VisorOrientationWidget:
         """Return whether the widget is on or not."""
         return self.__widget.GetEnabled() == 1
 
+    def animate_off(self) -> None:
+        """Snap the camera on an axis click instead of animating it over interactor timer events."""
+        self.__widget.AnimateOff()
+
     def register_with_local_view(self, local_view: LocalView):
         """Register the widget with the local view."""
         self.__widget_wasm_id = local_view.register_vtk_object(self.__widget)
