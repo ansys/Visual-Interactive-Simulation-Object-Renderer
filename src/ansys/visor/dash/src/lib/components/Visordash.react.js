@@ -83,7 +83,15 @@ const Visordash = (props) => {
       (async () => {
         const snapFn = window.__visorState?.getAppStateAsync;
         if (typeof snapFn === 'function' && typeof setPropsRef.current === 'function') {
-          const appState = await snapFn(/*pass 'true' to key by name*/ true);
+          let appState;
+          try {
+            appState = await snapFn(/*pass 'true' to key by name*/ true);
+          } catch (err) {
+            // The last snapshot is kept; fireSnapshot is reset so the next request runs.
+            console.error('[VISOR] snapshot failed', err);
+            setPropsRef.current({ fireSnapshot: false });
+            return;
+          }
           setPropsRef.current({
             parts: appState.toDict(),
             fireSnapshot: false,
@@ -145,6 +153,7 @@ Visordash.propTypes = {
   fireSnapshot: PropTypes.bool,
   /**
    * Contains the latest snapshot of the parts state, returned from the frontend when `fireSnapshot` is triggered.
+   * A failed snapshot leaves it unchanged and logs `[VISOR] snapshot failed` to the browser console.
    */
   parts: PropTypes.any,
   /**

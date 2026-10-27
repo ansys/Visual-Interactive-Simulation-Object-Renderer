@@ -63,7 +63,7 @@ def test_scene_publishes_camera_into_the_viewer_state(wiring):
     _app_cls, scene_cls, _bridge_cls, mgr, publishers, _viewer = wiring
 
     assert [args for args, _ in publishers] == [(mgr.async_runner, mgr.server.state)]
-    assert scene_cls.call_args.kwargs["camera_publisher"] is publishers[0][1]
+    assert scene_cls.call_args.kwargs["view_record_publisher"] is publishers[0][1]
 
 
 def test_scene_change_bumps_the_one_publisher(wiring):

@@ -31,14 +31,18 @@ class _RecordingFrameRequester:
         self.count += 1
 
 
-class _RecordingCameraPublisher:
-    """Records every published camera record."""
+class _RecordingViewRecordPublisher:
+    """Records every published camera and plane record."""
 
     def __init__(self) -> None:
         self.cameras: list = []
+        self.planes: list = []
 
     def publish_camera(self, camera_state) -> None:
         self.cameras.append(camera_state)
+
+    def publish_cross_section(self, cross_section_state) -> None:
+        self.planes.append(cross_section_state)
 
 
 def test_first_frame_is_background():
@@ -68,8 +72,8 @@ def requester() -> _RecordingFrameRequester:
 
 
 @pytest.fixture
-def publisher() -> _RecordingCameraPublisher:
-    return _RecordingCameraPublisher()
+def publisher() -> _RecordingViewRecordPublisher:
+    return _RecordingViewRecordPublisher()
 
 
 @pytest.fixture
@@ -155,13 +159,14 @@ def test_click_on_orientation_ball_records_snapped_camera(window, renderer):
 
 
 @pytest.fixture
-def plane_window(renderer, requester) -> VisorRcaWindow:
-    """The sphere scene with the widget placed on its bounds and turned on; one frame drawn, requests cleared."""
+def plane_window(renderer, requester, publisher) -> VisorRcaWindow:
+    """The sphere scene with the widget placed on its bounds and turned on; one frame drawn, recorders cleared."""
     renderer.update_bounds([-0.5, 0.5, -0.5, 0.5, -0.5, 0.5])
     renderer.set_cross_section_visibility(True)
     w = VisorRcaWindow(VtkRemoteControlledArea(renderer.render_window), renderer, threading.RLock(), lambda: None)
     w.img_cols_rows
     requester.count = 0
+    publisher.planes.clear()
     return w
 
 
@@ -188,6 +193,14 @@ def test_plane_drag_records_plane_at_release_only(plane_window, renderer):
     assert renderer.get_cross_section_plane().normal == [0.0, 0.0, 1.0]
     _release_plane_handle(plane_window)
     assert renderer.get_cross_section_plane().normal != [0.0, 0.0, 1.0]
+
+
+def test_plane_drag_publishes_plane_at_release_only(plane_window, renderer, publisher):
+    _drag_plane_handle(plane_window)
+    assert publisher.planes == []
+    _release_plane_handle(plane_window)
+    assert len(publisher.planes) == 1
+    assert publisher.planes[0] is renderer.get_cross_section_plane()
 
 
 def test_plane_drag_release_requests_no_frame(plane_window, requester):
