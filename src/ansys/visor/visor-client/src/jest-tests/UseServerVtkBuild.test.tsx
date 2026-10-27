@@ -42,7 +42,13 @@ const session = {
 };
 const trame = {
     client: { getConnection: () => ({ getSession: () => session }) },
-    state: { watch: () => () => {} },
+    // Calls back at once with no values, as trame's watch does before any state arrives.
+    state: {
+        watch: (_keys: string[], fn: (...values: unknown[]) => void) => {
+            fn();
+            return () => {};
+        },
+    },
     trigger,
 } as unknown as Trame;
 
