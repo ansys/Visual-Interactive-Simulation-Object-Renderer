@@ -57,3 +57,6 @@ class VisorVTKLocal(VisorVTK):
             scene_mutation_api=self._scene,
         )
 
+    def _post_scene_change_hook(self) -> None:
+        """Client mode signals through LocalView.update and set_state; nothing to bump."""
+

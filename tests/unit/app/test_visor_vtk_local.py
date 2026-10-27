@@ -125,7 +125,7 @@ def test_remove_dataset_clears_if_no_datasets(iface):
     type(iface._scene).dataset_count = PropertyMock(return_value=1)
 
     iface._scene.remove_dataset = MagicMock()
-    iface.clear = MagicMock()
+    iface._clear_scene = MagicMock()
     iface._scene.update_widgets = MagicMock()
     iface._scene.render = MagicMock()
 
@@ -140,7 +140,7 @@ def test_remove_dataset_clears_if_no_datasets(iface):
 
     # Assertions
     iface._scene.remove_dataset.assert_called_once_with(1)
-    iface.clear.assert_called_once()
+    iface._clear_scene.assert_called_once()
 
 def test_remove_dataset_updates_widgets_and_renders(iface):
     """Verify that removing a dataset updates widgets and triggers a render."""
@@ -538,6 +538,94 @@ def test_load_state_passes_correct_metadata_to_add_dataset(tmp_path, iface):
     iface._file_io.build_metadata_for_load_state.assert_called_once_with("mesh", "mm", ds_state)
     iface._file_io.read_snapshot.assert_called_once_with(str(snapshot))
     iface._scene.add_dataset.assert_called_once_with(mock_data, built_meta)
+
+
+# ================================================================== #
+# Scene-change notification
+# ================================================================== #
+
+def _run_update(iface):
+    iface._prepare_and_render_scene = MagicMock(return_value=1)
+    iface.update("input", "metadata")
+
+
+def _run_add_dataset(iface):
+    iface._prepare_and_render_scene = MagicMock(return_value=1)
+    iface.add_dataset("input", "metadata")
+
+
+def _run_remove_dataset_with_datasets_left(iface):
+    type(iface._scene).dataset_count = PropertyMock(return_value=1)
+    iface.remove_dataset(1)
+
+
+def _run_remove_last_dataset(iface):
+    type(iface._scene).dataset_count = PropertyMock(return_value=0)
+    iface.remove_dataset(1)
+
+
+def _run_clear(iface):
+    iface.clear()
+
+
+def _run_update_variables(iface):
+    iface.update_variables(1, [])
+
+
+def _run_load_state(iface):
+    iface._file_io.read_state = MagicMock(return_value=MagicMock())
+    type(iface._scene).dataset_count = PropertyMock(return_value=1)
+    iface.load_state("state_dir")
+
+
+def _run_start(iface):
+    iface._server_manager.running = False
+    iface._prepare_and_render_scene = MagicMock()
+    iface._server_manager.start = MagicMock()
+    iface.start("input", "metadata")
+
+
+def _run_list_datasets(iface):
+    iface.list_datasets()
+
+
+def _run_list_variables(iface):
+    iface.list_variables(1)
+
+
+@pytest.mark.parametrize(
+    "run,expected_calls",
+    [
+        pytest.param(_run_update, 1, id="update"),
+        pytest.param(_run_add_dataset, 1, id="add_dataset"),
+        pytest.param(_run_remove_dataset_with_datasets_left, 1, id="remove_dataset-left"),
+        pytest.param(_run_remove_last_dataset, 1, id="remove_dataset-last"),
+        pytest.param(_run_clear, 1, id="clear"),
+        pytest.param(_run_update_variables, 1, id="update_variables"),
+        pytest.param(_run_load_state, 1, id="load_state"),
+        pytest.param(_run_start, 0, id="start"),
+        pytest.param(_run_list_datasets, 0, id="list_datasets"),
+        pytest.param(_run_list_variables, 0, id="list_variables"),
+    ],
+)
+def test_each_scene_operation_notifies_once(iface, run, expected_calls):
+    """Each scene-changing operation notifies exactly once; start and the reads never do."""
+    iface._post_scene_change_hook = MagicMock()
+
+    run(iface)
+
+    assert iface._post_scene_change_hook.call_count == expected_calls
+
+
+def test_failed_scene_operation_still_notifies(iface):
+    """A scene operation that raises still notifies once, since the scene may have changed."""
+    iface._post_scene_change_hook = MagicMock()
+    iface._scene.clear.side_effect = ValueError
+
+    with pytest.raises(RuntimeError):
+        iface.clear()
+
+    assert iface._post_scene_change_hook.call_count == 1
 
 
 # ================================================================== #
