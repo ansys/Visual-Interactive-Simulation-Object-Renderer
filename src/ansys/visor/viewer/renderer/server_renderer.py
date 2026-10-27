@@ -6,8 +6,9 @@ ServerRenderer
 Owns an off-screen VTK pipeline and presents each write by asking a
 :class:`FrameRequester` for a streamed frame.  It never calls ``Render()``
 itself: every render happens on the streaming path, under the scene lock.
-Each camera write also hands the camera record to a :class:`CameraPublisher`,
-since a client of a streamed view has no camera of its own to read.
+Each camera and cross-section plane write also hands the record to a
+:class:`ViewRecordPublisher`, since a client of a streamed view has no camera
+or plane of its own to read.
 """
 
 from __future__ import annotations
@@ -21,6 +22,7 @@ from vtkmodules.vtkCommonCore import vtkObject
 from vtkmodules.vtkRenderingCore import vtkRenderWindow
 
 from ansys.visor.viewer.models.common.visor_camera_state import VisorCameraState
+from ansys.visor.viewer.models.common.visor_cross_section_state import VisorCrossSectionState
 from ansys.visor.viewer.renderer.pipeline_renderer import VtkPipelineRenderer
 
 INITIAL_WINDOW_SIZE: tuple[int, int] = (300, 300)
@@ -34,11 +36,14 @@ class FrameRequester(Protocol):
         """Ask for a streamed frame; callable from any thread."""
 
 
-class CameraPublisher(Protocol):
-    """Where a ServerRenderer publishes its camera record."""
+class ViewRecordPublisher(Protocol):
+    """Where a ServerRenderer publishes its camera and cross-section plane records."""
 
     def publish_camera(self, camera_state: VisorCameraState | None) -> None:
         """Publish the camera record to clients, or None when there is none; callable from any thread."""
+
+    def publish_cross_section(self, cross_section_state: VisorCrossSectionState | None) -> None:
+        """Publish the plane record to clients, or None when there is none; callable from any thread."""
 
 
 class ServerRenderer(VtkPipelineRenderer):
@@ -46,21 +51,21 @@ class ServerRenderer(VtkPipelineRenderer):
 
     _background_rgb: tuple[float, float, float]
     _frame_requester: FrameRequester
-    _camera_publisher: CameraPublisher
+    _view_record_publisher: ViewRecordPublisher
     _bounding_box_visible: bool
 
     def __init__(
         self,
         background_rgb: tuple[float, float, float],
         frame_requester: FrameRequester,
-        camera_publisher: CameraPublisher,
+        view_record_publisher: ViewRecordPublisher,
     ) -> None:
-        """Build the off-screen pipeline; every write ends in a frame request, every camera write also publishes the record."""
+        """Build the off-screen pipeline; every write ends in a frame request, every camera or plane write also publishes the record."""
         # All three are read during the base build: the background by
         # _initialize_vtk_renderer, the requester and publisher by any publish hook.
         self._background_rgb = background_rgb
         self._frame_requester = frame_requester
-        self._camera_publisher = camera_publisher
+        self._view_record_publisher = view_record_publisher
         self._bounding_box_visible = False
         super().__init__()
         self._cross_section_widget.link_plane_to_handle()
@@ -102,19 +107,21 @@ class ServerRenderer(VtkPipelineRenderer):
         self._publish_camera_record()
 
     def record_cross_section_plane(self) -> None:
-        """Record a dragged clip plane through the ``sync_cross_section_plane`` step; requests no frame.
+        """Record a dragged clip plane through the ``sync_cross_section_plane`` step and publish it; requests no frame.
 
         Does nothing when no drag step ran since the last call.  Reads the
         clip plane, not the handle: the handle clamps its origin to the widget
         bounds and normalises its normal, so reading it would rewrite a loaded
-        plane that no drag touched.  Nothing is published: the plane's only
-        publish is a frame request, and the caller is producing a frame
-        already.  Takes no lock; the caller holds the scene lock.
+        plane that no drag touched.  The step is
+        :meth:`sync_cross_section_plane`'s without its frame request: the
+        caller is producing a frame already.  Takes no lock; the caller holds
+        the scene lock.
         """
         if not self._cross_section_widget.take_handle_moved():
             return
         plane = self._cross_section_widget.plane
         self._write_cross_section(list(plane.GetOrigin()), list(plane.GetNormal()))
+        self._publish_cross_section_record()
 
     # ------------------------------------------------------------------
     # IRenderer: wire contract
@@ -141,6 +148,15 @@ class ServerRenderer(VtkPipelineRenderer):
         self._bounding_box_visible = visible
         self._apply_bounding_box_visibility()
         self._frame_requester.request_frame()
+
+    def update_bounds(self, bounds: list[float]) -> None:
+        """See :meth:`VtkPipelineRenderer.update_bounds`; then publish the plane record, which the first call seeds; requests no frame.
+
+        Publishes after the base call, so the first call publishes the seeded
+        record rather than ``None``.
+        """
+        super().update_bounds(bounds)
+        self._publish_cross_section_record()
 
     def update_actor_count(self, count: int) -> None:
         """Record the part count and re-apply the remembered outline visibility.
@@ -183,12 +199,17 @@ class ServerRenderer(VtkPipelineRenderer):
         self._frame_requester.request_frame()
 
     def _publish_camera_record(self) -> None:
-        """Hand the camera record to the camera publisher; requests no frame."""
-        self._camera_publisher.publish_camera(self.get_camera_state())
+        """Hand the camera record to the record publisher; requests no frame."""
+        self._view_record_publisher.publish_camera(self.get_camera_state())
 
     def _publish_cross_section(self) -> None:
-        """Request a frame showing the written plane."""
+        """Publish the plane record, then request a frame showing the written plane."""
+        self._publish_cross_section_record()
         self._frame_requester.request_frame()
+
+    def _publish_cross_section_record(self) -> None:
+        """Hand the plane record to the record publisher; requests no frame."""
+        self._view_record_publisher.publish_cross_section(self.get_cross_section_plane())
 
     # ------------------------------------------------------------------
     # VtkPipelineRenderer: backend hooks
