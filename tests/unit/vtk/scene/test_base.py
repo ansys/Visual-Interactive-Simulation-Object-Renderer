@@ -1886,7 +1886,7 @@ def test_apply_state_unknown_node_is_a_logged_no_op(scene, registry, pipeline):
     """A part with no pipeline is a logged no-op, not a raise."""
     pipeline.actor.SetVisibility(1)
 
-    with patch("ansys.visor.viewer.renderer.local_renderer.logger") as mock_logger:
+    with patch("ansys.visor.viewer.renderer.pipeline_renderer.logger") as mock_logger:
         result = _apply(
             scene,
             _runtime_state(
