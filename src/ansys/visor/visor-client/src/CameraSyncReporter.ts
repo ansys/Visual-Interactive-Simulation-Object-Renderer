@@ -1,8 +1,4 @@
-import type {
-    CameraOrigin,
-    TrameTriggerSender,
-    VisorCameraState,
-} from './renderer/IRenderer';
+import type { CameraOrigin, TrameTriggerSender, VisorCameraState } from './renderer/IRenderer';
 import type { WasmRenderer } from './renderer/WasmRenderer';
 
 /**
@@ -40,7 +36,10 @@ export type SyncCameraPayload = Readonly<{
  * defeat the type check it is here to get. Only the client-rendering renderer
  * reports settled camera windows, so the source is typed from it.
  */
-export type CameraSyncSource = Pick<WasmRenderer, 'addCameraSettledListener' | 'getCameraStateAsync'>;
+export type CameraSyncSource = Pick<
+    WasmRenderer,
+    'addCameraSettledListener' | 'getCameraStateAsync'
+>;
 
 /**
  * Build the trigger payload from a settled camera snapshot.
