@@ -676,12 +676,12 @@ class TestDelegatedApplyBodies:
     # ------------------------------------------------------------------
 
     def test_apply_color_variable_delegates_with_given_arguments(self, renderer):
-        """The association is forwarded unchanged; variable_id is not forwarded."""
+        """The association is forwarded unchanged with the array, component and range."""
         pipe = MagicMock(name="pipeline")
         renderer._pipelines[4] = pipe
 
         renderer.apply_color_variable(
-            4, "sp-1", VisorVtkVariableType.POINT, "pressure", 1, 0.0, 7.5
+            4, VisorVtkVariableType.POINT, "pressure", 1, 0.0, 7.5
         )
 
         pipe.set_color_variable.assert_called_once_with(
@@ -697,7 +697,7 @@ class TestDelegatedApplyBodies:
             "ansys.visor.viewer.renderer.local_renderer.logger"
         ) as mock_logger:
             renderer.apply_color_variable(
-                9999, "sp-1", VisorVtkVariableType.POINT, "pressure", 1, 0.0, 7.5
+                9999, VisorVtkVariableType.POINT, "pressure", 1, 0.0, 7.5
             )  # must not raise
 
         mock_logger.debug.assert_called_once()
@@ -727,7 +727,7 @@ class TestDelegatedApplyBodies:
         )
 
         renderer.apply_color_variable(
-            4, "sp-1", VisorVtkVariableType.POINT, "pressure", 0, 2.0, 8.0
+            4, VisorVtkVariableType.POINT, "pressure", 0, 2.0, 8.0
         )
 
         assert recorded == [(8150003, (2.0, 8.0))]
@@ -1174,7 +1174,7 @@ class TestCamera:
         camera = renderer._vtk_renderer.GetActiveCamera.return_value
         camera.calls.clear()
 
-        with patch("ansys.visor.viewer.renderer.local_renderer.logger") as log:
+        with patch("ansys.visor.viewer.renderer.base.logger") as log:
             renderer.set_projection(True)
 
         assert camera.calls == [("SetParallelProjection", True)]

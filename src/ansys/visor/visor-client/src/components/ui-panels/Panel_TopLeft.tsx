@@ -41,7 +41,6 @@ export const Panel_TopLeft: FC<{
                 for (const node of visorState.sceneGraph.descendantActorNodesOrSelfArray) {
                     await node.setVisibilityAsync(visible.has(node));
                 }
-                // await visorState.updateBoundingBoxBoundsAsync();
                 await visorState.render();
             })();
         });

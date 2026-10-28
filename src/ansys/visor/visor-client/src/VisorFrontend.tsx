@@ -14,6 +14,7 @@ import { attachCameraSyncReporter } from './CameraSyncReporter';
 import { Panel_TopRight_Util } from './components/ui-panels/Panel_TopRight_Util.tsx';
 import { Panel_TopLeft_Util } from './components/ui-panels/Panel_TopLeft_Util.tsx';
 import { OrientationWidget } from './widgets/orientationWidget.ts';
+import { FullscreenWidget } from './widgets/fullscreenWidget.ts';
 import { UiScaffoldUtil } from './components/UiScaffold.tsx';
 
 export type { VisorCameraState } from './renderer/IRenderer';
@@ -33,7 +34,6 @@ export class VisorFrontend {
             renderer
         );
         variableManager.finishAddingDataArrayMetadata();
-        renderer.attachSceneGraph(sceneGraph);
 
         let treeViewUtilSet: boolean = false;
         let panelTopLeftUtilSet: boolean = false;
@@ -256,14 +256,14 @@ export class VisorFrontend {
             sendUiPanelTriggerAsync('set_panel_top_right_legend_collapsed', { collapsed });
         this.sendPanelTopRightTabIndexAsync = (tabIndex) =>
             sendUiPanelTriggerAsync('set_panel_top_right_tab_index', { tabIndex });
-        this.toggleFullScreenAsync = () => renderer.toggleFullScreenAsync();
-        this.setEdgeVisibilityAsync = (visible) => renderer.setEdgeVisibilityGlobalAsync(visible);
+        const fullscreenWidget = new FullscreenWidget();
+        this.toggleFullScreenAsync = () => fullscreenWidget.setFullScreenAsync();
+        this.setEdgeVisibilityGlobalAsync = (visible) =>
+            renderer.setEdgeVisibilityGlobalAsync(visible);
         this.setCrossSectionVisibilityAsync = (visible) =>
             renderer.setCrossSectionVisibilityAsync(visible);
-        this.updateCrossSectionBoundsAsync = () => renderer.updateCrossSectionBoundsAsync();
         this.setBoundingBoxVisibilityAsync = (visible) =>
             renderer.setBoundingBoxVisibilityAsync(visible);
-        this.updateBoundingBoxBoundsAsync = () => renderer.updateBoundingBoxBoundsAsync();
         this.setOrthographicModeAsync = async () => {
             await renderer.setOrthographicModeAsync();
             const uiScaffold = await uiScaffoldUtilPromise;
@@ -580,10 +580,9 @@ export class VisorFrontend {
     ) => () => void;
     addFrameRenderedListener: (handler: (fps: number) => void) => () => void;
     setCrossSectionVisibilityAsync: (visible?: boolean) => Promise<void>;
-    updateCrossSectionBoundsAsync: () => Promise<void>;
     setBoundingBoxVisibilityAsync: (visible?: boolean) => Promise<void>;
-    setEdgeVisibilityAsync: (visible?: boolean | undefined) => Promise<void>;
-    updateBoundingBoxBoundsAsync: () => Promise<void>;
+    /** Show, hide or toggle edges on every part. */
+    setEdgeVisibilityGlobalAsync: (visible?: boolean | undefined) => Promise<void>;
     setOrthographicModeAsync: (enable?: boolean) => Promise<void>;
     getAppStateAsync: (keyedByName?: boolean) => Promise<VisorAppState>;
     setAppStateAsync: (state?: StateInput<VisorAppState>, updateUI?: boolean) => Promise<void>;

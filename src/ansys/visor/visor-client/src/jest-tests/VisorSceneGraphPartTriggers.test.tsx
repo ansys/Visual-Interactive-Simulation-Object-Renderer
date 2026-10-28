@@ -67,7 +67,6 @@ function makeRendererDouble() {
         resetDiffuseColorAsync: jest.fn(async () => undefined),
         setColorVariableAsync: jest.fn(async () => undefined),
         clearColorVariableAsync: jest.fn(async () => undefined),
-        setEdgeVisibilityAsync: jest.fn(async () => undefined),
         setScalarRangeAsync: jest.fn(async () => undefined),
         // The per-part sends added for the server path.
         sendPartVisibilityAsync: jest.fn(async () => undefined),

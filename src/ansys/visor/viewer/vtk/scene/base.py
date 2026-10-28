@@ -57,7 +57,6 @@ class _ColorVariableBinding:
         """Configure the part's mapper at this range and re-serialize it; caller holds ``_vtk_lock``."""
         renderer.apply_color_variable(
             self.part_id,
-            self.record.id,
             self.record.type,
             self.record.array_name,
             self.component,
@@ -72,12 +71,12 @@ class VisorSceneBase(ABC):
 
     Owns the **scene description** side of the application:
 
-    * :class:`VisorVTKSceneGraph`      – the pure scene-graph node tree
+    * :class:`VisorSceneGraph`      – the pure scene-graph node tree
     * :class:`VisorDatasetRegistry` – dataset metadata, variables, unit
     * :class:`VisorStateMapper`     – persisted ↔ runtime state conversion
 
     All **rendering** concerns are delegated to an injected :class:`IRenderer`
-    implementation (``self._vtk_renderer``): VTK pipeline objects, actor
+    implementation (``self._renderer``): VTK pipeline objects, actor
     lifecycle, camera, and scene-state serialisation.
 
     Subclasses must implement one abstract hook, which captures the difference
@@ -113,7 +112,7 @@ class VisorSceneBase(ABC):
             dark_mode: bool = False,
             renderer: IRenderer | None = None
     ):
-        """Initialize the scene coordinator and its local renderer backend."""
+        """Initialize the scene coordinator around the injected *renderer*."""
         logger.debug("Initializing %s", type(self).__name__)
 
         # The server's UI record, held as a model like the camera record.
@@ -164,7 +163,6 @@ class VisorSceneBase(ABC):
 
         self._server = server
         self._scene_graph = None
-        self._pipelines = {}
 
         # Serialises every server-side VTK mutation and wasm push.
         #
@@ -181,8 +179,6 @@ class VisorSceneBase(ABC):
         if renderer is not None:
             self._renderer = renderer
         else:
-            # Subclass must have assigned self._vtk_renderer before calling
-            # super().__init__() without a renderer, or override _initialize.
             raise TypeError(
                 f"{type(self).__name__} must supply a renderer to VisorSceneBase.__init__"
             )

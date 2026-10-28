@@ -9,8 +9,7 @@ without touching scene coordination.
 
 Contract covers node lifecycle, per-part visual mutations,
 camera, widget control (cross-section, bounding box, edges), widget fan-out
-(scene bounds, actor count), picking, and render/flush. Not covered yet:
-state-authority hooks, trigger-facing methods, round-trip additions.
+(scene bounds, actor count), picking, and render.
 
 """
 
@@ -19,19 +18,36 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
+from ansys.visor.viewer.core.visor_logging import VisorDefaultLogger
+from ansys.visor.viewer.models.common.visor_cross_section_state import VisorCrossSectionState
+
 if TYPE_CHECKING:
     from vtkmodules.vtkCommonDataModel import vtkDataObject
 
+    from ansys.visor.viewer.core.visor_enums import VisorVtkVariableType
     from ansys.visor.viewer.models.common.visor_camera_state import VisorCameraState
-    from ansys.visor.viewer.models.common.visor_cross_section_state import (
-        VisorCrossSectionState,
-    )
     from ansys.visor.viewer.models.runtime.vtk.renderer_annotation import RendererAnnotation
     from ansys.visor.viewer.vtk.scene_graph import VisorSceneGraphPartNode
 
+logger = VisorDefaultLogger(__name__)
+
 
 class IRenderer(ABC):
-    """Abstract rendering backend consumed by the scene coordinator."""
+    """Abstract rendering backend consumed by the scene coordinator.
+
+    Holds the camera record and the cross-section plane record, and owns the
+    record half of the camera and plane contracts.  An implementation that has
+    a pipeline camera or widget to project onto overrides the writers, calling
+    ``super()`` first, and adds the projection.
+    """
+
+    _last_camera_state: "VisorCameraState | None"
+    _last_cross_section_state: "VisorCrossSectionState | None"
+
+    def __init__(self) -> None:
+        """Initialize the camera and cross-section records to ``None``."""
+        self._last_camera_state = None
+        self._last_cross_section_state = None
 
     # ------------------------------------------------------------------------
     # Wire contract
@@ -139,8 +155,7 @@ class IRenderer(ABC):
     def apply_color_variable(
         self,
         node_id: int,
-        variable_id: str,
-        array_type: str,
+        array_type: "VisorVtkVariableType",
         array_name: str,
         component: int,
         min_val: float,
@@ -154,10 +169,8 @@ class IRenderer(ABC):
         ----------
         node_id:
             Scene-graph node to update.
-        variable_id:
-            Server-authoritative opaque ID (stored as-is; not parsed here).
         array_type:
-            ``"POINT"`` or ``"CELL"``.
+            The array's association, already parsed at the trigger boundary.
         array_name:
             VTK array name.
         component:
@@ -193,39 +206,38 @@ class IRenderer(ABC):
         write, and the client is not notified.
         """
 
-    @abstractmethod
     def get_camera_state(self) -> "VisorCameraState | None":
-        """
-        Return the camera record, or ``None`` if nothing has written one yet.
-        """
+        """Return the camera record, or ``None`` if nothing has written one yet."""
+        return self._last_camera_state
 
-    @abstractmethod
     def sync_camera(self, camera_state: "VisorCameraState") -> None:
-        """
-        Write *camera_state* to the record and project it onto the pipeline
-        camera.
+        """Store *camera_state* as the record, without copying.
 
-        The record stores the object as given, without copying: callers rely
-        on object identity through :meth:`get_camera_state`.
+        Callers rely on object identity through :meth:`get_camera_state`.
+        An implementation with a pipeline camera overrides this, calls
+        ``super()`` first, then projects the record onto the pipeline, so a
+        raising VTK setter still leaves the record holding what was asked.
 
         On return, the state this renderer serves to the client reflects the
         write, and the client is not notified.
         """
+        self._last_camera_state = camera_state
 
-    @abstractmethod
     def set_projection(self, parallel: bool) -> None:
-        """Set parallel projection on the camera record, then project it.
+        """Write ``parallel_projection`` on the record in place; no record, no write.
 
-        Writes ``parallel_projection`` on the existing record in place
-        (preserving :meth:`sync_camera`'s identity contract) before applying
-        to the pipeline camera, so a raising VTK setter still leaves the
-        record holding what was asked. A ``None`` record is not seeded: the
-        pipeline write still happens, but the value is lost until the next
-        :meth:`reset_camera` imports it.
+        In place, preserving :meth:`sync_camera`'s identity contract.  A
+        ``None`` record is not seeded: an implementation with a pipeline
+        camera still applies the projection there, but the value is not
+        recorded until the next :meth:`reset_camera` imports it.
 
         On return, the state this renderer serves to the client reflects the
         write, and the client is not notified.
         """
+        if self._last_camera_state is not None:
+            self._last_camera_state.parallel_projection = parallel
+        else:
+            logger.debug("set_projection: no camera record; nothing to write.")
 
     # ------------------------------------------------------------------------
     # Widget control (cross-section, bounding box, edges)
@@ -235,9 +247,7 @@ class IRenderer(ABC):
     def set_edges_visible(self, visible: bool) -> None:
         """Show or hide edges on every part in the scene.
 
-        Scene-wide, not per-node: edges are a single global toggle and the
-        per-part surface that once mirrored it had no reader, no sender and
-        no model field.
+        Scene-wide, not per-node: edges are a single global toggle.
 
         On return, the state this renderer serves to the client reflects the
         write, and the client is not notified.
@@ -247,24 +257,24 @@ class IRenderer(ABC):
     def set_cross_section_visibility(self, visible: bool) -> None:
         """Show or hide the cross-section clipping plane."""
 
-    @abstractmethod
     def sync_cross_section_plane(
         self, origin: list[float], normal: list[float]
     ) -> None:
-        """
-        Sync the cross-section plane origin and normal from the frontend back
-        to server-side VTK objects.
+        """Store a copy of *origin* and *normal* as the plane record.
+
+        An implementation with a widget overrides this, calls ``super()``
+        first, then writes the widget's VTK objects.
 
         On return, the state this renderer serves to the client reflects the
         write, and the client is not notified.
         """
+        self._last_cross_section_state = VisorCrossSectionState(
+            origin=list(origin), normal=list(normal)
+        )
 
-    @abstractmethod
     def get_cross_section_plane(self) -> "VisorCrossSectionState | None":
-        """
-        Return the cross-section plane record, or ``None`` if nothing has
-        written one yet.
-        """
+        """Return the plane record, or ``None`` if nothing has written one yet."""
+        return self._last_cross_section_state
 
 
     @abstractmethod
@@ -327,35 +337,11 @@ class IRenderer(ABC):
         """
 
     # ------------------------------------------------------------------------
-    # Render / flush
+    # Render
     # ------------------------------------------------------------------------
 
     @abstractmethod
     def render(self) -> None:
         """Trigger a render and flush to the frontend."""
 
-    @abstractmethod
-    def render_window_only(self) -> None:
-        """Render the VTK window without flushing to the frontend."""
-
-    def flush_wasm_state(self) -> None:
-        """
-        Serialise current Python VTK object state and push it to the wasm
-        client without triggering a VTK pipeline re-render.
-
-        No-op default for non-wasm renderers. The local (wasm) renderer
-        overrides this to call ``local_view.update()``.
-        """
-
-    # ------------------------------------------------------------------------
-    # Frontend addressing
-    # ------------------------------------------------------------------------
-
-    @property
-    @abstractmethod
-    def frontend_ref_name(self) -> str:
-        """Name by which the frontend view is addressed in ``server.js_call``.
-
-        Empty string for renderers with no frontend view.
-        """
 

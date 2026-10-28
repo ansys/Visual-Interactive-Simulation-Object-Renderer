@@ -1,5 +1,4 @@
 import {
-    AppliedCameraState,
     CameraOrigin,
     ColorVariableDescriptor,
     GeometryPickMode,
@@ -8,7 +7,6 @@ import {
     PickGeometryResult,
     VisorCameraState,
 } from './IRenderer';
-import { VisorSceneNodeExtended } from '../state/VisorSceneGraph.tsx';
 
 const NULL_CAMERA_STATE: VisorCameraState = {
     distance: 0,
@@ -26,16 +24,10 @@ const NULL_CAMERA_STATE: VisorCameraState = {
 };
 
 /**
- * No-op implementation of IRenderer. Used to confirm the interface is
- * buildable and to serve as a placeholder renderer until a concrete one is
- * wired in. Nothing imports this yet.
+ * No-op renderer for tests that need an `IRenderer` with no wasm behind it.
  */
 export class NullRenderer implements IRenderer {
     readonly domElement: HTMLDivElement = document.createElement('div');
-
-    attachSceneGraph(_sceneGraph: VisorSceneNodeExtended): void {
-        // no-op
-    }
 
     async renderAsync(): Promise<void> {
         // no-op
@@ -78,14 +70,6 @@ export class NullRenderer implements IRenderer {
     }
 
     async setCameraParallelScaleAsync(_scale: number): Promise<void> {
-        // no-op
-    }
-
-    async setCameraStateAsync(_state: AppliedCameraState): Promise<void> {
-        // no-op
-    }
-
-    async resetCameraAsync(_bounds?: readonly number[]): Promise<void> {
         // no-op
     }
 
@@ -148,10 +132,6 @@ export class NullRenderer implements IRenderer {
         _selected: boolean,
         _currentDiffuseRgb: readonly number[]
     ): Promise<void> {
-        // no-op
-    }
-
-    async setEdgeVisibilityAsync(_nodeId: NodeId, _edgeVisible: boolean): Promise<void> {
         // no-op
     }
 
@@ -221,10 +201,6 @@ export class NullRenderer implements IRenderer {
         // no-op
     }
 
-    async updateCrossSectionBoundsAsync(): Promise<void> {
-        // no-op
-    }
-
     async getCrossSectionOriginAsync(): Promise<readonly number[]> {
         return [0, 0, 0];
     }
@@ -253,10 +229,6 @@ export class NullRenderer implements IRenderer {
         // no-op
     }
 
-    async updateBoundingBoxBoundsAsync(): Promise<void> {
-        // no-op
-    }
-
     async setOrthographicModeAsync(_enable?: boolean): Promise<void> {
         // no-op
     }
@@ -278,10 +250,6 @@ export class NullRenderer implements IRenderer {
     }
 
     async applyEdgeVisibilityGlobalAsync(_visible: boolean): Promise<void> {
-        // no-op
-    }
-
-    async toggleFullScreenAsync(): Promise<void> {
         // no-op
     }
 
