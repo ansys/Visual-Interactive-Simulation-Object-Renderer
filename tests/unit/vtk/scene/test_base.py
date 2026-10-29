@@ -37,6 +37,7 @@ from ansys.visor.viewer.models.runtime.dataset.runtime_dataset_state import (
     RuntimePartProperties,
     VariableReference,
 )
+from ansys.visor.viewer.models.runtime.picking.geometry_pick import VertexPick
 from ansys.visor.viewer.models.runtime.scene.runtime_app_state import RuntimeAppState
 from ansys.visor.viewer.models.runtime.scene.runtime_scene_state import RuntimeSceneState
 from ansys.visor.viewer.models.runtime.scene.runtime_ui_state import RuntimeUIState
@@ -2687,6 +2688,46 @@ def test_set_projection_does_not_notify_the_client(scene):
     scene.set_projection(PROJECTION_ON)
 
     assert notifications == []
+
+
+# ---------------------------------------------------------------------------
+# set_geometry_highlight -- transient, locked, and silent
+# ---------------------------------------------------------------------------
+
+def test_set_geometry_highlight_holds_the_lock_at_the_renderer_call(scene):
+    """The renderer's draw and push run inside the scene's critical section."""
+    scene._vtk_lock = _LockSpy()
+    depths = []
+    scene._renderer.show_geometry_highlight = lambda pick: depths.append(scene._vtk_lock.depth)
+
+    scene.set_geometry_highlight(VertexPick(position=[1.0, 2.0, 3.0]))
+
+    assert len(depths) == 1
+    assert depths[0] >= 1
+    assert scene._vtk_lock.depth == 0
+    assert scene._vtk_lock.enter_count == scene._vtk_lock.exit_count
+
+
+def test_set_geometry_highlight_does_not_notify_the_client(scene):
+    """No render, no flush, no delegated push: the renderer's own data-only push is the only one."""
+    notifications = []
+    scene._renderer.render = lambda: notifications.append("render")
+    scene._renderer.flush_wasm_state = lambda: notifications.append("flush")
+    scene._push_runtime_state = lambda state: notifications.append("bridge")
+
+    scene.set_geometry_highlight(VertexPick(position=[1.0, 2.0, 3.0]))
+
+    assert notifications == []
+
+
+def test_set_geometry_highlight_is_not_saved(scene):
+    """The highlight is transient: a save after it equals a save before it."""
+    _toggle_save_scene(scene)
+    before = scene.get_state()
+
+    scene.set_geometry_highlight(VertexPick(position=[1.0, 2.0, 3.0]))
+
+    assert scene.get_state() == before
 
 
 # ---------------------------------------------------------------------------

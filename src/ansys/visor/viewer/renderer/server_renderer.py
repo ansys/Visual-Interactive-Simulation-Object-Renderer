@@ -211,6 +211,10 @@ class ServerRenderer(VtkPipelineRenderer):
         """Hand the plane record to the record publisher; requests no frame."""
         self._view_record_publisher.publish_cross_section(self.get_cross_section_plane())
 
+    def _present_geometry_highlight(self) -> None:
+        """Request a frame showing the written highlight."""
+        self._frame_requester.request_frame()
+
     # ------------------------------------------------------------------
     # VtkPipelineRenderer: backend hooks
     # ------------------------------------------------------------------
