@@ -20,7 +20,6 @@ def pytest_addoption(parser: pytest.Parser):
     parser.addoption("--dash-port", action="store", default="8050", help="Port where the Dash app will run.")
     # parser.addoption("--visor-port", action="store", default="8081", help="Port where the Visor will run.")
     parser.addoption("--host", action="store", default="127.0.0.1", help="Target host for servers.")
-    parser.addoption("--saf-project-dir", action="store", default=None, help="Path to saf-visor-poc root directory (overrides SAF_VISOR_POC_DIR env var).")
 
 
 # Base fixtures -----------------------------------

@@ -1,13 +1,11 @@
 # ©2026, ANSYS Inc part of Synopsys. Unauthorized use, distribution or duplication is prohibited.
 
-"""Interact with a running SAF-launched Visor instance's FastAPI management server.
+"""Interact with a running Visor instance's FastAPI management server.
 
-This is done so e2e tests can discover the Visor management API and drive it (e.g. save_state)
-without going through the SAF Dash UI.
-
-The API host:port is assigned dynamically by PIM per project and isn't persisted
-by saf-visor-poc, so you must supply it explicitly (--api-host/--api-port) or point
---log-file at a saf run log whose stdout was redirected to a file (e.g. via
+The public SAF smoke harness owns the management endpoint and supplies its host
+and port directly. This helper can drive operations such as save_state without
+going through the SAF Dash UI. For manual use, supply --api-host/--api-port.
+Optional --log-file discovery remains available for older SAF launch logs.
 
 
 Subcommands
@@ -36,8 +34,7 @@ API_HOST_PORT_RE = re.compile(r"Visor API host:\s*(.+?),\s*port:\s*(\d+)", re.DO
 
 
 def _read_log_text(log_file: str) -> str:
-    """Read a log file, auto-detecting its encoding.
-    """
+    """Read a log file, auto-detecting UTF-16, UTF-8 with BOM, or plain UTF-8 encoding."""
     with open(log_file, "rb") as f:
         raw = f.read()
     if raw[:2] in (b"\xff\xfe", b"\xfe\xff"):
@@ -112,6 +109,7 @@ def resolve_api_host_port(args: argparse.Namespace, parser: argparse.ArgumentPar
 
 
 def run_list_datasets(api_host: str, api_port: int) -> None:
+    """Print loaded datasets and the variables of the first one, exiting with status 1 on API errors."""
     try:
         datasets = list_datasets(api_host, api_port)
     except requests.ConnectionError:
@@ -145,6 +143,7 @@ def run_list_datasets(api_host: str, api_port: int) -> None:
 
 
 def run_save_state(api_host: str, api_port: int, state_dir: str) -> None:
+    """Save the visualizer state and print the server message, exiting with status 1 on API errors."""
     try:
         message = save_state(api_host, api_port, state_dir)
     except requests.ConnectionError:
@@ -158,6 +157,7 @@ def run_save_state(api_host: str, api_port: int, state_dir: str) -> None:
 
 
 def main() -> None:
+    """Parse command-line arguments, resolve the API endpoint, and run the selected subcommand."""
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--api-host", help="Host of the Visor management API server.")
     parser.add_argument("--api-port", type=int, help="Port of the Visor management API server.")
