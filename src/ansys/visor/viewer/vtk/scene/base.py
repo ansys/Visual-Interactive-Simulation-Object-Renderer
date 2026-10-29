@@ -22,6 +22,7 @@ from ansys.visor.viewer.models.common.visor_variable_record import (
 from ansys.visor.viewer.models.common.visor_variable_state import VisorVariableState
 from ansys.visor.viewer.models.persist.persisted_viewer_state import PersistedViewerStateV1
 from ansys.visor.viewer.models.runtime.dataset.runtime_dataset_state import RuntimePartProperties
+from ansys.visor.viewer.models.runtime.picking.geometry_pick import GeometryPick
 from ansys.visor.viewer.models.runtime.scene.runtime_app_state import RuntimeAppState
 from ansys.visor.viewer.models.runtime.scene.runtime_scene_state import RuntimeSceneState
 from ansys.visor.viewer.models.runtime.scene.runtime_ui_state import RuntimeUIState
@@ -1008,6 +1009,16 @@ class VisorSceneBase(ABC):
         """
         with self._vtk_lock:
             self._renderer.set_projection(parallel)
+
+    def set_geometry_highlight(self, pick: GeometryPick) -> None:
+        """Highlight pick's feature in the scene, or clear the highlight when not found.
+
+        No store field: the highlight is transient view state, never saved or
+        delivered.  The renderer's call does its own client push, without
+        rebuilding the frontend, so there is no notify here.
+        """
+        with self._vtk_lock:
+            self._renderer.show_geometry_highlight(pick)
 
     # =========================================================================
     # UI panel layout — coordinator surface

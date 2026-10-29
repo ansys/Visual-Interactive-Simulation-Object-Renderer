@@ -26,6 +26,7 @@ if TYPE_CHECKING:
 
     from ansys.visor.viewer.core.visor_enums import VisorVtkVariableType
     from ansys.visor.viewer.models.common.visor_camera_state import VisorCameraState
+    from ansys.visor.viewer.models.runtime.picking.geometry_pick import GeometryPick
     from ansys.visor.viewer.models.runtime.vtk.renderer_annotation import RendererAnnotation
     from ansys.visor.viewer.vtk.scene_graph import VisorSceneGraphPartNode
 
@@ -315,6 +316,18 @@ class IRenderer(ABC):
     @abstractmethod
     def update_actor_count(self, count: int) -> None:
         """Propagate the current part-node count to widgets."""
+
+    # ------------------------------------------------------------------------
+    # Geometry highlight
+    # ------------------------------------------------------------------------
+
+    @abstractmethod
+    def show_geometry_highlight(self, pick: "GeometryPick") -> None:
+        """Draw pick on the scene's one highlight, or hide it when not found.
+
+        On return, the client has been sent what it needs to show the
+        highlight, without rebuilding its frontend.
+        """
 
 
     # ------------------------------------------------------------------------
