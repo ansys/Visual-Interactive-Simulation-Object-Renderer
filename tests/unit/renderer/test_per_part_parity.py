@@ -60,7 +60,7 @@ def _build_local() -> VisorLocalRenderer:
 
 
 def _build_server() -> ServerRenderer:
-    return ServerRenderer((0.2, 0.4, 0.6), _RecordingFrameRequester())
+    return ServerRenderer((0.2, 0.4, 0.6), _RecordingFrameRequester(), MagicMock(name="camera_publisher"))
 
 
 @pytest.fixture(params=["local", "server"])
