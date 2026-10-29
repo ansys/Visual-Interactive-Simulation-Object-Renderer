@@ -141,6 +141,19 @@ def test_pick_part_at_returns_the_renderer_pick(scene):
     assert scene.pick_part_at(31, 17) == 42
 
 
+def test_pick_geometry_at_holds_lock(scene):
+    scene._vtk_lock = LockSpy()
+    depths = []
+
+    def recording_pick_geometry_at(x, y, mode):
+        depths.append(scene._vtk_lock.depth)
+        return None
+
+    scene._renderer.pick_geometry_at = recording_pick_geometry_at
+    scene.pick_geometry_at(31, 17, "vertex")
+    assert depths == [1]
+
+
 # ---------------------------------------------------------------------------
 # RCA window
 # ---------------------------------------------------------------------------

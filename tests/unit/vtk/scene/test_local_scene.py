@@ -12,6 +12,7 @@ from ansys.visor.viewer.models.runtime.vtk.renderer_annotation import (
 )
 from ansys.visor.viewer.models.runtime.vtk.scene_graph_node_info import SceneGraphNodeInfo
 from ansys.visor.viewer.vtk.scene.local_scene import VisorLocalScene
+from tests.helpers.utils.locks import LockSpy
 
 
 class _DummyPoints:
@@ -716,6 +717,20 @@ def test_reset_camera_no_scene_graph_noop(pipeline_instance):
     pipeline_instance.reset_camera()
 
     pipeline_instance._renderer.reset_camera.assert_not_called()
+
+
+def test_pick_geometry_in_view_holds_lock(pipeline_instance):
+    """The renderer's view pick runs with the scene lock held."""
+    pipeline_instance._vtk_lock = LockSpy()
+    depths = []
+
+    def recording_pick_geometry_in_view(view, x, y, mode):
+        depths.append(pipeline_instance._vtk_lock.depth)
+        return None
+
+    pipeline_instance._renderer.pick_geometry_in_view = recording_pick_geometry_in_view
+    pipeline_instance.pick_geometry_in_view(MagicMock(name="view"), 31, 17, "vertex")
+    assert depths == [1]
 
 
 # ---------------------------------------------------------------------------

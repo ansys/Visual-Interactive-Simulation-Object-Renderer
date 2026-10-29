@@ -55,6 +55,7 @@ def test_app_receives_the_scene_members(wiring):
     assert kwargs["scene_mutation_api"] is scene
     assert kwargs["rca_window"] is scene.rca_window
     assert kwargs["pick_part_at"] is scene.pick_part_at
+    assert kwargs["pick_geometry_at"] is scene.pick_geometry_at
     assert kwargs["set_dark_mode"] is scene.set_dark_mode
 
 

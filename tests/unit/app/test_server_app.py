@@ -17,10 +17,11 @@ import pytest
 from trame_rca.view_adapter import RcaViewAdapter
 
 from ansys.visor.viewer.app.trame.server_app import ServerApp
+from ansys.visor.viewer.models.runtime.picking.geometry_pick import EdgePick
 from ansys.visor.viewer.renderer.server_window import VisorRcaWindow
 
-# The exact 20 trigger names ServerApp registers: the 18 shared with every
-# rendering mode, plus its own two.  Written out by hand, not derived from the
+# The exact 21 trigger names ServerApp registers: the 18 shared with every
+# rendering mode, plus its own three.  Written out by hand, not derived from the
 # production trigger list.
 SERVER_APP_TRIGGER_NAMES = sorted(
     [
@@ -43,6 +44,7 @@ SERVER_APP_TRIGGER_NAMES = sorted(
         "set_panel_top_right_legend_collapsed",
         "set_panel_top_right_tab_index",
         "pick_part_at",
+        "pick_geometry_at",
         "set_dark_theme",
     ]
 )
@@ -93,7 +95,9 @@ class _Recorder:
         return self._result
 
 
-def _build(mock_server, pick_part_at=None, set_dark_mode=None, rca_window=None, bridge=None):
+def _build(
+    mock_server, pick_part_at=None, pick_geometry_at=None, set_dark_mode=None, rca_window=None, bridge=None
+):
     return ServerApp(
         server=mock_server,
         get_scene_details_json=MagicMock(),
@@ -101,6 +105,7 @@ def _build(mock_server, pick_part_at=None, set_dark_mode=None, rca_window=None, 
         trame_logger=None,
         scene_mutation_api=MagicMock(),
         pick_part_at=pick_part_at if pick_part_at is not None else _Recorder(),
+        pick_geometry_at=pick_geometry_at if pick_geometry_at is not None else _Recorder(),
         set_dark_mode=set_dark_mode if set_dark_mode is not None else _Recorder(),
         rca_window=rca_window if rca_window is not None else MagicMock(name="rca_window"),
         bridge=bridge if bridge is not None else MagicMock(name="bridge"),
@@ -108,7 +113,7 @@ def _build(mock_server, pick_part_at=None, set_dark_mode=None, rca_window=None, 
 
 
 def test_server_app_registers_exactly_these_triggers(mock_server, area_cls):
-    """The registered trigger names are exactly the hand-written 20, sorted."""
+    """The registered trigger names are exactly the hand-written 21, sorted."""
     _build(mock_server)
 
     names = sorted(call.args[0] for call in mock_server.trigger.call_args_list)
@@ -140,6 +145,34 @@ def test_pick_part_at_rejects_bad_payload(mock_server, area_cls):
     app = _build(mock_server, pick_part_at=pick)
 
     result = app.pick_part_at({"x": 1})
+
+    assert result is None
+    assert pick.calls == []
+
+
+def test_pick_geometry_at_forwards_and_dumps_by_alias(mock_server, area_cls):
+    """The pixel and mode reach the injected pick, and its result is returned in the wire's alias form."""
+    pick = _Recorder(result=EdgePick(point_a=[0.0, 1.0, 2.0], point_b=[3.0, 4.0, 5.0], length=6.0))
+    app = _build(mock_server, pick_geometry_at=pick)
+
+    result = app.pick_geometry_at({"x": 3, "y": 4, "mode": "edge"})
+
+    assert result == {
+        "found": True,
+        "mode": "edge",
+        "pointA": [0.0, 1.0, 2.0],
+        "pointB": [3.0, 4.0, 5.0],
+        "length": 6.0,
+    }
+    assert pick.calls == [(3, 4, "edge")]
+
+
+def test_pick_geometry_at_rejects_unknown_mode(mock_server, area_cls):
+    """A mode outside vertex, edge and face is a logged no-op: nothing is picked."""
+    pick = _Recorder(result=EdgePick(point_a=[0.0, 1.0, 2.0], point_b=[3.0, 4.0, 5.0], length=6.0))
+    app = _build(mock_server, pick_geometry_at=pick)
+
+    result = app.pick_geometry_at({"x": 3, "y": 4, "mode": "bogus"})
 
     assert result is None
     assert pick.calls == []
