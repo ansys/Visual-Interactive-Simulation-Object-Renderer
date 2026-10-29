@@ -15,6 +15,7 @@ import pytest
 from ansys.visor.viewer.app.trame.async_runner import AsyncRunner
 from ansys.visor.viewer.app.trame.server_state_publisher import ServerStatePublisher
 from ansys.visor.viewer.models.common.visor_camera_state import VisorCameraState
+from ansys.visor.viewer.models.common.visor_cross_section_state import VisorCrossSectionState
 
 WAIT_TIMEOUT_S = 5.0
 
@@ -117,6 +118,22 @@ def test_publish_camera_none_writes_none(runner, state):
     ServerStatePublisher(runner, state).publish_camera(None)
     runner.callbacks[0]()
     assert state.events == [("set", "server_camera_state", None), ("flush",)]
+
+
+def test_publish_cross_section_writes_record(runner, state):
+    plane = VisorCrossSectionState(origin=[0.0, 0.0, 0.5], normal=[0.0, 1.0, 0.0])
+    ServerStatePublisher(runner, state).publish_cross_section(plane)
+    runner.callbacks[0]()
+    assert state.events == [
+        ("set", "server_cross_section_state", {"origin": [0.0, 0.0, 0.5], "normal": [0.0, 1.0, 0.0]}),
+        ("flush",),
+    ]
+
+
+def test_publish_cross_section_none_writes_none(runner, state):
+    ServerStatePublisher(runner, state).publish_cross_section(None)
+    runner.callbacks[0]()
+    assert state.events == [("set", "server_cross_section_state", None), ("flush",)]
 
 
 def test_bumps_queued_together_count_up(runner, state):
