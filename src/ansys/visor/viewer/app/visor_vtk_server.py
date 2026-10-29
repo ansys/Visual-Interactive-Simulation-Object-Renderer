@@ -50,6 +50,7 @@ class VisorVTKServer(VisorVTK):
             trame_logger=get_trame_logger(trame_log_dir),
             scene_mutation_api=self._scene,
             pick_part_at=self._scene.pick_part_at,
+            pick_geometry_at=self._scene.pick_geometry_at,
             set_dark_mode=self._scene.set_dark_mode,
             rca_window=self._scene.rca_window,
             bridge=bridge,

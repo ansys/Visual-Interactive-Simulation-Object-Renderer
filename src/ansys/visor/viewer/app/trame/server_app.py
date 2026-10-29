@@ -1,9 +1,9 @@
 """
 ServerApp
 =========
-Trame app for server-side rendering: the shared scene triggers, part picking,
-the client theme report, and the trame-rca area the rendered frames stream
-through.
+Trame app for server-side rendering: the shared scene triggers, part and
+geometry picking, the client theme report, and the trame-rca area the rendered
+frames stream through.
 """
 
 from __future__ import annotations
@@ -23,6 +23,8 @@ from ansys.visor.viewer.app.trame.scene_trigger_app import (
 )
 from ansys.visor.viewer.app.trame.server_loop_bridge import ServerLoopBridge
 from ansys.visor.viewer.core.visor_enums import RenderingMode
+from ansys.visor.viewer.models.runtime.picking.geometry_pick import GeometryPick
+from ansys.visor.viewer.models.runtime.requests.geometry_pick_payloads import PickGeometryAtPayload
 from ansys.visor.viewer.renderer.server_window import VisorRcaWindow
 
 RCA_AREA_NAME: str = "view"
@@ -44,7 +46,7 @@ class SetDarkThemePayload(BaseModel):
 
 @TrameApp()
 class ServerApp(SceneTriggerApp):
-    """Serves the scene triggers, part picking and the streamed view for server-side rendering."""
+    """Serves the scene triggers, part and geometry picking and the streamed view for server-side rendering."""
 
     def __init__(
         self,
@@ -54,12 +56,14 @@ class ServerApp(SceneTriggerApp):
         trame_logger: Logger | None,
         scene_mutation_api: SceneMutationApi,
         pick_part_at: Callable[[int, int], int | None],
+        pick_geometry_at: Callable[[int, int, str], GeometryPick],
         set_dark_mode: Callable[[bool], None],
         rca_window: VisorRcaWindow,
         bridge: ServerLoopBridge,
     ) -> None:
         """Create the area before start; the view handler is built when the server is ready."""
         self._pick_part_at = pick_part_at
+        self._pick_geometry_at = pick_geometry_at
         self._set_dark_mode = set_dark_mode
         self._rca_window = rca_window
         self._bridge = bridge
@@ -103,6 +107,12 @@ class ServerApp(SceneTriggerApp):
     def pick_part_at(self, payload) -> int | None:
         """Frontend -> Backend: the node under a render-window pixel, or None; selects nothing."""
         return self._pick_part_at(payload.x, payload.y)
+
+    @trigger("pick_geometry_at")
+    @parse_payload(PickGeometryAtPayload)
+    def pick_geometry_at(self, payload) -> dict:
+        """Frontend -> Backend: the geometry feature under a render-window pixel, dumped by alias; highlights nothing."""
+        return self._pick_geometry_at(payload.x, payload.y, payload.mode).model_dump(by_alias=True)
 
     @trigger("set_dark_theme")
     @parse_payload(SetDarkThemePayload)

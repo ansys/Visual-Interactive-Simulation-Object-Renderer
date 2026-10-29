@@ -131,7 +131,7 @@ class _CameraDouble:
 
     Getters return the literals above, so ``_read_pipeline_camera`` produces a
     valid VisorCameraState.  Setters append to ``calls`` so
-    ``_apply_to_pipeline_camera`` can be asserted on by value *and* by order.
+    ``_write_camera_fields`` can be asserted on by value *and* by order.
     """
 
     def __init__(self):
@@ -160,7 +160,7 @@ class _CameraDouble:
     def GetParallelScale(self): # noqa: N802
         return CAMERA_DOUBLE_PARALLEL_SCALE
 
-    # -- setters, written by _apply_to_pipeline_camera --
+    # -- setters, written by _write_camera_fields --
 
     def SetPosition(self, value): # noqa: N802
         self.calls.append(("SetPosition", value))
