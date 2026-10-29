@@ -16,6 +16,13 @@ const mockTrame = {
             getSession: () => ({ subscribe: mockSubscribe, call: async () => undefined }),
         }),
     },
+    // Calls back at once with no values, as trame's watch does before any state arrives.
+    state: {
+        watch: (_keys: string[], fn: (...values: unknown[]) => void) => {
+            fn();
+            return () => {};
+        },
+    },
     // The scene-details fetch never answers, so the server frontend is never
     // built: this test is about which scene loads, not what the server sends.
     trigger: () => new Promise(() => {}),

@@ -42,11 +42,12 @@ def _camera() -> VisorCameraState:
 
 
 class _RecordingState:
-    """Records each key write and each flush, with the thread it ran on."""
+    """Records each key write and each flush, with the thread it ran on; a read returns the last value set, or None."""
 
     def __init__(self) -> None:
         self.events: list[tuple] = []
         self.thread_ids: list[int] = []
+        self._values: dict = {}
         self._changed = threading.Condition()
 
     def _record(self, event: tuple) -> None:
@@ -55,7 +56,11 @@ class _RecordingState:
             self.thread_ids.append(threading.get_ident())
             self._changed.notify_all()
 
+    def __getitem__(self, key):
+        return self._values.get(key)
+
     def __setitem__(self, key, value) -> None:
+        self._values[key] = value
         self._record(("set", key, value))
 
     def flush(self) -> None:
@@ -112,4 +117,31 @@ def test_publish_camera_none_writes_none(runner, state):
     ServerStatePublisher(runner, state).publish_camera(None)
     runner.callbacks[0]()
     assert state.events == [("set", "server_camera_state", None), ("flush",)]
+
+
+def test_bumps_queued_together_count_up(runner, state):
+    """Both bumps are queued before either runs, so each must read the value on the loop."""
+    publisher = ServerStatePublisher(runner, state)
+    publisher.bump_scene_version()
+    publisher.bump_scene_version()
+    for callback in runner.callbacks:
+        callback()
+    assert state.events == [
+        ("set", "scene_version", 1),
+        ("flush",),
+        ("set", "scene_version", 2),
+        ("flush",),
+    ]
+
+
+def test_bump_writes_on_loop_thread(state):
+    async_runner = AsyncRunner()
+    try:
+        ServerStatePublisher(async_runner, state).bump_scene_version()
+        assert state.wait_for(2)
+        loop_thread_id = async_runner.thread.ident
+        assert state.events == [("set", "scene_version", 1), ("flush",)]
+        assert state.thread_ids == [loop_thread_id, loop_thread_id]
+    finally:
+        async_runner.dispose()
 
