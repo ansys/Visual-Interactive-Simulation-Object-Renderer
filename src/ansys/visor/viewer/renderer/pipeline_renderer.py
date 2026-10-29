@@ -18,6 +18,7 @@ from vtkmodules.vtkCommonCore import vtkObject
 from vtkmodules.vtkCommonDataModel import vtkDataObject
 from vtkmodules.vtkInteractionStyle import vtkInteractorStyleTrackballCamera
 from vtkmodules.vtkRenderingCore import (
+    vtkCamera,
     vtkCellPicker,
     vtkRenderer,
     vtkRenderWindow,
@@ -27,8 +28,10 @@ from vtkmodules.vtkRenderingCore import (
 from ansys.visor.viewer.core.visor_logging import VisorDefaultLogger
 from ansys.visor.viewer.models.common.visor_camera_state import VisorCameraState
 from ansys.visor.viewer.models.common.visor_cross_section_state import VisorCrossSectionState
+from ansys.visor.viewer.models.runtime.picking.geometry_pick import GeometryPick, NoGeometryPick
 from ansys.visor.viewer.renderer.base import IRenderer
 from ansys.visor.viewer.vtk.node_pipeline import VtkNodePipeline
+from ansys.visor.viewer.vtk.picking.part_cell_hit import PartCellHit, PickView
 from ansys.visor.viewer.vtk.widgets.visor_bounding_box import VisorBoundingBox
 from ansys.visor.viewer.vtk.widgets.visor_cross_section import VisorCrossSectionWidget
 from ansys.visor.viewer.vtk.widgets.visor_orientation import VisorOrientationWidget
@@ -303,7 +306,7 @@ class VtkPipelineRenderer(IRenderer):
         record holding what the caller asked for.
         """
         super().sync_camera(camera_state)
-        self._apply_to_pipeline_camera(camera_state)
+        self._write_camera_fields(self._vtk_renderer.GetActiveCamera(), camera_state)
 
     def set_projection(self, parallel: bool) -> None:
         """See :meth:`IRenderer.set_projection`; then apply it to the pipeline camera.
@@ -342,9 +345,9 @@ class VtkPipelineRenderer(IRenderer):
             parallel_scale=camera.GetParallelScale(),
         )
 
-    def _apply_to_pipeline_camera(self, camera_state: "VisorCameraState") -> None:
-        """Write *camera_state*'s onto the active pipeline camera."""
-        camera = self._vtk_renderer.GetActiveCamera()
+    @staticmethod
+    def _write_camera_fields(camera: vtkCamera, camera_state: "VisorCameraState") -> None:
+        """Write the seven record fields onto a VTK camera."""
         camera.SetPosition(camera_state.position)
         camera.SetFocalPoint(camera_state.focal_point)
         camera.SetViewUp(camera_state.view_up)
@@ -443,17 +446,19 @@ class VtkPipelineRenderer(IRenderer):
         self._bounding_box_widget.update_node_count(count)
 
     # ------------------------------------------------------------------
-    # Part picking
+    # Part and geometry picking
+    #
+    # None takes a lock: the caller holds the scene lock, as for every
+    # other method.
     # ------------------------------------------------------------------
 
-    def pick_part_at(self, x: int, y: int) -> int | None:
-        """Return the node id of the part under a render-window pixel, origin bottom-left, or None.
+    def _hit_at(self, renderer: vtkRenderer, x: int, y: int) -> PartCellHit | None:
+        """The part cell under pixel (x, y) of renderer's window, origin bottom-left, part actors only; renders nothing.
 
-        *x* and *y* are render-window device pixels.  Only part actors are
-        pickable: the pick list holds every registered pipeline's actor and
-        nothing else, so the bounding-box outline and the widgets never hide a
-        part behind them.  A software ray cast; it does not render.  Takes no
-        lock: the caller holds the scene lock, as for every other method.
+        The pick list holds every registered pipeline's actor and nothing
+        else, so the bounding-box outline and the widgets never hide a part
+        behind them.  A software ray cast through *renderer*'s camera and
+        window size; the actors need not be in *renderer*.
         """
         picker = vtkCellPicker()
         picker.SetTolerance(PART_PICK_TOLERANCE)
@@ -461,13 +466,56 @@ class VtkPipelineRenderer(IRenderer):
         for pipe in self._pipelines.values():
             picker.AddPickList(pipe.actor)
         picker.PickFromListOn()
-        if not picker.Pick(x, y, 0, self._vtk_renderer):
+        if not picker.Pick(x, y, 0, renderer):
             return None
         picked_actor = picker.GetActor()
         for node_id, pipe in self._pipelines.items():
             if pipe.actor is picked_actor:
-                return node_id
+                return PartCellHit(
+                    node_id=node_id,
+                    cell_id=picker.GetCellId(),
+                    position=tuple(picker.GetPickPosition()),
+                    dataset=picked_actor.GetMapper().GetInputDataObject(0, 0),
+                )
         return None
+
+    def pick_part_at(self, x: int, y: int) -> int | None:
+        """Return the node id of the part under a render-window pixel, origin bottom-left, or None.
+
+        *x* and *y* are render-window device pixels.  Only part actors are
+        pickable; see :meth:`_hit_at`.
+        """
+        hit = self._hit_at(self._vtk_renderer, x, y)
+        return hit.node_id if hit is not None else None
+
+    def pick_geometry_at(self, x: int, y: int, mode: str) -> GeometryPick:
+        """Find the feature of the part cell under a pixel of this window; not found on a miss."""
+        hit = self._hit_at(self._vtk_renderer, x, y)
+        return hit.find_feature(mode) if hit is not None else NoGeometryPick()
+
+    def pick_geometry_in_view(self, view: PickView, x: int, y: int, mode: str) -> GeometryPick:
+        """Find the feature of the part cell under a pixel of a client's window, seen through the client's camera; this window is untouched.
+
+        *x* and *y* are device pixels of the client's window, origin
+        bottom-left.  The picker's tolerance is a fraction of the window
+        diagonal, so the view's size matters as much as its camera.  The
+        window is held for the whole pick: a renderer does not keep its
+        window alive, and a renderer whose window is gone no longer resolves
+        the tolerance through the view's size.
+        """
+        window = self._view_window(view)
+        hit = self._hit_at(window.GetRenderers().GetFirstRenderer(), x, y)
+        return hit.find_feature(mode) if hit is not None else NoGeometryPick()
+
+    def _view_window(self, view: PickView) -> vtkRenderWindow:
+        """A never-rendered off-screen window of the view's size, holding one renderer whose camera is written from the record."""
+        renderer = vtkRenderer()
+        window = vtkRenderWindow()
+        window.SetOffScreenRendering(1)
+        window.SetSize(view.width, view.height)
+        window.AddRenderer(renderer)
+        self._write_camera_fields(renderer.GetActiveCamera(), view.camera_state)
+        return window
 
     # ------------------------------------------------------------------
     # Internal init helpers

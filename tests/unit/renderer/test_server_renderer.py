@@ -12,12 +12,19 @@ from types import SimpleNamespace
 
 import pytest
 from vtkmodules.vtkCommonCore import vtkCommand
-from vtkmodules.vtkFiltersSources import vtkSphereSource
+from vtkmodules.vtkFiltersSources import vtkLineSource, vtkPlaneSource, vtkSphereSource
 from vtkmodules.vtkRenderingCore import vtkRenderWindow
 
 from ansys.visor.viewer.core.visor_enums import VisorVtkVariableType
 from ansys.visor.viewer.models.common.visor_camera_state import VisorCameraState
+from ansys.visor.viewer.models.runtime.picking.geometry_pick import (
+    EdgePick,
+    FacePick,
+    NoGeometryPick,
+    VertexPick,
+)
 from ansys.visor.viewer.renderer.server_renderer import ServerRenderer
+from ansys.visor.viewer.vtk.picking.part_cell_hit import PickView
 
 PART_NODE_ID = 7
 PART_BOUNDS = [-1.0, 1.0, -1.0, 1.0, -1.0, 1.0]
@@ -302,4 +309,77 @@ def test_pick_part_at_skips_the_outline(renderer, outline_bounds, x, y, expected
     renderer.update_actor_count(1)
     assert _outline_actor(renderer).GetVisibility() == 1
     assert renderer.pick_part_at(x, y) == expected
+
+
+def _renderer_with_part(requester, publisher, dataset, bounds) -> ServerRenderer:
+    """A ServerRenderer with one part, the camera reset to it, and the cross-section plane behind everything."""
+    r = ServerRenderer((0.2, 0.4, 0.6), requester, publisher)
+    r.register_node(SimpleNamespace(id=PART_NODE_ID), dataset)
+    r.reset_camera(bounds)
+    r.sync_cross_section_plane([0.0, 0.0, -5.0], [0.0, 0.0, 1.0])
+    return r
+
+
+def test_pick_geometry_at_finds_the_face_of_a_plane_part(requester, publisher):
+    source = vtkPlaneSource()
+    source.Update()
+    r = _renderer_with_part(requester, publisher, source.GetOutput(), [-0.5, 0.5, -0.5, 0.5, 0.0, 0.0])
+
+    assert r.pick_geometry_at(150, 150, "face") == FacePick(
+        area=1.0,
+        points=[[-0.5, -0.5, 0.0], [0.5, -0.5, 0.0], [0.5, 0.5, 0.0], [-0.5, 0.5, 0.0]],
+    )
+
+
+def test_pick_geometry_at_miss_is_not_found(renderer):
+    assert renderer.pick_geometry_at(2, 2, "vertex") == NoGeometryPick()
+
+
+_VIEW_CAMERA = VisorCameraState(
+    position=[0.0, 0.0, 9.0],
+    focal_point=[0.0, 0.0, 0.0],
+    view_up=[0.0, 1.0, 0.0],
+    clipping_range=[1.0, 20.0],
+    parallel_projection=False,
+    view_angle=30.0,
+    parallel_scale=1.0,
+)
+
+
+def test_pick_geometry_in_view_uses_the_view_camera_and_size(renderer):
+    """The pipeline camera looks away from the part; the view's camera looks at it, in a window wider than this one."""
+    renderer.sync_camera(
+        VisorCameraState(
+            position=[0.0, 0.0, 9.0],
+            focal_point=[0.0, 0.0, 20.0],
+            view_up=[0.0, 1.0, 0.0],
+            clipping_range=[1.0, 20.0],
+            parallel_projection=False,
+            view_angle=30.0,
+            parallel_scale=1.0,
+        )
+    )
+    view = PickView(camera_state=_VIEW_CAMERA, width=600, height=400)
+
+    assert renderer.pick_geometry_in_view(view, 300, 200, "vertex") == VertexPick(position=[0.0, 0.0, 1.0])
+
+
+@pytest.mark.parametrize(
+    ("offset", "expected"),
+    [
+        (2, EdgePick(point_a=[-1.0, 0.0, 0.0], point_b=[1.0, 0.0, 0.0], length=2.0)),
+        (6, NoGeometryPick()),
+    ],
+    ids=["2px_hit", "6px_miss"],
+)
+def test_pick_geometry_in_view_resolves_tolerance_through_the_view(requester, publisher, offset, expected):
+    """The picker tolerance resolves through the view's 600x400 window: 2 px off a line part is a hit, 6 px is not."""
+    source = vtkLineSource()
+    source.SetPoint1(-1.0, 0.0, 0.0)
+    source.SetPoint2(1.0, 0.0, 0.0)
+    source.Update()
+    r = _renderer_with_part(requester, publisher, source.GetOutput(), [-1.0, 1.0, 0.0, 0.0, 0.0, 0.0])
+    view = PickView(camera_state=_VIEW_CAMERA, width=600, height=400)
+
+    assert r.pick_geometry_in_view(view, 300, 200 + offset, "edge") == expected
 
