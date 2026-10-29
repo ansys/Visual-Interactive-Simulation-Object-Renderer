@@ -58,6 +58,7 @@ function stubCanvas() {
             clicks.push(callback);
             return () => {};
         },
+        addResizeListener: () => () => {},
     };
     return { canvas, click: (c: CanvasClick) => clicks.forEach((callback) => callback(c)) };
 }

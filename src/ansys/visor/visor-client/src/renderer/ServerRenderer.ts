@@ -154,6 +154,7 @@ export class ServerRenderer implements IRenderer {
         // `watch` also calls back at once with the key's current value.
         this.#unwatch = state.watch([SERVER_CAMERA_STATE_KEY], this.#onCameraState);
         this.#removeClickListener = canvas.addClickListener(this.#onCanvasClick);
+        this.#removeResizeListener = canvas.addResizeListener(this.#onCanvasResize);
     }
 
     readonly #canvas: IServerCanvas;
@@ -161,6 +162,7 @@ export class ServerRenderer implements IRenderer {
     readonly #sends: SceneTriggerSends;
     readonly #unwatch: () => void;
     readonly #removeClickListener: () => void;
+    readonly #removeResizeListener: () => void;
     readonly #camera = new CameraRecordCache();
     readonly #cameraChangedListeners = new Map<() => void, (state: VisorCameraState) => void>();
     readonly #viewerClicks = new ViewerClickDispatcher();
@@ -207,6 +209,11 @@ export class ServerRenderer implements IRenderer {
             .catch((err) => console.error('[VISOR] pick_part_at failed', err));
     };
 
+    /** Give every camera listener the snapshot at the canvas's new height. */
+    #onCanvasResize = (): void => {
+        this.#fireCameraChanged();
+    };
+
     /** The render-window pixel under a normalised coordinate on an axis of the given size, clamped to the window. */
     static #framePixel(norm: number, size: number): number {
         return Math.min(Math.max(Math.floor(norm * size), 0), size - 1);
@@ -238,9 +245,9 @@ export class ServerRenderer implements IRenderer {
         }
     }
 
-    /** The view's height in device pixels. */
+    /** The render window's height in device pixels: CSS height times pixel ratio, truncated as the server sizes it. */
     #viewPortHeight(): number {
-        return this.domElement.clientHeight * (window.devicePixelRatio ?? 1);
+        return Math.floor(this.domElement.clientHeight * (window.devicePixelRatio ?? 1));
     }
 
     /** The full snapshot: record plus distance, orthographic, orthographicScale, unitsPerPixel, viewPortHeight. */
@@ -270,12 +277,13 @@ export class ServerRenderer implements IRenderer {
     /** The server renders after every write it receives. */
     async renderAsync(): Promise<void> {}
 
-    /** The canvas reports its own size to the server. */
+    /** The canvas reports its own size to the server and tells this renderer, which refreshes the camera listeners. */
     async resizeAsync(): Promise<void> {}
 
     dispose(): void {
         this.#unwatch();
         this.#removeClickListener();
+        this.#removeResizeListener();
         this.#cameraChangedListeners.clear();
         this.#viewerClicks.clear();
     }
