@@ -84,9 +84,9 @@ describe('VisorFrontend geometry pick', () => {
             deliveredScene(),
             jest.fn(async () => undefined)
         );
-        const geometryListener = (renderer.addViewerClickedListener.mock.calls[0] as unknown[])[0] as (
-            ...args: unknown[]
-        ) => void;
+        const geometryListener = (
+            renderer.addViewerClickedListener.mock.calls[0] as unknown[]
+        )[0] as (...args: unknown[]) => void;
         const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
         try {
             frontend.setSelectionMode('vertex');

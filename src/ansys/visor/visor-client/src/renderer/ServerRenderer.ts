@@ -202,9 +202,7 @@ export class ServerRenderer implements IRenderer {
         const y = ServerRenderer.#framePixel(click.normY, frameSize.height);
         this.#viewerClicks
             .dispatchAsync(click, async () =>
-                ServerRenderer.#parsePickResult(
-                    await this.#triggerSender('pick_part_at', { x, y })
-                )
+                ServerRenderer.#parsePickResult(await this.#triggerSender('pick_part_at', { x, y }))
             )
             .catch((err) => console.error('[VISOR] pick_part_at failed', err));
     };
