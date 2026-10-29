@@ -39,7 +39,16 @@ function stubCanvas() {
     Object.defineProperty(element, 'clientWidth', { value: 300 });
     Object.defineProperty(element, 'clientHeight', { value: 200 });
     element.getBoundingClientRect = () =>
-        ({ left: 0, top: 0, width: 300, height: 200, right: 300, bottom: 200, x: 0, y: 0 }) as DOMRect;
+        ({
+            left: 0,
+            top: 0,
+            width: 300,
+            height: 200,
+            right: 300,
+            bottom: 200,
+            x: 0,
+            y: 0,
+        }) as DOMRect;
     const clicks: ((click: CanvasClick) => void)[] = [];
     const canvas: IServerCanvas = {
         element,
