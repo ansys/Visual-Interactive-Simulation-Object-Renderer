@@ -32,6 +32,7 @@ from ansys.visor.viewer.models.runtime.picking.geometry_pick import GeometryPick
 from ansys.visor.viewer.renderer.base import IRenderer
 from ansys.visor.viewer.vtk.node_pipeline import VtkNodePipeline
 from ansys.visor.viewer.vtk.picking.part_cell_hit import PartCellHit, PickView
+from ansys.visor.viewer.vtk.widgets.geometry_highlight import GeometryHighlight
 from ansys.visor.viewer.vtk.widgets.visor_bounding_box import VisorBoundingBox
 from ansys.visor.viewer.vtk.widgets.visor_cross_section import VisorCrossSectionWidget
 from ansys.visor.viewer.vtk.widgets.visor_orientation import VisorOrientationWidget
@@ -55,12 +56,13 @@ class VtkPipelineRenderer(IRenderer):
     _orientation_widget: VisorOrientationWidget
     _cross_section_widget: VisorCrossSectionWidget
     _bounding_box_widget: VisorBoundingBox
+    _geometry_highlight: GeometryHighlight
     # Registered pipelines keyed by scene-graph node id.  Sole owner;
     # mutated exclusively via register_node / deregister_node.
     _pipelines: dict[int, VtkNodePipeline]
 
     def __init__(self) -> None:
-        """Build renderer, window, interactor, the widgets' host, then the three widgets, in that order."""
+        """Build renderer, window, interactor, the widgets' host, the three widgets, then the geometry highlight, in that order."""
         super().__init__()
         self._pipelines = {}
 
@@ -71,6 +73,7 @@ class VtkPipelineRenderer(IRenderer):
         self._orientation_widget = self._initialize_orientation_widget()
         self._cross_section_widget = self._initialize_cross_section_widget()
         self._bounding_box_widget = self._initialize_bounding_box_widget()
+        self._geometry_highlight = self._initialize_geometry_highlight()
 
     # ------------------------------------------------------------------
     # Backend hooks
@@ -104,6 +107,10 @@ class VtkPipelineRenderer(IRenderer):
     @abstractmethod
     def _publish_cross_section(self) -> None:
         """Make the written cross-section plane visible to the client."""
+
+    @abstractmethod
+    def _present_geometry_highlight(self) -> None:
+        """Send the written geometry highlight to the client without rebuilding its frontend."""
 
     # ------------------------------------------------------------------
     # IRenderer: node lifecycle
@@ -518,6 +525,17 @@ class VtkPipelineRenderer(IRenderer):
         return window
 
     # ------------------------------------------------------------------
+    # IRenderer: geometry highlight
+    # ------------------------------------------------------------------
+
+    def show_geometry_highlight(self, pick: GeometryPick) -> None:
+        """Draw pick on the highlight, or hide it when not found; a not-found pick on a hidden highlight sends nothing."""
+        if not pick.found and not self._geometry_highlight.visible:
+            return
+        pick.highlight_with(self._geometry_highlight)
+        self._present_geometry_highlight()
+
+    # ------------------------------------------------------------------
     # Internal init helpers
     # ------------------------------------------------------------------
 
@@ -546,4 +564,10 @@ class VtkPipelineRenderer(IRenderer):
         widget = VisorBoundingBox(self._vtk_renderer.GetActiveCamera())
         widget.attach_to_renderer(self._vtk_renderer)
         return widget
+
+    def _initialize_geometry_highlight(self) -> GeometryHighlight:
+        # Added to the renderer only: it is never in a pick list, so no pick can hit it.
+        highlight = GeometryHighlight()
+        self._vtk_renderer.AddActor(highlight.actor)
+        return highlight
 

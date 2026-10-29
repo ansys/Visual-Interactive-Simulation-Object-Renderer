@@ -88,13 +88,8 @@ def renderer(requester, publisher) -> ServerRenderer:
 
 
 def _outline_actor(renderer: ServerRenderer):
-    """The bounding-box outline: the one renderer actor that is not a part."""
-    part_actors = [pipe.actor for pipe in renderer._pipelines.values()]
-    actors = renderer._vtk_renderer.GetActors()
-    others = [actors.GetItemAsObject(i) for i in range(actors.GetNumberOfItems())]
-    others = [a for a in others if not any(a is p for p in part_actors)]
-    assert len(others) == 1
-    return others[0]
+    """The bounding-box outline actor, read from the widget that owns it."""
+    return renderer._bounding_box_widget._VisorBoundingBox__outline_actor
 
 
 # ---------------------------------------------------------------------------
@@ -129,6 +124,9 @@ _WRITES = {
     ),
     "set_cross_section_visibility": lambda r: r.set_cross_section_visibility(True),
     "set_bounding_box_visibility": lambda r: r.set_bounding_box_visibility(True),
+    "show_geometry_highlight": lambda r: r.show_geometry_highlight(
+        VertexPick(position=[0.0, 0.0, 1.0])
+    ),
 }
 
 
@@ -141,6 +139,11 @@ def test_each_write_requests_one_frame(renderer, requester, write):
 def test_render_requests_a_frame(renderer, requester):
     renderer.render()
     assert requester.count == 1
+
+
+def test_not_found_on_a_hidden_highlight_requests_no_frame(renderer, requester):
+    renderer.show_geometry_highlight(NoGeometryPick())
+    assert requester.count == 0
 
 
 # ---------------------------------------------------------------------------

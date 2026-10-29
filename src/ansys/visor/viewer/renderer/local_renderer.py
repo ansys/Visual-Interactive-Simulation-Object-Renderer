@@ -37,6 +37,9 @@ from ansys.visor.viewer.vtk.widgets.visor_orientation import VisorOrientationWid
 
 logger = VisorDefaultLogger(__name__)
 
+DATA_ONLY_UPDATE_OPTION: str = "dataOnly"
+"""``LocalView.update`` option the client reads to update its objects without rebuilding its frontend."""
+
 
 class VisorLocalRenderer(VtkPipelineRenderer):
     """IRenderer backend that owns the local wasm / LocalView VTK pipeline."""
@@ -192,6 +195,10 @@ class VisorLocalRenderer(VtkPipelineRenderer):
             self._object_manager.GetId(self._cross_section_widget.plane_representation)
         )
 
+    def _present_geometry_highlight(self) -> None:
+        """Push the whole render window as data only; see :meth:`push_without_rebuild`."""
+        self.push_without_rebuild()
+
     # ------------------------------------------------------------------
     # IRenderer: widget visibility
     #
@@ -296,6 +303,15 @@ class VisorLocalRenderer(VtkPipelineRenderer):
     def flush_wasm_state(self) -> None:
         """Push current VTK object state to the wasm client via ``LocalView.update()`` without re-rendering."""
         self._local_view.update()
+
+    def push_without_rebuild(self) -> None:
+        """Render, then push the whole render window to the wasm client as data only, so its frontend is not rebuilt.
+
+        No object is named, so the window and everything it holds is sent,
+        including an actor that has just become visible.
+        """
+        self._render_window.Render()
+        self._local_view.update(**{DATA_ONLY_UPDATE_OPTION: True})
 
     @property
     def frontend_ref_name(self) -> str:

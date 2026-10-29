@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     from vtkmodules.vtkCommonDataModel import vtkDataObject
 
     from ansys.visor.viewer.core.visor_enums import VisorVtkVariableType
+    from ansys.visor.viewer.models.runtime.picking.geometry_pick import GeometryPick
     from ansys.visor.viewer.vtk.scene_graph import VisorSceneGraphPartNode
 
 
@@ -123,6 +124,13 @@ class NullRenderer(IRenderer):
 
     def update_actor_count(self, count: int) -> None:
         pass
+
+    # ------------------------------------------------------------------
+    # Geometry highlight
+    # ------------------------------------------------------------------
+
+    def show_geometry_highlight(self, pick: "GeometryPick") -> None:
+        """No pipeline to draw in; nothing to do."""
 
 
     # ------------------------------------------------------------------

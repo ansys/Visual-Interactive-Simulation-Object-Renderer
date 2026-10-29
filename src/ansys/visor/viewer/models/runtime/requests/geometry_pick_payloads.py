@@ -2,7 +2,7 @@
 
 from pydantic import BaseModel
 
-from ansys.visor.viewer.models.runtime.picking.geometry_pick import GeometryPickMode
+from ansys.visor.viewer.models.runtime.picking.geometry_pick import GeometryPick, GeometryPickMode
 
 
 class PickGeometryAtPayload(BaseModel):
@@ -11,3 +11,9 @@ class PickGeometryAtPayload(BaseModel):
     x: int
     y: int
     mode: GeometryPickMode
+
+
+class SetGeometryHighlightPayload(BaseModel):
+    """set_geometry_highlight payload: the pick whose feature to highlight; a not-found pick clears it."""
+
+    pick: GeometryPick

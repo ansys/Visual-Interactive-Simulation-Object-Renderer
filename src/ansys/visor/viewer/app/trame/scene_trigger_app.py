@@ -12,6 +12,10 @@ from ansys.visor.viewer.config import settings
 from ansys.visor.viewer.core.visor_enums import RenderingMode, VisorVtkVariableType
 from ansys.visor.viewer.core.visor_logging import VisorDefaultLogger
 from ansys.visor.viewer.models.common.visor_camera_state import VisorCameraState
+from ansys.visor.viewer.models.runtime.picking.geometry_pick import GeometryPick
+from ansys.visor.viewer.models.runtime.requests.geometry_pick_payloads import (
+    SetGeometryHighlightPayload,
+)
 from ansys.visor.viewer.models.runtime.requests.sync_camera_payload import SyncCameraPayload
 from ansys.visor.viewer.models.runtime.requests.variable_range_payload import SetVariableRangePayload
 from ansys.visor.viewer.models.runtime.requests.widget_state_payloads import (
@@ -87,6 +91,8 @@ class SceneMutationApi(Protocol):
     def set_panel_top_right_legend_collapsed(self, collapsed: bool) -> None: ...
 
     def set_panel_top_right_tab_index(self, tab_index: int) -> None: ...
+
+    def set_geometry_highlight(self, pick: GeometryPick) -> None: ...
 
 
 # ----------------------------------------------------------------------
@@ -563,6 +569,19 @@ class SceneTriggerApp(ABC):
         if api is None:
             return
         api.set_panel_top_right_tab_index(payload.tab_index)
+
+    @trigger("set_geometry_highlight")
+    @parse_payload(SetGeometryHighlightPayload)
+    def set_geometry_highlight(self, payload) -> None:
+        """Frontend -> Backend: highlight the picked feature, or clear the highlight on a not-found pick.
+
+        Transient: the scene stores nothing.  The renderer pushes the
+        highlight to the client itself, without rebuilding the frontend.
+        """
+        api = self._mutation_api("set_geometry_highlight", payload)
+        if api is None:
+            return
+        api.set_geometry_highlight(payload.pick)
 
     def set_only_cookie(self, key: str, value: str):
         """
