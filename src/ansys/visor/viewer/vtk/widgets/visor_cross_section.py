@@ -34,6 +34,8 @@ class VisorCrossSectionWidget:
         register_with_local_view(local_view): Registers the VTK objects with a local view and assigns their WebAssembly IDs.
         set_normal(normal): Sets the normal vector of the plane.
         set_origin(origin): Sets the origin point of the plane.
+        link_plane_to_handle(): Copies the handle onto the clip plane at every drag step.
+        take_handle_moved(): Returns and clears whether a drag step copied the handle.
         toggle_on_off(): Toggles the visibility of the plane widget on or off.
         turn_on(): Turns on the plane widget.
         turn_off(): Turns off the plane widget.
@@ -62,6 +64,7 @@ class VisorCrossSectionWidget:
         self._plane_wasm_id = None
         self._plane_widget_wasm_id = None
         self._plane_representation_wasm_id = None
+        self._handle_moved: bool = False
         # VTK objects will be initialized later in _initialize_cross_section_widget()
 
         logger.info("Beginning creating cross-section widget")
@@ -176,6 +179,22 @@ class VisorCrossSectionWidget:
         """Set the origin of the widget plane."""
         self._plane_representation.SetOrigin(origin[0], origin[1], origin[2])
         self._plane.SetOrigin(origin[0], origin[1], origin[2])
+
+    def link_plane_to_handle(self) -> None:
+        """Copy the handle's origin and normal onto the clip plane at every drag step, and mark the handle moved."""
+        self._plane_widget.AddObserver("InteractionEvent", self._copy_handle_to_plane)
+
+    def take_handle_moved(self) -> bool:
+        """Return whether a drag step copied the handle since the last call, and clear the mark."""
+        moved = self._handle_moved
+        self._handle_moved = False
+        return moved
+
+    def _copy_handle_to_plane(self, _caller, _event) -> None:
+        """Write the representation's origin and normal onto the clip plane, then mark the handle moved."""
+        self._plane.SetOrigin(self._plane_representation.GetOrigin())
+        self._plane.SetNormal(self._plane_representation.GetNormal())
+        self._handle_moved = True
 
     def toggle_on_off(self):
         """toggle the widget on or off."""
