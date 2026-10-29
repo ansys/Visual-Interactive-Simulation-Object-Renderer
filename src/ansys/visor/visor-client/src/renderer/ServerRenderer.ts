@@ -7,7 +7,8 @@ import type {
     TrameTriggerSender,
     VisorCameraState,
 } from './IRenderer';
-import type { IServerCanvas } from '../rca/ServerCanvas';
+import type { CanvasClick, IServerCanvas } from '../rca/ServerCanvas';
+import { ViewerClickDispatcher } from '../input/ViewerClickDispatcher';
 import { SceneTriggerSends } from './SceneTriggerSends';
 
 /** The trame state key the server writes the camera record to. */
@@ -147,27 +148,22 @@ export class ServerRenderer implements IRenderer {
         triggerSender: TrameTriggerSender
     ) {
         this.#canvas = canvas;
+        this.#triggerSender = triggerSender;
         this.#sends = new SceneTriggerSends(triggerSender);
         this.domElement = canvas.element;
         // `watch` also calls back at once with the key's current value.
         this.#unwatch = state.watch([SERVER_CAMERA_STATE_KEY], this.#onCameraState);
+        this.#removeClickListener = canvas.addClickListener(this.#onCanvasClick);
     }
 
     readonly #canvas: IServerCanvas;
+    readonly #triggerSender: TrameTriggerSender;
     readonly #sends: SceneTriggerSends;
     readonly #unwatch: () => void;
+    readonly #removeClickListener: () => void;
     readonly #camera = new CameraRecordCache();
     readonly #cameraChangedListeners = new Map<() => void, (state: VisorCameraState) => void>();
-    readonly #viewerClickedListeners = new Map<
-        () => void,
-        (
-            nodeId: NodeId | null,
-            ctrlKey: boolean,
-            shiftKey: boolean,
-            normX: number,
-            normY: number
-        ) => void
-    >();
+    readonly #viewerClicks = new ViewerClickDispatcher();
     #crossSectionVisible = false;
     #boundingBoxVisible = false;
     #edgesVisible = false;
@@ -193,6 +189,36 @@ export class ServerRenderer implements IRenderer {
         this.#camera.setRecord(record);
         this.#fireCameraChanged();
     };
+
+    /** Pick the part under a click on the last frame, then tell every viewer-clicked listener once. */
+    #onCanvasClick = (click: CanvasClick): void => {
+        const frameSize = this.#canvas.frameSize;
+        if (frameSize == null) {
+            console.error('[VISOR] click dropped: no frame drawn yet');
+            return;
+        }
+        // The frame is the render window as last drawn, in device pixels.
+        const x = ServerRenderer.#framePixel(click.normX, frameSize.width);
+        const y = ServerRenderer.#framePixel(click.normY, frameSize.height);
+        this.#viewerClicks
+            .dispatchAsync(click, async () =>
+                ServerRenderer.#parsePickResult(await this.#triggerSender('pick_part_at', { x, y }))
+            )
+            .catch((err) => console.error('[VISOR] pick_part_at failed', err));
+    };
+
+    /** The render-window pixel under a normalised coordinate on an axis of the given size, clamped to the window. */
+    static #framePixel(norm: number, size: number): number {
+        return Math.min(Math.max(Math.floor(norm * size), 0), size - 1);
+    }
+
+    /** Read a pick_part_at result: the node id, or null for no part; throws TypeError otherwise. */
+    static #parsePickResult(value: unknown): NodeId | null {
+        if (value === null || Number.isInteger(value)) {
+            return value as NodeId | null;
+        }
+        throw new TypeError(`pick_part_at result is not a node id or null: ${String(value)}`);
+    }
 
     /** Write one camera field and tell the camera listeners. */
     #writeCamera<K extends keyof CameraRecord>(field: K, value: CameraRecord[K]): void {
@@ -249,8 +275,9 @@ export class ServerRenderer implements IRenderer {
 
     dispose(): void {
         this.#unwatch();
+        this.#removeClickListener();
         this.#cameraChangedListeners.clear();
-        this.#viewerClickedListeners.clear();
+        this.#viewerClicks.clear();
     }
 
     // ---- Camera ---------------------------------------------------------------
@@ -306,7 +333,7 @@ export class ServerRenderer implements IRenderer {
         return this.#canvas.addFrameListener(callback);
     }
 
-    /** Held, but never called: no click picks a part in server rendering yet. */
+    /** Add a listener called once per click with the part pick_part_at found under it, or null; returns its remover. */
     addViewerClickedListener(
         callback: (
             nodeId: NodeId | null,
@@ -316,11 +343,7 @@ export class ServerRenderer implements IRenderer {
             normY: number
         ) => void
     ): () => void {
-        const remover = () => {
-            this.#viewerClickedListeners.delete(remover);
-        };
-        this.#viewerClickedListeners.set(remover, callback);
-        return remover;
+        return this.#viewerClicks.addListener(callback);
     }
 
     // ---- Per-part visual state -----------------------------------------------
