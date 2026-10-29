@@ -3,7 +3,7 @@ import VisorSceneDetails from './state/appstate/VisorSceneDetails.tsx';
 import type { StateInput } from './state/appstate/VisorStateCommon.tsx';
 import type { IRenderer, TrameTriggerSender } from './renderer/IRenderer';
 
-/** Build and seed a frontend from delivered scene details; throws SchemaVersionMismatchError before any renderer exists. */
+/** Build and seed a frontend from delivered scene details, clearing the renderer's geometry highlight once; throws SchemaVersionMismatchError before any renderer exists. */
 export async function buildFrontendAsync(
     sceneDetailsJson: StateInput<VisorSceneDetails>,
     createRenderer: (sceneDetails: VisorSceneDetails) => Promise<IRenderer>,
@@ -12,6 +12,8 @@ export async function buildFrontendAsync(
 ): Promise<VisorFrontend> {
     const sceneDetails = new VisorSceneDetails(sceneDetailsJson);
     const renderer = await createRenderer(sceneDetails);
+    // A new frontend starts in part mode, so no highlight from before the build may remain.
+    renderer.clearGeometryHighlight();
     const frontend = new VisorFrontend(
         renderer,
         sceneDetails.vtkInfo.sceneGraph,

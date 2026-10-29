@@ -81,6 +81,7 @@ function mockMakeWasmView() {
 function mockMakeRenderer() {
     return {
         domElement: document.createElement('div'),
+        clearGeometryHighlight: () => {},
         addCameraSettledListener: () => () => {},
         addViewerClickedListener: () => () => {},
         resizeAsync: async () => undefined,

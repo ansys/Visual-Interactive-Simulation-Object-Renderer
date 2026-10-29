@@ -9,6 +9,9 @@ import type { CanvasClick, IServerCanvas } from '../rca/ServerCanvas';
  *
  * The page is 300 x 200 CSS px at device pixel ratio 2, so the frame is
  * 600 x 400.  Expected values are hand-written literals.
+ *
+ * A geometry pick asks the server in the same pixels, and a highlight or a
+ * clear asks the server to draw or drop it.
  */
 
 let originalDevicePixelRatio: number;
@@ -112,5 +115,43 @@ describe('ServerRenderer pick', () => {
         await settle();
 
         expect(sender).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe('ServerRenderer geometry pick', () => {
+    test('pickGeometryAsync sends one pick_geometry_at in render-window pixels from the frame', async () => {
+        const { canvas } = stubCanvas();
+        const sender = jest.fn(
+            async (_name: string, _payload: unknown) => ({ found: false }) as unknown
+        );
+        const renderer = new ServerRenderer(canvas, emptyState, sender);
+
+        await renderer.pickGeometryAsync(0.25, 0.25, 'vertex');
+
+        expect(sender.mock.calls).toStrictEqual([
+            ['pick_geometry_at', { x: 150, y: 100, mode: 'vertex' }],
+        ]);
+    });
+
+    test('a highlight then a clear each send set_geometry_highlight with the pick', async () => {
+        const { canvas } = stubCanvas();
+        const sender = jest.fn(async (_name: string, _payload: unknown) => undefined as unknown);
+        const renderer = new ServerRenderer(canvas, emptyState, sender);
+
+        await renderer.setGeometryHighlightAsync({
+            found: true,
+            mode: 'vertex',
+            position: [1, 2, 3],
+        });
+        renderer.clearGeometryHighlight();
+        await settle();
+
+        expect(sender.mock.calls).toStrictEqual([
+            [
+                'set_geometry_highlight',
+                { pick: { found: true, mode: 'vertex', position: [1, 2, 3] } },
+            ],
+            ['set_geometry_highlight', { pick: { found: false } }],
+        ]);
     });
 });

@@ -115,6 +115,7 @@ function mockMakeRenderer() {
     const index = mockScene.renderersBuilt++;
     return {
         domElement: document.createElement('div'),
+        clearGeometryHighlight: () => {},
         addCameraSettledListener: (callback: (origin: CameraOrigin) => void) => {
             const remover = () => {
                 mockScene.settledListeners.delete(remover);
