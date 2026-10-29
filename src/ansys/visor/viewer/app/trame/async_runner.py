@@ -8,7 +8,7 @@ import weakref
 from asyncio import AbstractEventLoop, Future
 from concurrent.futures import Future as ConcurrentFuture
 from threading import Event, Thread
-from typing import Coroutine
+from typing import Callable, Coroutine
 
 
 class AsyncRunner:
@@ -184,6 +184,16 @@ class AsyncRunner:
             return result
 
         return asyncio.run_coroutine_threadsafe(outer_coroutine(), self.__loop)
+
+    def call_soon(self, callback: Callable[[], None]) -> None:
+        """Run ``callback`` on this runner's loop thread; safe from any thread and never waits for it."""
+        self.__ensure_thread_and_loop()
+        self.__loop.call_soon_threadsafe(callback)
+
+    def call_later(self, delay_s: float, callback: Callable[[], None]) -> None:
+        """Run ``callback`` on this runner's loop after ``delay_s`` seconds; safe from any thread and never blocks."""
+        self.__ensure_thread_and_loop()
+        self.__loop.call_soon_threadsafe(self.__loop.call_later, delay_s, callback)
 
     def dispose(self):
         """Stops the background thread and closes the event loop."""
