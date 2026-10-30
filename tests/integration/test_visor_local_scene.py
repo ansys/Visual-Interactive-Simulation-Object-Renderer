@@ -250,7 +250,7 @@ def test_pick_geometry(pipeline_instance):
         assert res_edge["mode"] == "edge"
         assert tuple(res_edge["pointA"]) == tuple(p0)
         assert tuple(res_edge["pointB"]) == tuple(p1)
-        assert math.isclose(res_edge["length"], math.dist(p0, p1))
+        assert math.isclose(res_edge["edgeLength"], math.dist(p0, p1))
     else:
         pytest.skip("not enough points for edge pick test")
 

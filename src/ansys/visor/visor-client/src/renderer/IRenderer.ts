@@ -66,7 +66,7 @@ export type PickGeometryResult =
           mode: 'edge';
           pointA: readonly number[];
           pointB: readonly number[];
-          length: number;
+          edgeLength: number;
       }
     | { found: true; mode: 'face'; area: number; points: ReadonlyArray<readonly number[]> };
 

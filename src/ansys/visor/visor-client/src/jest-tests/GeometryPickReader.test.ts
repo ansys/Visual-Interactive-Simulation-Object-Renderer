@@ -33,8 +33,27 @@ describe('GeometryPickReader', () => {
         });
     });
 
+    test('an edge result reads as its endpoints and edgeLength, without a length key', () => {
+        const value = {
+            found: true,
+            mode: 'edge',
+            pointA: [0, 0, 0],
+            pointB: [3, 4, 0],
+            edgeLength: 5,
+            length: 5,
+        };
+
+        expect(GeometryPickReader.parse(value)).toStrictEqual({
+            found: true,
+            mode: 'edge',
+            pointA: [0, 0, 0],
+            pointB: [3, 4, 0],
+            edgeLength: 5,
+        });
+    });
+
     test('an edge result without pointB throws TypeError', () => {
-        const value = { found: true, mode: 'edge', pointA: [0, 0, 0], length: 1 };
+        const value = { found: true, mode: 'edge', pointA: [0, 0, 0], edgeLength: 1 };
 
         expect(() => GeometryPickReader.parse(value)).toThrow(TypeError);
     });

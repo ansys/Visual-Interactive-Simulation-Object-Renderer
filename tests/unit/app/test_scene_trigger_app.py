@@ -129,7 +129,7 @@ def test_set_geometry_highlight_forwards_the_parsed_pick(mock_server):
                 "mode": "edge",
                 "pointA": [0.0, 0.0, 0.0],
                 "pointB": [3.0, 4.0, 0.0],
-                "length": 5.0,
+                "edgeLength": 5.0,
             }
         }
     )

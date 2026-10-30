@@ -44,7 +44,7 @@ export const Panel_BottomRight: FC<{
             } else if (result.mode === 'edge') {
                 const [ax, ay, az] = result.pointA as number[];
                 const [bx, by, bz] = result.pointB as number[];
-                const len: number = result.length;
+                const len: number = result.edgeLength;
                 const text =
                     `Point A: (${fmtCoord(ax)}, ${fmtCoord(ay)}, ${fmtCoord(az)})  ` +
                     `Point B: (${fmtCoord(bx)}, ${fmtCoord(by)}, ${fmtCoord(bz)})  ` +

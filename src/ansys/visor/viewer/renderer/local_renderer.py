@@ -248,7 +248,7 @@ class VisorLocalRenderer(VtkPipelineRenderer):
         dict
             Backend-neutral pick result. Always contains ``"found": bool``.
             When ``found`` is ``True``, contains ``"mode"`` and mode-specific
-            fields (``position`` / ``pointA``+``pointB``+``length`` /
+            fields (``position`` / ``pointA``+``pointB``+``edgeLength`` /
             ``points``+``area``).
         """
         actor_wasm_id = int(actor_wasm_id)

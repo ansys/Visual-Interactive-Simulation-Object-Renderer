@@ -163,7 +163,7 @@ def test_pick_geometry_at_forwards_and_dumps_by_alias(mock_server, area_cls):
         "mode": "edge",
         "pointA": [0.0, 1.0, 2.0],
         "pointB": [3.0, 4.0, 5.0],
-        "length": 6.0,
+        "edgeLength": 6.0,
     }
     assert pick.calls == [(3, 4, "edge")]
 

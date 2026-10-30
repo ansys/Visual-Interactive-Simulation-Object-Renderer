@@ -27,7 +27,7 @@ export class GeometryPickReader {
                     mode: 'edge',
                     pointA: GeometryPickReader.#point(obj.pointA, 'pointA'),
                     pointB: GeometryPickReader.#point(obj.pointB, 'pointB'),
-                    length: GeometryPickReader.#number(obj.length, 'length'),
+                    edgeLength: GeometryPickReader.#number(obj.edgeLength, 'edgeLength'),
                 };
             case 'face':
                 if (!Array.isArray(obj.points)) {
