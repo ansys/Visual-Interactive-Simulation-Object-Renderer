@@ -1,0 +1,65 @@
+
+
+.. _sphx_glr_examples_00-basic:
+
+.. _basic-gallery:
+
+Basic examples using VTK files
+##############################
+
+These basic examples show how to use VISOR to visualize an asset (VTK file).
+
+
+.. raw:: html
+
+    <div class="sphx-glr-thumbnails">
+
+.. thumbnail-parent-div-open
+
+.. raw:: html
+
+    <div class="sphx-glr-thumbcontainer" tooltip="To launch the VISOR visualization, instantiate the viewer and call the start method with a file name or a vtkDataSet object.">
+
+.. only:: html
+
+  .. image:: /examples/00-basic/images/thumb/sphx_glr_00-launch-visor_thumb.png
+    :alt:
+
+  :ref:`sphx_glr_examples_00-basic_00-launch-visor.py`
+
+.. raw:: html
+
+      <div class="sphx-glr-thumbnail-title">Launch VISOR</div>
+    </div>
+
+
+.. raw:: html
+
+    <div class="sphx-glr-thumbcontainer" tooltip="To launch the VISOR visualization, instantiate the viewer and call the start method with a file name or a vtkDataSet object.">
+
+.. only:: html
+
+  .. image:: /examples/00-basic/images/thumb/sphx_glr_01-launch-two-visor-viewers_thumb.png
+    :alt:
+
+  :ref:`sphx_glr_examples_00-basic_01-launch-two-visor-viewers.py`
+
+.. raw:: html
+
+      <div class="sphx-glr-thumbnail-title">Launch two concurrent VISOR visualizers</div>
+    </div>
+
+
+.. thumbnail-parent-div-close
+
+.. raw:: html
+
+    </div>
+
+
+.. toctree::
+   :hidden:
+
+   /examples/00-basic/00-launch-visor
+   /examples/00-basic/01-launch-two-visor-viewers
+
