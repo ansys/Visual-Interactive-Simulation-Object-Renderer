@@ -52,7 +52,9 @@ class EdgePick(BaseModel):
     mode: Literal["edge"] = "edge"
     point_a: List[float] = Field(alias="pointA")
     point_b: List[float] = Field(alias="pointB")
-    length: float
+    # Not "length" on the wire: trame's trigger decorators read an object with a
+    # numeric length as a file list and send it as an array.
+    length: float = Field(alias="edgeLength")
 
     def highlight_with(self, highlight: "GeometryHighlight") -> None:
         """Draw a line along the edge."""
