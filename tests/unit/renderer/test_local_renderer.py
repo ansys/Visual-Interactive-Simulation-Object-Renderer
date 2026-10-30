@@ -1252,7 +1252,7 @@ class TestPickGeometry:
         assert res["mode"] == "edge"
         assert tuple(res["pointA"]) == (2.0, 0.0, 0.0)
         assert tuple(res["pointB"]) == (2.0, 2.0, 0.0)
-        assert pytest.approx(res["length"]) == 2.0
+        assert pytest.approx(res["edgeLength"]) == 2.0
 
     def test_pick_face_returns_area_and_all_points(self, renderer):
         """Face mode returns the polygon area and every cell point."""
