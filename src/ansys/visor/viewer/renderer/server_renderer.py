@@ -63,6 +63,7 @@ class ServerRenderer(VtkPipelineRenderer):
         self._camera_publisher = camera_publisher
         self._bounding_box_visible = False
         super().__init__()
+        self._orientation_widget.animate_off()
 
     # ------------------------------------------------------------------
     # Server-only surface
