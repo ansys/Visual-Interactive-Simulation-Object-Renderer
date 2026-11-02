@@ -76,6 +76,7 @@ class VisorRcaWindow:
             self._last_frame = frame
             return frame
         finally:
+            self._renderer.render_window.ReleaseCurrent()
             self._vtk_lock.release()
 
     def process_resize_event(self, width: int, height: int) -> None:
