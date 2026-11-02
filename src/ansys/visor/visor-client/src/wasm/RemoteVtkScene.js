@@ -1,4 +1,5 @@
 import { VtkWASMHandler } from '@kitware/vtk-wasm/remote';
+import { SerialUpdateQueue } from './SerialUpdateQueue';
 import TrameInterface from './TrameInterface.js';
 import VtkScene from './VtkScene.js';
 import { VtkWasmPerfCounter } from './VtkWasmPerfCounters.js';
@@ -334,14 +335,23 @@ export default class RemoteVtkScene {
         return object;
     };
     /**
-     * @param {boolean} [bindCanvas=false]
+     * Apply a server update through the serial queue; does nothing until the wasm module is loaded.
+     * @param {unknown} bindCanvas - the server's update options, or `true` at load; passed to
+     * `VtkWASMHandler.update` unchanged
      * @return {Promise<void>}
      */
     updateAsync = async (bindCanvas) => {
         if (!this.#wasmHandler.loaded) {
             return;
         }
-
+        await this.#updates.run(bindCanvas);
+    };
+    /**
+     * Pull and apply one server update, free cached memory, resize, and report perf.
+     * @param {unknown} bindCanvas
+     * @return {Promise<void>}
+     */
+    #applyUpdateAsync = async (bindCanvas) => {
         let t0 = 0;
         let t1 = 0;
 
@@ -370,11 +380,24 @@ export default class RemoteVtkScene {
             );
             this.trameTriggerAsync('perf_report_wasm', report).catch(() => {});
         }
-
+    };
+    /**
+     * Call every server-updated listener once.
+     * @return {void}
+     */
+    #fireServerUpdated = () => {
         for (const callback of this.#serverUpdatedListeners.values()) {
             callback();
         }
     };
+    /**
+     * Serial queue every server update runs through.
+     * @type{SerialUpdateQueue}
+     */
+    #updates = new SerialUpdateQueue(
+        (bindCanvas) => this.#applyUpdateAsync(bindCanvas),
+        () => this.#fireServerUpdated()
+    );
     /**
      * @param {string} name
      * @param {function(...any):any} f
