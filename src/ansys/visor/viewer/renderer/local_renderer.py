@@ -309,12 +309,16 @@ class VisorLocalRenderer(VtkPipelineRenderer):
         self._local_view.update()
 
     def push_without_rebuild(self) -> None:
-        """Render, then push the whole render window to the wasm client as data only, so its frontend is not rebuilt.
+        """Push the whole render window to the wasm client as data only, so its frontend is not rebuilt; renders nothing.
 
         No object is named, so the window and everything it holds is sent,
         including an actor that has just become visible.
+
+        The window is not rendered: this runs on the trigger thread, while the
+        window's GL context is current on the thread that rendered it first
+        (the API caller's), and a context is current on one thread at a time.
+        Only serialisation is needed: the wasm client draws the pushed state.
         """
-        self._render_window.Render()
         self._local_view.update(**{DATA_ONLY_UPDATE_OPTION: True})
 
     @property
