@@ -88,6 +88,13 @@ class ServerRenderer(VtkPipelineRenderer):
         self._render_window_interactor.UpdateSize(width, height)
         self._orientation_widget.fit_to_window(width, height)
 
+    def set_pixel_scale(self, pixel_scale: float) -> None:
+        """Rescale the geometry highlight to this many device pixels per CSS pixel.
+
+        Requests no frame: the resize path that calls this schedules its own.
+        """
+        self._geometry_highlight.set_pixel_scale(pixel_scale)
+
     def set_background_rgb(self, background_rgb: tuple[float, float, float]) -> None:
         """Clear to this colour from the next frame.
 
@@ -214,6 +221,10 @@ class ServerRenderer(VtkPipelineRenderer):
     def _present_geometry_highlight(self) -> None:
         """Request a frame showing the written highlight."""
         self._frame_requester.request_frame()
+
+    def _initial_highlight_pixel_scale(self) -> float:
+        """1.0 until the first resize; the window then sets the client's ratio."""
+        return 1.0
 
     # ------------------------------------------------------------------
     # VtkPipelineRenderer: backend hooks

@@ -199,6 +199,10 @@ class VisorLocalRenderer(VtkPipelineRenderer):
         """Push the whole render window as data only; see :meth:`push_without_rebuild`."""
         self.push_without_rebuild()
 
+    def _initial_highlight_pixel_scale(self) -> float:
+        """1.0: the client draws its own overlay here, so the actor's sizes are not shown."""
+        return 1.0
+
     # ------------------------------------------------------------------
     # IRenderer: widget visibility
     #

@@ -100,6 +100,7 @@ class ServerApp(SceneTriggerApp):
             interactive_quality=60,
             still_quality=90,
         )
+        self._rca_window.bind_pixel_scale(lambda: view_handler.scale_factor)
         self._bridge.bind(view_handler)
 
     @trigger("pick_part_at")

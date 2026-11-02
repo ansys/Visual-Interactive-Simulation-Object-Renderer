@@ -2,7 +2,8 @@
 GeometryHighlight
 =================
 One server-side actor that draws a geometry pick: a dot at a vertex, a line
-along an edge, or a cell as a translucent polygon with an opaque outline.
+along an edge, or a cell as a translucent polygon with an opaque outline.  Point
+sizes and line widths are set in CSS pixels and drawn in device pixels.
 
 It is a scene actor like any other, so the parts in front of it hide it.  It is
 never pickable: a part pick must pass through it.
@@ -25,8 +26,20 @@ OUTLINE_ALPHA: int = 255
 FILL_ALPHA: int = 89
 """A face's fill opacity, 0.35 of 255."""
 
-POINT_SIZE: float = 12.0
-LINE_WIDTH: float = 4.0
+EDGE_DOT_ALPHA: int = 89
+"""An edge's end dots are drawn at the face fill opacity, 0.35 of 255."""
+
+VERTEX_DIAMETER_CSS: float = 21.0
+"""A vertex dot's diameter in CSS pixels."""
+
+EDGE_DOT_DIAMETER_CSS: float = 10.0
+"""An edge end dot's diameter in CSS pixels."""
+
+EDGE_LINE_WIDTH_CSS: float = 4.0
+"""An edge's line width in CSS pixels."""
+
+FACE_LINE_WIDTH_CSS: float = 3.0
+"""A face outline's line width in CSS pixels."""
 
 # Negative offsets pull the highlight towards the camera, so it does not fight
 # the part surface it lies on.
@@ -40,9 +53,15 @@ class GeometryHighlight:
 
     _polydata: vtkPolyData
     _actor: vtkActor
+    _pixel_scale: float
+    _point_diameter_css: float
+    _line_width_css: float
 
-    def __init__(self) -> None:
-        """Hidden and non-pickable, drawn in orange cell colours with lighting off."""
+    def __init__(self, pixel_scale: float) -> None:
+        """Hidden and non-pickable, drawn in orange cell colours with lighting off; pixel_scale is device pixels per CSS pixel."""
+        self._pixel_scale = pixel_scale
+        self._point_diameter_css = VERTEX_DIAMETER_CSS
+        self._line_width_css = FACE_LINE_WIDTH_CSS
         self._polydata = vtkPolyData()
 
         mapper = vtkPolyDataMapper()
@@ -60,9 +79,8 @@ class GeometryHighlight:
         self._actor.VisibilityOff()
         prop = self._actor.GetProperty()
         prop.LightingOff()
-        prop.SetPointSize(POINT_SIZE)
-        prop.SetLineWidth(LINE_WIDTH)
         prop.RenderPointsAsSpheresOn()
+        self._apply_sizes()
 
     @property
     def actor(self) -> vtkActor:
@@ -74,22 +92,42 @@ class GeometryHighlight:
         """Whether the actor is shown."""
         return bool(self._actor.GetVisibility())
 
+    def set_pixel_scale(self, pixel_scale: float) -> None:
+        """Set the device pixels per CSS pixel and rescale the drawn point size and line width; the geometry is kept."""
+        self._pixel_scale = pixel_scale
+        self._apply_sizes()
+
     def show_vertex(self, position: Sequence[float]) -> None:
         """Draw one dot at position and show the actor."""
-        self._draw([position], verts=[[0]], lines=[], polys=[])
+        self._set_sizes_css(VERTEX_DIAMETER_CSS, FACE_LINE_WIDTH_CSS)
+        self._draw([position], verts=[[0]], lines=[], polys=[], vert_alpha=OUTLINE_ALPHA)
 
     def show_edge(self, point_a: Sequence[float], point_b: Sequence[float]) -> None:
-        """Draw a line between the two points, with a dot at each end, and show the actor."""
-        self._draw([point_a, point_b], verts=[[0], [1]], lines=[[0, 1]], polys=[])
+        """Draw a line between the two points, with a translucent dot at each end, and show the actor."""
+        self._set_sizes_css(EDGE_DOT_DIAMETER_CSS, EDGE_LINE_WIDTH_CSS)
+        self._draw([point_a, point_b], verts=[[0], [1]], lines=[[0, 1]], polys=[], vert_alpha=EDGE_DOT_ALPHA)
 
     def show_face(self, points: Sequence[Sequence[float]]) -> None:
         """Draw the points as a translucent polygon with an opaque closed outline, and show the actor."""
+        self._set_sizes_css(VERTEX_DIAMETER_CSS, FACE_LINE_WIDTH_CSS)
         ids = list(range(len(points)))
-        self._draw(points, verts=[], lines=[ids + [0]], polys=[ids])
+        self._draw(points, verts=[], lines=[ids + [0]], polys=[ids], vert_alpha=OUTLINE_ALPHA)
 
     def hide(self) -> None:
         """Hide the actor; the drawn geometry is kept."""
         self._actor.VisibilityOff()
+
+    def _set_sizes_css(self, point_diameter_css: float, line_width_css: float) -> None:
+        """Record the point diameter and line width in CSS pixels and apply them at the current pixel scale."""
+        self._point_diameter_css = point_diameter_css
+        self._line_width_css = line_width_css
+        self._apply_sizes()
+
+    def _apply_sizes(self) -> None:
+        """Write the recorded CSS sizes to the actor in device pixels."""
+        prop = self._actor.GetProperty()
+        prop.SetPointSize(self._point_diameter_css * self._pixel_scale)
+        prop.SetLineWidth(self._line_width_css * self._pixel_scale)
 
     def _draw(
         self,
@@ -97,6 +135,7 @@ class GeometryHighlight:
         verts: list[list[int]],
         lines: list[list[int]],
         polys: list[list[int]],
+        vert_alpha: int,
     ) -> None:
         """Replace the drawn geometry: point coordinates, then vertex, line and polygon cells as point-index lists.
 
@@ -111,7 +150,7 @@ class GeometryHighlight:
         colors.SetNumberOfComponents(4)
         colors.SetName("HighlightColors")
         cell_arrays = []
-        for cells, alpha in ((verts, OUTLINE_ALPHA), (lines, OUTLINE_ALPHA), (polys, FILL_ALPHA)):
+        for cells, alpha in ((verts, vert_alpha), (lines, OUTLINE_ALPHA), (polys, FILL_ALPHA)):
             cell_array = vtkCellArray()
             for cell in cells:
                 cell_array.InsertNextCell(len(cell), cell)

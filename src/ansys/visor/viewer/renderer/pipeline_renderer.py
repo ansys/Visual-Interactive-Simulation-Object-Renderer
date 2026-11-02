@@ -112,6 +112,10 @@ class VtkPipelineRenderer(IRenderer):
     def _present_geometry_highlight(self) -> None:
         """Send the written geometry highlight to the client without rebuilding its frontend."""
 
+    @abstractmethod
+    def _initial_highlight_pixel_scale(self) -> float:
+        """The device pixels per CSS pixel the geometry highlight is first drawn at."""
+
     # ------------------------------------------------------------------
     # IRenderer: node lifecycle
     # ------------------------------------------------------------------
@@ -567,7 +571,7 @@ class VtkPipelineRenderer(IRenderer):
 
     def _initialize_geometry_highlight(self) -> GeometryHighlight:
         # Added to the renderer only: it is never in a pick list, so no pick can hit it.
-        highlight = GeometryHighlight()
+        highlight = GeometryHighlight(self._initial_highlight_pixel_scale())
         self._vtk_renderer.AddActor(highlight.actor)
         return highlight
 
