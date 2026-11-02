@@ -26,8 +26,8 @@ OUTLINE_ALPHA: int = 255
 FILL_ALPHA: int = 89
 """A face's fill opacity, 0.35 of 255."""
 
-EDGE_DOT_ALPHA: int = 89
-"""An edge's end dots are drawn at the face fill opacity, 0.35 of 255."""
+EDGE_DOT_ALPHA: int = 178
+"""An edge's end dot opacity, 0.70 of 255."""
 
 VERTEX_DIAMETER_CSS: float = 21.0
 """A vertex dot's diameter in CSS pixels."""
@@ -35,7 +35,7 @@ VERTEX_DIAMETER_CSS: float = 21.0
 EDGE_DOT_DIAMETER_CSS: float = 10.0
 """An edge end dot's diameter in CSS pixels."""
 
-EDGE_LINE_WIDTH_CSS: float = 4.0
+EDGE_LINE_WIDTH_CSS: float = 5.0
 """An edge's line width in CSS pixels."""
 
 FACE_LINE_WIDTH_CSS: float = 3.0

@@ -96,11 +96,11 @@ def test_edge_sizes_follow_the_pixel_scale_when_it_changes():
     highlight = GeometryHighlight(1.0)
     EdgePick(point_a=[0.0, 0.0, 0.0], point_b=[3.0, 4.0, 0.0], length=5.0).highlight_with(highlight)
     prop = highlight.actor.GetProperty()
-    assert (prop.GetPointSize(), prop.GetLineWidth()) == (10.0, 4.0)
+    assert (prop.GetPointSize(), prop.GetLineWidth()) == (10.0, 5.0)
 
     highlight.set_pixel_scale(1.5)
 
-    assert (prop.GetPointSize(), prop.GetLineWidth()) == (15.0, 6.0)
+    assert (prop.GetPointSize(), prop.GetLineWidth()) == (15.0, 7.5)
 
 
 def test_edge_dots_are_translucent_and_the_line_is_opaque():
@@ -110,8 +110,8 @@ def test_edge_dots_are_translucent_and_the_line_is_opaque():
 
     drawn = _drawn(highlight)
     assert [_rgba(drawn, c) for c in range(3)] == [
-        (255, 165, 0, 89),
-        (255, 165, 0, 89),
+        (255, 165, 0, 178),
+        (255, 165, 0, 178),
         (255, 165, 0, 255),
     ]
 
