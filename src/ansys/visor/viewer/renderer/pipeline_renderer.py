@@ -539,6 +539,14 @@ class VtkPipelineRenderer(IRenderer):
         pick.highlight_with(self._geometry_highlight)
         self._present_geometry_highlight()
 
+    def set_pixel_scale(self, pixel_scale: float) -> None:
+        """Rescale the geometry highlight to this many device pixels per CSS pixel; requests no frame and pushes nothing.
+
+        Server mode's resize path, which calls this, schedules its own frame.
+        In client mode the next highlight shown carries the new size.
+        """
+        self._geometry_highlight.set_pixel_scale(pixel_scale)
+
     # ------------------------------------------------------------------
     # Internal init helpers
     # ------------------------------------------------------------------

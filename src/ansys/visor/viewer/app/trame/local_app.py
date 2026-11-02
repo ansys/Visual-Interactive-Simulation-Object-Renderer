@@ -1,18 +1,30 @@
 from logging import Logger
+from typing import Protocol
 
 from trame.app.core import Server
 from trame.decorators import TrameApp, trigger
 from vtk import vtkObject
 
-from ansys.visor.viewer.app.trame.scene_trigger_app import SceneMutationApi, SceneTriggerApp
+from ansys.visor.viewer.app.trame.scene_trigger_app import (
+    SceneMutationApi,
+    SceneTriggerApp,
+    parse_payload,
+)
 from ansys.visor.viewer.config import settings
 from ansys.visor.viewer.core.visor_enums import RenderingMode
 from ansys.visor.viewer.core.visor_logging import VisorDefaultLogger
+from ansys.visor.viewer.models.runtime.requests.pixel_scale_payload import SetPixelScalePayload
 
 logger = VisorDefaultLogger(__name__)
 
 # Disable VTK warning display
 vtkObject.GlobalWarningDisplayOff()
+
+
+class LocalSceneMutationApi(SceneMutationApi, Protocol):
+    """The scene surface LocalApp's triggers call: the shared one plus the client-only pixel scale."""
+
+    def set_pixel_scale(self, pixel_scale: float) -> None: ...
 
 
 @TrameApp()
@@ -28,6 +40,7 @@ class LocalApp(SceneTriggerApp):
         pick_geometry: picks the geometry for rendering
         perf_report_wasm: reports the performance of the wasm update cycle
         perf_report_server_update: reports the performance of the server update cycle
+        set_pixel_scale: sets the device pixel ratio the geometry highlight is drawn at
         set_only_cookie: sets a cookie on the server (note: Trame server only allows a single cookie header)
     """
     def __init__(
@@ -37,7 +50,7 @@ class LocalApp(SceneTriggerApp):
             standalone: bool = True,
             trame_logger: Logger | None = None,
             pick_geometry=None,
-            scene_mutation_api: SceneMutationApi | None = None,
+            scene_mutation_api: LocalSceneMutationApi | None = None,
     ):
         # Callable for sub-geometry picking (optional), local-only.
         self._pick_geometry = pick_geometry
@@ -60,6 +73,19 @@ class LocalApp(SceneTriggerApp):
         if self._pick_geometry is None:
             return {"found": False}
         return self._pick_geometry(actor_wasm_id, cell_id, mode, world_x, world_y, world_z)
+
+    @trigger("set_pixel_scale")
+    @parse_payload(SetPixelScalePayload)
+    def set_pixel_scale(self, payload) -> None:
+        """Frontend -> Backend: the client reports its device pixel ratio for the geometry highlight.
+
+        Server mode learns the same ratio from the remote-canvas size report,
+        so only client mode registers this.
+        """
+        api = self._mutation_api("set_pixel_scale", payload)
+        if api is None:
+            return
+        api.set_pixel_scale(payload.scale)
 
     @trigger("perf_report_wasm")
     def perf_report_wasm(self, payload: dict):

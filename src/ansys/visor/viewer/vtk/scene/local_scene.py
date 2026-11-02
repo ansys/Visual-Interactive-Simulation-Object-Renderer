@@ -78,6 +78,14 @@ class VisorLocalScene(VisorSceneBase):
             actor_wasm_id, cell_id, mode, (world_x, world_y, world_z)
         )
 
+    def set_pixel_scale(self, pixel_scale: float) -> None:
+        """Draw the geometry highlight at this many device pixels per CSS pixel; no push, no notify.
+
+        The next highlight shown carries the new size to the client.
+        """
+        with self._vtk_lock:
+            self._renderer.set_pixel_scale(pixel_scale)
+
     def pick_geometry_in_view(self, view: "PickView", x: int, y: int, mode: str) -> "GeometryPick":
         """Find the geometry feature under a pixel of a client's view, under the scene lock."""
         with self._vtk_lock:

@@ -73,7 +73,6 @@ export default class VtkScene {
         this.#setupFpsMonitor();
         this.#setupCamera();
         this.#setupPicker();
-        this.#setupHighlightOverlay();
     }
 
     /**@type{RemoteVtkScene}*/
@@ -224,125 +223,6 @@ export default class VtkScene {
             return { found: false };
         }
     };
-
-    // ── Client-side geometry highlight (Canvas 2D overlay) ──────────────────
-    /**@type{HTMLCanvasElement|null}*/
-    #highlightCanvas = null;
-    /**@type{any|null}*/
-    #highlightResult = null;
-
-    #setupHighlightOverlay = () => {
-        const overlay = document.createElement('canvas');
-        overlay.style.position = 'absolute';
-        overlay.style.top = '0';
-        overlay.style.left = '0';
-        overlay.style.pointerEvents = 'none';
-        this.canvasDiv.appendChild(overlay);
-        this.#highlightCanvas = overlay;
-        // Redraw when camera moves so the projected positions stay correct.
-        this.addCameraChangedListener(() => {
-            this.#drawHighlight().catch(() => {});
-        });
-    };
-
-    /**
-     * Project a world-space point to overlay canvas pixels (top-left origin).
-     * @param {number[]} worldPt  [x, y, z]
-     * @return {Promise<number[]>}  [canvasX, canvasY]
-     */
-    #projectWorldToCanvas = async (worldPt) => {
-        await this.renderer.SetWorldPoint(worldPt[0], worldPt[1], worldPt[2], 1.0);
-        await this.renderer.WorldToDisplay();
-        const dp = await this.renderer.GetDisplayPoint();
-        // dp: [x, y, z] — VTK display coords (x left→right, y bottom→top, in render-window pixels)
-        const winSize = await this.renderWindow.GetSize();
-        const normX = dp[0] / winSize[0];
-        const normY = dp[1] / winSize[1]; // 0 = bottom
-        const overlay = this.#highlightCanvas;
-        const canvasX = normX * overlay.width;
-        const canvasY = (1 - normY) * overlay.height; // flip Y for canvas2d
-        return [canvasX, canvasY];
-    };
-
-    #drawHighlight = async () => {
-        const canvas = this.#highlightCanvas;
-        if (!canvas) return;
-        // Match canvas size to its CSS display size
-        const rect = this.canvasDiv.getBoundingClientRect();
-        canvas.width = rect.width;
-        canvas.height = rect.height;
-        const ctx = canvas.getContext('2d');
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-        const result = this.#highlightResult;
-        if (!result || !result.found) return;
-
-        ctx.strokeStyle = 'rgba(255, 165, 0, 1)'; // orange
-        ctx.fillStyle = 'rgba(255, 165, 0, 0.35)';
-        ctx.lineWidth = 3;
-        ctx.lineJoin = 'round';
-        ctx.lineCap = 'round';
-
-        if (result.mode === 'vertex') {
-            // Project the exact snapped vertex world position to canvas.
-            const [cx, cy] = await this.#projectWorldToCanvas(result.position);
-            ctx.beginPath();
-            ctx.arc(cx, cy, 9, 0, 2 * Math.PI);
-            ctx.fill();
-            ctx.stroke();
-        } else if (result.mode === 'edge') {
-            const [ax, ay] = await this.#projectWorldToCanvas(result.pointA);
-            const [bx, by] = await this.#projectWorldToCanvas(result.pointB);
-            ctx.lineWidth = 4;
-            ctx.beginPath();
-            ctx.moveTo(ax, ay);
-            ctx.lineTo(bx, by);
-            ctx.stroke();
-            // endpoint dots
-            ctx.beginPath();
-            ctx.arc(ax, ay, 5, 0, 2 * Math.PI);
-            ctx.fill();
-            ctx.beginPath();
-            ctx.arc(bx, by, 5, 0, 2 * Math.PI);
-            ctx.fill();
-        } else if (result.mode === 'face' && result.points && result.points.length >= 3) {
-            const screenPts = [];
-            for (const p of result.points) {
-                screenPts.push(await this.#projectWorldToCanvas(p));
-            }
-            ctx.beginPath();
-            ctx.moveTo(screenPts[0][0], screenPts[0][1]);
-            for (let i = 1; i < screenPts.length; i++) {
-                ctx.lineTo(screenPts[i][0], screenPts[i][1]);
-            }
-            ctx.closePath();
-            ctx.fill();
-            ctx.stroke();
-        }
-    };
-
-    /**
-     * Draw a highlight overlay for a pick result returned by pickGeometryAsync.
-     * @param {any} result
-     * @return {Promise<void>}
-     */
-    setGeometryHighlightAsync = async (result) => {
-        this.#highlightResult = result;
-        await this.#drawHighlight();
-    };
-
-    /**
-     * Clear the geometry highlight overlay.
-     */
-    clearGeometryHighlight = () => {
-        this.#highlightResult = null;
-        const canvas = this.#highlightCanvas;
-        if (canvas) {
-            const ctx = canvas.getContext('2d');
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-        }
-    };
-    // ────────────────────────────────────────────────────────────────────────
 
     /**
      * @param {(fps:number)=>void} handler

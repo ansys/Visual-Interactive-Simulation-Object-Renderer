@@ -31,6 +31,14 @@ import type { TrameTriggerSender } from '../renderer/IRenderer';
  * Also pinned: `resizeAsync` fits the orientation widget to the window as it
  * stands after the scene resize.
  *
+ * Also pinned: `resizeAsync` reports the window's device pixel ratio to
+ * `set_pixel_scale`, so the server draws the geometry highlight at the size
+ * the wasm canvas shows it.
+ *
+ * Also pinned: a geometry highlight and a clear each send
+ * `set_geometry_highlight` with the pick, so the server draws and drops it;
+ * the scene no longer draws one of its own.
+ *
  * Modelled on `WasmRendererPartTriggers.test.tsx`, which does the same for
  * the six per-part sends.
  */
@@ -414,5 +422,59 @@ describe('WasmRenderer fits the orientation widget on resize', () => {
         expect(scene.resizeAsync).toHaveBeenCalledTimes(1);
         expect(orientationRepresentation.SetSize).toHaveBeenCalledTimes(1);
         expect(orientationRepresentation.SetSize).toHaveBeenCalledWith([105, 105]);
+    });
+});
+
+/** Let the sends that are not awaited run to completion. */
+async function settle() {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+describe('WasmRenderer reports its device pixel ratio on resize', () => {
+    let originalDevicePixelRatio: number;
+
+    beforeEach(() => {
+        originalDevicePixelRatio = window.devicePixelRatio;
+        Object.defineProperty(window, 'devicePixelRatio', { configurable: true, value: 2 });
+    });
+
+    afterEach(() => {
+        Object.defineProperty(window, 'devicePixelRatio', {
+            configurable: true,
+            value: originalDevicePixelRatio,
+        });
+    });
+
+    test("resizeAsync sends set_pixel_scale with the window's device pixel ratio", async () => {
+        const sender = makeSender();
+        const { renderer } = await makeRenderer(sender);
+
+        await renderer.resizeAsync();
+        await settle();
+
+        expect(sender.mock.calls).toStrictEqual([['set_pixel_scale', { scale: 2 }]]);
+    });
+});
+
+describe('WasmRenderer geometry highlight sends', () => {
+    test('a highlight then a clear each send set_geometry_highlight with the pick', async () => {
+        const sender = makeSender();
+        const { renderer } = await makeRenderer(sender);
+
+        await renderer.setGeometryHighlightAsync({
+            found: true,
+            mode: 'vertex',
+            position: [1, 2, 3],
+        });
+        renderer.clearGeometryHighlight();
+        await settle();
+
+        expect(sender.mock.calls).toStrictEqual([
+            [
+                'set_geometry_highlight',
+                { pick: { found: true, mode: 'vertex', position: [1, 2, 3] } },
+            ],
+            ['set_geometry_highlight', { pick: { found: false } }],
+        ]);
     });
 });
