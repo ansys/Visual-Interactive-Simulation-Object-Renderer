@@ -1,0 +1,54 @@
+# Reports known vulnerabilities (CVEs/GHSAs) in the production dependencies
+# locked in poetry.lock. Informational only: this workflow never blocks a PR.
+
+name: Dependency vulnerability report
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: ["main"]
+
+permissions:
+  contents: read
+
+jobs:
+  pip-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    continue-on-error: true
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install tools
+        run: python -m pip install --quiet poetry poetry-plugin-export pip-audit
+
+      - name: Export production dependencies
+        run: poetry export -f requirements.txt --without-hashes -o requirements-audit.txt
+
+      - name: Run pip-audit
+        run: |
+          set +e
+          pip-audit -r requirements-audit.txt --no-deps --disable-pip --aliases on -f markdown -o audit.md
+          status=$?
+          set -e
+          {
+            echo "## Dependency vulnerability report"
+            echo
+            if [ "$status" -eq 0 ]; then
+              echo "No known vulnerabilities found."
+            elif [ -s audit.md ]; then
+              cat audit.md
+            else
+              echo "pip-audit failed to run (exit code $status). Check the job log."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$status" -ne 0 ]; then
+            echo "::warning title=pip-audit::Known vulnerabilities found or audit failed. See the job summary."
+          fi
