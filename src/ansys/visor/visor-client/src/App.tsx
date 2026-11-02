@@ -3,6 +3,8 @@ import { CSSProperties, RefObject, useEffect, useRef } from 'react';
 import { randomInt } from './utils/JsHelpers';
 import { useVisorArgs } from './hooks/useVisorArgs';
 import { useClientVtk } from './hooks/useClientVtk';
+import { useRenderingMode } from './hooks/useRenderingMode';
+import { useServerVtk } from './hooks/useServerVtk';
 
 function App() {
     const visorArgs = useVisorArgs();
@@ -22,7 +24,12 @@ function App() {
                   margin: '0 auto',
               };
     const uiScaffoldUtil: RefObject<UiScaffoldUtil> = useRef(null!);
-    const { visorFrontend: visorState, schemaMismatchError } = useClientVtk(visorArgs);
+    const probe = useRenderingMode(visorArgs.host, visorArgs.port);
+    const client = useClientVtk(visorArgs, probe.mode === 'client');
+    const server = useServerVtk(probe.mode === 'server' ? probe.trame : null, visorArgs);
+    const active = probe.mode === 'server' ? server : client;
+    const { visorFrontend: visorState, schemaMismatchError } = active;
+    const { serverCanvas } = server;
 
     useEffect(() => {
         (async () => {
@@ -44,12 +51,23 @@ function App() {
 
     return (
         <div style={visorContainerStyle}>
-            {schemaMismatchError != null ? (
+            {probe.error != null ? (
+                <div>{probe.error.message}</div>
+            ) : schemaMismatchError != null ? (
                 <div>
                     {`Scene details schema version mismatch: payload is version ` +
                         `${schemaMismatchError.payloadVersion}, client expects version ` +
                         `${schemaMismatchError.expectedVersion}.`}
                 </div>
+            ) : serverCanvas != null ? (
+                // Server mode has no frontend to host the canvas, so its
+                // element is mounted here directly.
+                <div
+                    style={{ width: '100%', height: '100%' }}
+                    ref={(container) => {
+                        container?.replaceChildren(serverCanvas.element);
+                    }}
+                />
             ) : (
                 visorState != null && (
                     <UiScaffold

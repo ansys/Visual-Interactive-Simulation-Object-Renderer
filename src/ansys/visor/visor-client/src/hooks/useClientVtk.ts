@@ -7,6 +7,7 @@ import { WasmRenderer } from '../renderer/WasmRenderer';
 import { requireWasmAnnotation } from '../renderer/RendererAnnotation';
 import { attachCameraSyncReporter } from '../CameraSyncReporter';
 import { buildFrontendAsync } from '../buildFrontendAsync';
+import { trameWebSocketUrl } from '../trameWebSocketUrl';
 import { VisorArgs } from './useVisorArgs';
 
 /** What the client-mode hook gives App. */
@@ -15,8 +16,8 @@ export type ClientVtk = Readonly<{
     schemaMismatchError: SchemaVersionMismatchError | null;
 }>;
 
-/** Connect the wasm scene, rebuild the frontend on each server update, and apply set_state. */
-export function useClientVtk(visorArgs: VisorArgs): ClientVtk {
+/** Connect the wasm scene, rebuild the frontend on each server update, and apply set_state; idle until active. */
+export function useClientVtk(visorArgs: VisorArgs, active: boolean): ClientVtk {
     const [visorFrontend, setVisorFrontend] = useState<VisorFrontend | null>(null);
     const [schemaMismatchError, setSchemaMismatchError] =
         useState<SchemaVersionMismatchError | null>(null);
@@ -24,6 +25,9 @@ export function useClientVtk(visorArgs: VisorArgs): ClientVtk {
     const cameraSyncRemover = useRef<(() => void) | null>(null);
 
     useEffect(() => {
+        if (!active) {
+            return;
+        }
         (async () => {
             if (wasmView.current == null) {
                 const { host, port } = visorArgs;
@@ -32,13 +36,13 @@ export function useClientVtk(visorArgs: VisorArgs): ClientVtk {
                     wasmIdsStateKey: 'wasm_ids',
                     refNameStateKey: 'wasm_ref_name',
                     wasmUrl: `http${secure ? 's' : ''}://${host}:${port}/wasm`,
-                    webSocketUrl: `ws${secure ? 's' : ''}://${host}:${port}/ws`,
+                    webSocketUrl: trameWebSocketUrl(host, port),
                 });
                 wasmView.current.addServerUpdatedListener(onServerUpdateAsync);
                 await onServerUpdateAsync();
             }
         })();
-    }, []);
+    }, [active]);
 
     async function onServerUpdateAsync() {
         if (wasmView.current == null) {

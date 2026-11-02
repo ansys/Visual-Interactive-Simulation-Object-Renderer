@@ -167,7 +167,7 @@ afterEach(() => {
 
 describe('useClientVtk camera sync', () => {
     test('one gesture settle after two rebuilds sends one sync_camera', async () => {
-        const { result } = renderHook(() => useClientVtk(ARGS));
+        const { result } = renderHook(() => useClientVtk(ARGS, true));
         await waitFor(() => expect(result.current.visorFrontend).not.toBeNull());
         await act(async () => {
             await mockScene.serverUpdated!();
@@ -187,7 +187,7 @@ describe('useClientVtk camera sync', () => {
     test('a settle during the first build state seed is reported once', async () => {
         mockScene.settleDuringFirstSeed = true;
 
-        const { result } = renderHook(() => useClientVtk(ARGS));
+        const { result } = renderHook(() => useClientVtk(ARGS, true));
         await waitFor(() => expect(result.current.visorFrontend).not.toBeNull());
         await act(async () => {
             await drain();

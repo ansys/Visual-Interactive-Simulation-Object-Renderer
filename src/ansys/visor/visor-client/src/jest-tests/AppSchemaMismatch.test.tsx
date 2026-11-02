@@ -23,6 +23,10 @@ jest.mock('../components/UiScaffold.tsx', () => ({
     UiScaffold: () => null,
 }));
 
+jest.mock('../hooks/useRenderingMode', () => ({
+    useRenderingMode: () => ({ mode: 'client', trame: null, error: null }),
+}));
+
 /** The client-mode scene connection; its scene details carry schema version 3. */
 function mockMakeWasmView() {
     return {

@@ -25,6 +25,10 @@ jest.mock('../components/UiScaffold.tsx', () => ({
     },
 }));
 
+jest.mock('../hooks/useRenderingMode', () => ({
+    useRenderingMode: () => ({ mode: 'client', trame: null, error: null }),
+}));
+
 /** A minimal v4 scene-details payload whose delivered theme is light. */
 function mockSceneDetailsPayload() {
     return {
