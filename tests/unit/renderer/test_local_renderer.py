@@ -1220,6 +1220,12 @@ class TestGeometryHighlightPush:
 
         renderer._local_view.update.assert_called_once_with(dataOnly=True)
 
+    def test_set_does_not_render_the_window(self, renderer):
+        """The push runs on the trigger thread, which does not own the window's GL context."""
+        renderer.show_geometry_highlight(VertexPick(position=[1.0, 2.0, 3.0]))
+        renderer._render_window.Render.assert_not_called()
+        renderer._local_view.update.assert_called_once_with(dataOnly=True)
+
     def test_clear_of_a_hidden_highlight_pushes_nothing(self, renderer):
         renderer.show_geometry_highlight(NoGeometryPick())
         renderer._local_view.update.assert_not_called()
