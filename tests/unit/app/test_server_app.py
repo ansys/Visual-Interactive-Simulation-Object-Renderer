@@ -241,9 +241,13 @@ class _SizeRecordingRenderer:
 
     def __init__(self) -> None:
         self.sizes: list[tuple[int, int]] = []
+        self.pixel_scales: list[float] = []
 
     def set_viewport_size(self, width: int, height: int) -> None:
         self.sizes.append((width, height))
+
+    def set_pixel_scale(self, pixel_scale: float) -> None:
+        self.pixel_scales.append(pixel_scale)
 
 
 class _StillCapture:
@@ -274,4 +278,5 @@ def test_client_resize_sizes_render_window(mock_server, area_cls):
     rca_window.img_cols_rows
 
     assert renderer.sizes == [(601, 451)]
+    assert renderer.pixel_scales == [1.5]
 
