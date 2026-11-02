@@ -1231,6 +1231,23 @@ class TestGeometryHighlightPush:
         renderer._local_view.update.assert_not_called()
 
 
+class TestHighlightPixelScale:
+    """The client's device pixel ratio sizes the highlight the next time it is shown."""
+
+    def test_a_vertex_highlight_after_set_pixel_scale_is_drawn_at_the_scaled_size(self, renderer):
+        renderer.set_pixel_scale(2.0)
+
+        renderer.show_geometry_highlight(VertexPick(position=[1.0, 2.0, 3.0]))
+
+        # 21 CSS px vertex diameter at 2 device pixels per CSS pixel.
+        assert renderer._geometry_highlight.actor.GetProperty().GetPointSize() == 42.0
+
+    def test_set_pixel_scale_pushes_nothing(self, renderer):
+        renderer.set_pixel_scale(2.0)
+
+        renderer._local_view.update.assert_not_called()
+
+
 
 class TestPickGeometry:
 

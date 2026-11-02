@@ -51,9 +51,9 @@ class VisorVTKLocal(VisorVTK):
                 world_x,
                 world_y,
                 world_z: self._scene.pick_geometry(actor_wasm_id, cell_id, mode, world_x, world_y, world_z),
-            # The scene satisfies LocalApp's SceneMutationApi protocol
-            # structurally: the six per-part coordinator methods carry exactly
-            # the names and signatures the triggers call.
+            # The scene satisfies LocalApp's LocalSceneMutationApi protocol
+            # structurally: the coordinator methods carry exactly the names
+            # and signatures the triggers call.
             scene_mutation_api=self._scene,
         )
 

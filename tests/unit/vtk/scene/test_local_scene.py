@@ -733,6 +733,20 @@ def test_pick_geometry_in_view_holds_lock(pipeline_instance):
     assert depths == [1]
 
 
+def test_set_pixel_scale_holds_the_lock_at_the_renderer_call(pipeline_instance):
+    """The renderer's rescale runs with the scene lock held, and passes the scale through."""
+    pipeline_instance._vtk_lock = LockSpy()
+    calls = []
+
+    def recording_set_pixel_scale(pixel_scale):
+        calls.append((pixel_scale, pipeline_instance._vtk_lock.depth))
+
+    pipeline_instance._renderer.set_pixel_scale = recording_set_pixel_scale
+    pipeline_instance.set_pixel_scale(2.0)
+    assert calls == [(2.0, 1)]
+    assert pipeline_instance._vtk_lock.depth == 0
+
+
 # ---------------------------------------------------------------------------
 # Tests moved from tests/unit/app/test_finalize_scene.py
 # ---------------------------------------------------------------------------

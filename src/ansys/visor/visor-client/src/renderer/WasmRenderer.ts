@@ -165,6 +165,9 @@ export class WasmRenderer implements IRenderer {
     }
 
     async resizeAsync(): Promise<void> {
+        // Not awaited: the resize does not wait on a round trip, and the send
+        // logs and swallows its own rejection.
+        void this.#sends.sendPixelScaleAsync(window.devicePixelRatio);
         await this.#vtkScene.resizeAsync();
         await this.#orientationWidget.fitToWindowAsync();
         this.#vtkScene.render();
@@ -513,11 +516,13 @@ export class WasmRenderer implements IRenderer {
         return (await this.#vtkScene.pickGeometryAsync(normX, normY, mode)) as PickGeometryResult;
     }
 
+    /** Ask the server to highlight the picked feature; a not-found result clears it. */
     async setGeometryHighlightAsync(result: PickGeometryResult): Promise<void> {
-        await this.#vtkScene.setGeometryHighlightAsync(result);
+        await this.#sends.sendGeometryHighlightAsync(result);
     }
 
+    /** Ask the server to clear the highlight; the send is not awaited. */
     clearGeometryHighlight(): void {
-        this.#vtkScene.clearGeometryHighlight();
+        void this.#sends.sendGeometryHighlightAsync({ found: false });
     }
 }

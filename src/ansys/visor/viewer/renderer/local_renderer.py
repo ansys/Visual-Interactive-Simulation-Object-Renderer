@@ -200,7 +200,7 @@ class VisorLocalRenderer(VtkPipelineRenderer):
         self.push_without_rebuild()
 
     def _initial_highlight_pixel_scale(self) -> float:
-        """1.0: the client draws its own overlay here, so the actor's sizes are not shown."""
+        """1.0 until the client reports its device pixel ratio."""
         return 1.0
 
     # ------------------------------------------------------------------
