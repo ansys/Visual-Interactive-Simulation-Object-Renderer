@@ -34,8 +34,7 @@ module.exports = (env, argv) => {
 
     const entry = overrides.entry || {main: './src/lib/index.js'};
 
-    // Source maps are emitted by SourceMapDevToolPlugin below; enabling devtool too emits conflicting .map assets.
-    const devtool = overrides.devtool || false;
+    const devtool = overrides.devtool || 'source-map';
 
     const externals = ('externals' in overrides) ? overrides.externals : ({
         react: 'React',
