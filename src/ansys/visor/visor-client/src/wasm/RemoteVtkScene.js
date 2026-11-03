@@ -1,4 +1,5 @@
 import { VtkWASMHandler } from '@kitware/vtk-wasm/remote';
+import { CanvasPixelSize } from './CanvasPixelSize';
 import { SerialUpdateQueue } from './SerialUpdateQueue';
 import TrameInterface from './TrameInterface.js';
 import VtkScene from './VtkScene.js';
@@ -312,13 +313,17 @@ export default class RemoteVtkScene {
         return this.#wasmHandler.sceneManager.render(this.renderWindowId);
     };
     /**
+     * Size the wasm window to its container; a container with no area, as before it is placed or while it is
+     * between frontends, leaves the window at its last size.
      * @return {Promise<void>}
      */
     resizeAsync = async () => {
         const { width, height } = this.canvasDiv.getBoundingClientRect();
-        const w = Math.floor(width * window.devicePixelRatio + 0.5);
-        const h = Math.floor(height * window.devicePixelRatio + 0.5);
-        await this.#wasmHandler.setSize(this.renderWindowId, w, h);
+        const size = CanvasPixelSize.of(width, height, window.devicePixelRatio);
+        if (size === null) {
+            return;
+        }
+        await this.#wasmHandler.setSize(this.renderWindowId, size.width, size.height);
     };
     /**
      * @param {number} wasmId
