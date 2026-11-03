@@ -16,7 +16,9 @@ const mockTrame = {
             getSession: () => ({ subscribe: mockSubscribe, call: async () => undefined }),
         }),
     },
-    trigger: async () => undefined,
+    // The scene-details fetch never answers, so the server frontend is never
+    // built: this test is about which scene loads, not what the server sends.
+    trigger: () => new Promise(() => {}),
 };
 
 jest.mock('../wasm/RemoteVtkScene', () => ({

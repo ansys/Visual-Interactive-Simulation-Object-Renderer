@@ -1,9 +1,5 @@
-import type {
-    CameraOrigin,
-    IRenderer,
-    TrameTriggerSender,
-    VisorCameraState,
-} from './renderer/IRenderer';
+import type { CameraOrigin, TrameTriggerSender, VisorCameraState } from './renderer/IRenderer';
+import type { WasmRenderer } from './renderer/WasmRenderer';
 
 /**
  * The `sync_camera` trigger: the client's half of the server-tracked camera.
@@ -35,11 +31,15 @@ export type SyncCameraPayload = Readonly<{
 }>;
 
 /**
- * The part of a renderer this module uses. Narrower than `IRenderer` so the
+ * The part of a renderer this module uses. Narrower than `WasmRenderer` so the
  * unit test can supply exactly these two members without a cast that would
- * defeat the type check it is here to get.
+ * defeat the type check it is here to get. Only the client-rendering renderer
+ * reports settled camera windows, so the source is typed from it.
  */
-export type CameraSyncSource = Pick<IRenderer, 'addCameraSettledListener' | 'getCameraStateAsync'>;
+export type CameraSyncSource = Pick<
+    WasmRenderer,
+    'addCameraSettledListener' | 'getCameraStateAsync'
+>;
 
 /**
  * Build the trigger payload from a settled camera snapshot.
