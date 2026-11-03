@@ -314,17 +314,24 @@ export default class RemoteVtkScene {
     };
     /**
      * Size the wasm window to its container; a container with no area, as before it is placed or while it is
-     * between frontends, leaves the window at its last size.
+     * between frontends, leaves the window at its last size.  A size equal to the one last applied is not set
+     * again: vtk-wasm's `setSize` renders, and its `update` already re-applies the last size it was given.
      * @return {Promise<void>}
      */
     resizeAsync = async () => {
         const { width, height } = this.canvasDiv.getBoundingClientRect();
         const size = CanvasPixelSize.of(width, height, window.devicePixelRatio);
-        if (size === null) {
+        if (size === null || size.equals(this.#appliedSize)) {
             return;
         }
         await this.#wasmHandler.setSize(this.renderWindowId, size.width, size.height);
+        this.#appliedSize = size;
     };
+    /**
+     * The size last handed to vtk-wasm's `setSize`, recorded once it resolves; null until the first.
+     * @type {?CanvasPixelSize}
+     */
+    #appliedSize = null;
     /**
      * @param {number} wasmId
      * @return {FrontendVtkObject}
