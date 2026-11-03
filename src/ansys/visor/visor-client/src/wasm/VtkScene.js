@@ -81,8 +81,6 @@ export default class VtkScene {
     canvas;
     /**@type{HTMLDivElement}*/
     canvasDiv;
-    /** Last WASM display coords from mouseup – used by pickGeometryAsync. */
-    #lastPickDisplayPos = null;
     /**@type{FrontendVtkObject}*/
     camera;
     /**@type{FrontendVtkObject}*/
@@ -178,53 +176,6 @@ export default class VtkScene {
         return this.#viewerClicks.addListener(handler);
     };
     /**
-     * Pick geometry at the last clicked position.
-     *
-     * The interactor's picker is a vtkCellPicker (set server-side), which
-     * returns the exact hit cell via GetCellId().  The actor's WASM object ID
-     * is retrieved from the actor proxy.  Both are forwarded to the server so
-     * it can look up the cell vertices directly
-     *
-     * @param {number} normX - Normalized x [0..1] (kept for API compatibility)
-     * @param {number} normY - Normalized y [0..1] bottom→top (VTK convention)
-     * @param {string} mode  - 'vertex' | 'edge' | 'face'
-     * @return {Promise<{found:boolean, mode?:string, position?:number[], pointA?:number[], pointB?:number[], edgeLength?:number, area?:number, points?:number[][]}>}
-     */
-    pickGeometryAsync = async (normX, normY, mode) => {
-        const displayPos = this.#lastPickDisplayPos;
-        if (!displayPos) return { found: false };
-        const [dx, dy] = displayPos;
-
-        // Re-pick at the exact WASM display coordinates.
-        const found = await this.picker.Pick([dx, dy, 0], this.renderer);
-        if (!found) return { found: false };
-
-        const rawPos = await this.picker.GetPickPosition();
-        const position = [rawPos[0], rawPos[1], rawPos[2]];
-
-        // For all modes (vertex, edge, face): use vtkCellPicker's exact cell ID
-        // and actor WASM ID so the server can snap to the nearest vertex / edge / face.
-        try {
-            const cellId = await this.picker.GetCellId();
-            if (cellId < 0) return { found: false };
-            const actorProxy = await this.picker.GetActor();
-            const actorWasmId = actorProxy?.id ?? null;
-            if (actorWasmId == null) return { found: false };
-            return await this.#remoteVtkScene.trameTriggerAsync(
-                'pick_geometry',
-                actorWasmId,
-                cellId,
-                mode,
-                position[0],
-                position[1],
-                position[2]
-            );
-        } catch (_) {
-            return { found: false };
-        }
-    };
-
-    /**
      * @param {(fps:number)=>void} handler
      * @return {()=>void}
      */
@@ -272,7 +223,6 @@ export default class VtkScene {
                 };
                 await this.#viewerClicks.dispatchAsync(click, async () => {
                     const [x, y] = await interactor.GetEventPosition();
-                    this.#lastPickDisplayPos = [x, y];
                     const found = await picker.Pick([x, y, 0], renderer);
                     const actor = found ? await picker.getActor() : null;
                     return actor?.id ?? null;

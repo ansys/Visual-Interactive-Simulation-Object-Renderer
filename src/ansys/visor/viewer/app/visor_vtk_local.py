@@ -44,17 +44,11 @@ class VisorVTKLocal(VisorVTK):
             lambda: self._scene.get_scene_details_json(),
             standalone,
             trame_logger=get_trame_logger(trame_log_dir),
-            pick_geometry=lambda
-                actor_wasm_id,
-                cell_id,
-                mode,
-                world_x,
-                world_y,
-                world_z: self._scene.pick_geometry(actor_wasm_id, cell_id, mode, world_x, world_y, world_z),
             # The scene satisfies LocalApp's LocalSceneMutationApi protocol
             # structurally: the coordinator methods carry exactly the names
             # and signatures the triggers call.
             scene_mutation_api=self._scene,
+            pick_geometry_in_view=self._scene.pick_geometry_in_view,
         )
 
     def _post_scene_change_hook(self) -> None:
