@@ -42,7 +42,7 @@ def prepare_wasm_assets(project_root: Path) -> None:
 
     if sys.platform == "win32":
         site_packages = project_root / ".venv" / "Lib" / "site-packages"
-    elif sys.platform == "linux":
+    elif sys.platform in ["darwin", "linux"]:
         site_packages = Path(site.getsitepackages()[0])
     else:
         raise RuntimeError(f"Unsupported platform: {sys.platform}")
