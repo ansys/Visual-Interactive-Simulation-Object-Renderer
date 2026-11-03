@@ -39,6 +39,10 @@ import type { TrameTriggerSender } from '../renderer/IRenderer';
  * `set_geometry_highlight` with the pick, so the server draws and drops it;
  * the scene no longer draws one of its own.
  *
+ * Also pinned: a geometry pick sends `pick_geometry_in_view` once, with the
+ * clicked pixel of the window in render-window pixels, the window's size and
+ * the camera record, so the server picks through the view the user sees.
+ *
  * Modelled on `WasmRendererPartTriggers.test.tsx`, which does the same for
  * the six per-part sends.
  */
@@ -135,8 +139,18 @@ async function makeRenderer(
     nodeIds: number[] = [NODE_ID]
 ) {
     const objects = makeFakeWasmObjects();
+    // The six camera reads besides the projection return distinctive
+    // hand-written literals, none a vtkCamera default, so a record carrying
+    // them can only have come from reading this camera.
     const camera = {
         GetParallelProjection: jest.fn(async () => parallelProjection),
+        GetParallelScale: jest.fn(async () => 7),
+        GetDistance: jest.fn(async () => 9),
+        GetPosition: jest.fn(async () => [1, 2, 3]),
+        GetFocalPoint: jest.fn(async () => [4, 5, 6]),
+        GetViewUp: jest.fn(async () => [0, 0, 1]),
+        GetClippingRange: jest.fn(async () => [0.5, 50]),
+        GetViewAngle: jest.fn(async () => 25),
         ParallelProjectionOn: jest.fn(async () => undefined),
         ParallelProjectionOff: jest.fn(async () => undefined),
     };
@@ -150,6 +164,7 @@ async function makeRenderer(
         renderWindow: {
             GetSize: jest.fn(async () => windowSize),
         },
+        getViewPortHeightAsync: jest.fn(async () => windowSize[1]),
         clearObserversAndEventListeners: jest.fn(),
         // The tracker itself is `#private` to VtkScene, so what the renderer
         // can reach is this one passthrough, and this is what the orientation
@@ -476,5 +491,49 @@ describe('WasmRenderer geometry highlight sends', () => {
             ],
             ['set_geometry_highlight', { pick: { found: false } }],
         ]);
+    });
+});
+
+describe('WasmRenderer geometry pick', () => {
+    // (0.25, 0.25) on 600x400 is pixel (150, 100). A y flip would give 300,
+    // an x flip 450, and swapped axes (100, 150).
+    test('pickGeometryAsync sends one pick_geometry_in_view with the window pixel, its size and the camera record', async () => {
+        const sender = jest.fn(async () => ({ found: false })) as unknown as jest.Mock &
+            TrameTriggerSender;
+        const { renderer, scene } = await makeRenderer(sender);
+        scene.renderWindow.GetSize.mockResolvedValue([600, 400]);
+
+        const result = await renderer.pickGeometryAsync(0.25, 0.25, 'vertex');
+
+        expect(result).toStrictEqual({ found: false });
+        expect(sender.mock.calls).toStrictEqual([
+            [
+                'pick_geometry_in_view',
+                {
+                    x: 150,
+                    y: 100,
+                    width: 600,
+                    height: 400,
+                    mode: 'vertex',
+                    camera: {
+                        position: [1, 2, 3],
+                        focalPoint: [4, 5, 6],
+                        viewUp: [0, 0, 1],
+                        clippingRange: [0.5, 50],
+                        parallelProjection: false,
+                        viewAngle: 25,
+                        parallelScale: 7,
+                    },
+                },
+            ],
+        ]);
+    });
+
+    test('pickGeometryAsync with no trigger sender rejects', async () => {
+        const { renderer } = await makeRenderer(null);
+
+        await expect(renderer.pickGeometryAsync(0.25, 0.25, 'vertex')).rejects.toThrow(
+            'no trigger sender'
+        );
     });
 });

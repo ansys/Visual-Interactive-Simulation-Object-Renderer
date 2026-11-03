@@ -66,17 +66,8 @@ class VisorLocalScene(VisorSceneBase):
         self._frontend_bridge.set_state(runtime_app_state)
 
     # -------------------------------------------------------------------------
-    # Picking — wasm: the client's picker reports a wasm actor id
+    # Picking — through the client's view, on the server picker
     # -------------------------------------------------------------------------
-
-    def pick_geometry(self, actor_wasm_id, cell_id, mode, world_x, world_y, world_z) -> dict:
-        """
-        Frontend-trigger entry point for cell picking.  Packs the world-space
-        pick position into a tuple and delegates to the renderer backend.
-        """
-        return self._renderer.pick_geometry(
-            actor_wasm_id, cell_id, mode, (world_x, world_y, world_z)
-        )
 
     def set_pixel_scale(self, pixel_scale: float) -> None:
         """Draw the geometry highlight at this many device pixels per CSS pixel; no push, no notify.

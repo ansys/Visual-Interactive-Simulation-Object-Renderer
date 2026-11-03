@@ -16,18 +16,21 @@ import type { WasmRenderer } from './renderer/WasmRenderer';
  * event is what the debounce exists to avoid.
  */
 
+/** The seven camera fields the server applies and picks through. Mirrors the server's camera model. */
+export type CameraRecord = Readonly<{
+    position: readonly number[];
+    focalPoint: readonly number[];
+    viewUp: readonly number[];
+    clippingRange: readonly number[];
+    parallelProjection: boolean;
+    viewAngle: number;
+    parallelScale: number;
+}>;
+
 /** The payload of the `sync_camera` trigger. Mirrors the server's model. */
 export type SyncCameraPayload = Readonly<{
     origin: CameraOrigin;
-    camera: Readonly<{
-        position: readonly number[];
-        focalPoint: readonly number[];
-        viewUp: readonly number[];
-        clippingRange: readonly number[];
-        parallelProjection: boolean;
-        viewAngle: number;
-        parallelScale: number;
-    }>;
+    camera: CameraRecord;
 }>;
 
 /**
@@ -42,7 +45,7 @@ export type CameraSyncSource = Pick<
 >;
 
 /**
- * Build the trigger payload from a settled camera snapshot.
+ * The server's camera record from a camera snapshot.
  *
  * The seven applied fields are named one by one, deliberately, rather than
  * spread from the snapshot. `VisorCameraState` carries five further derived
@@ -52,13 +55,30 @@ export type CameraSyncSource = Pick<
  * accept it silently: pydantic ignores unknown keys, so every server-side
  * gate would stay green while the wire contract quietly became "whatever the
  * client's snapshot type happens to hold today". Naming the seven is the only
- * place that shape is decided, which is why the test asserts the key set.
+ * place that shape is decided, which is why the tests assert the key set.
  *
  * `parallelProjection` is carried verbatim. `getCameraStateAsync` has already
- * narrowed the wasm camera's raw value to a boolean; this module does not
+ * narrowed the wasm camera's raw value to a boolean; this function does not
  * re-derive it.
+ */
+export function cameraRecordOf(camera: VisorCameraState): CameraRecord {
+    return {
+        position: camera.position,
+        focalPoint: camera.focalPoint,
+        viewUp: camera.viewUp,
+        clippingRange: camera.clippingRange,
+        parallelProjection: camera.parallelProjection,
+        viewAngle: camera.viewAngle,
+        parallelScale: camera.parallelScale,
+    };
+}
+
+/**
+ * Build the trigger payload from a settled camera snapshot.
  *
- * `origin` is carried verbatim too, for both values. The client never
+ * The camera is the record `cameraRecordOf` names, never the snapshot.
+ *
+ * `origin` is carried verbatim, for both values. The client never
  * suppresses a report it believes is an echo -- the server decides, and logs
  * what it dropped.
  */
@@ -66,18 +86,7 @@ export function buildSyncCameraPayload(
     origin: CameraOrigin,
     camera: VisorCameraState
 ): SyncCameraPayload {
-    return {
-        origin,
-        camera: {
-            position: camera.position,
-            focalPoint: camera.focalPoint,
-            viewUp: camera.viewUp,
-            clippingRange: camera.clippingRange,
-            parallelProjection: camera.parallelProjection,
-            viewAngle: camera.viewAngle,
-            parallelScale: camera.parallelScale,
-        },
-    };
+    return { origin, camera: cameraRecordOf(camera) };
 }
 
 /**

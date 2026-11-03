@@ -673,6 +673,13 @@ def test_local_app_receives_the_scene_as_the_scene_mutation_api(local_app_call):
     assert call.kwargs["scene_mutation_api"] is instance._scene
 
 
+def test_local_app_receives_the_scene_pick_geometry_in_view(local_app_call):
+    """The scene's own server picker is injected, not a lambda around it."""
+    call, scene, _instance = local_app_call
+
+    assert call.kwargs["pick_geometry_in_view"] is scene.pick_geometry_in_view
+
+
 def test_local_app_still_receives_the_pre_existing_arguments(local_app_call):
     """The boundary is extended, not broken: the earlier arguments survive."""
     call, scene, instance = local_app_call
@@ -681,20 +688,17 @@ def test_local_app_still_receives_the_pre_existing_arguments(local_app_call):
     assert server is instance.server
     assert callable(get_scene_details_json)
     assert standalone is True
-    assert callable(call.kwargs["pick_geometry"])
     assert "trame_logger" in call.kwargs
 
 
 def test_the_pre_existing_lambdas_still_delegate_to_the_scene(local_app_call):
-    """The two original callables are untouched and still reach the scene."""
+    """The original callable is untouched and still reaches the scene."""
     call, scene, _instance = local_app_call
 
     _server, get_scene_details_json, _standalone = call.args
     get_scene_details_json()
-    call.kwargs["pick_geometry"](2, 3, "vertex", 0.0, 1.0, 2.0)
 
     scene.get_scene_details_json.assert_called_once_with()
-    scene.pick_geometry.assert_called_once_with(2, 3, "vertex", 0.0, 1.0, 2.0)
 
 
 @pytest.mark.parametrize("name", SCENE_MUTATION_API_METHODS)

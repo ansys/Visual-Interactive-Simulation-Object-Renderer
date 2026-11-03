@@ -15,8 +15,7 @@ Coverage targets
 4.  Camera -- reset_camera, sync_camera / get_camera_state, set_projection,
     each re-serializing the active camera without notifying the client.
 5.  Render / flush delegation.
-6.  pick_geometry -- vertex, edge, face modes.
-7.  Cross-section plane -- the record, the two VTK writes, the two-id
+6.  Cross-section plane -- the record, the two VTK writes, the two-id
     re-serialization, and the seed.
 """
 
@@ -37,75 +36,6 @@ from ansys.visor.viewer.renderer.local_renderer import VisorLocalRenderer
 from ansys.visor.viewer.renderer.null_renderer import NullRenderer
 from ansys.visor.viewer.vtk.node_pipeline import VtkNodePipeline
 from ansys.visor.viewer.vtk.widgets.visor_cross_section import VisorCrossSectionWidget
-
-# ---------------------------------------------------------------------------
-# Lightweight VTK-data stubs (no real VTK objects required for pick tests)
-# ---------------------------------------------------------------------------
-
-class _DummyPoints:
-    def __init__(self, pts):
-        self._pts = pts
-
-    def GetPoint(self, i): # noqa: N802
-        return tuple(self._pts[i])
-
-
-class _DummyCell:
-    def __init__(self, points):
-        self._pts = _DummyPoints(points)
-        self._n = len(points)
-
-    def GetNumberOfPoints(self): # noqa: N802
-        return self._n
-
-    def GetPoints(self): # noqa: N802
-        return self._pts
-
-
-class _DummyDataset:
-    def __init__(self, cells):
-        self._cells = cells
-
-    def GetNumberOfCells(self): # noqa: N802
-        return len(self._cells)
-
-    def GetCell(self, idx): # noqa: N802
-        return self._cells[idx] if 0 <= idx < len(self._cells) else None
-
-
-class _DummyMapper:
-    def __init__(self, dataset):
-        self._ds = dataset
-
-    def GetInputDataObject(self, a, b): # noqa: N802
-        return self._ds
-
-
-class _DummyActor:
-    def __init__(self, mapper):
-        self._mapper = mapper
-
-    def GetMapper(self): # noqa: N802
-        return self._mapper
-
-
-class _DummyActors:
-    """Minimal traversable actor collection matching vtkActorCollection's API."""
-
-    def __init__(self, actors):
-        self._actors = actors
-        self._idx = 0
-
-    def InitTraversal(self): # noqa: N802
-        self._idx = 0
-
-    def GetNextActor(self): # noqa: N802
-        if self._idx >= len(self._actors):
-            return None
-        a = self._actors[self._idx]
-        self._idx += 1
-        return a
-
 
 # ---------------------------------------------------------------------------
 # Camera double
@@ -289,23 +219,6 @@ def renderer():
     # Init adds the geometry highlight's actor; tests count part actors only.
     vtk_renderer.AddActor.reset_mock()
     return r
-
-
-# ---------------------------------------------------------------------------
-# Helper: seed one actor into the renderer's actor list for pick tests
-# ---------------------------------------------------------------------------
-
-def _seed_actor(renderer, actor_wasm_id: int, dataset):
-    """Wire a dummy actor+dataset into the renderer's VTK actor traversal.
-
-    Returns the actor so callers can make additional assertions.
-    """
-    actor = _DummyActor(_DummyMapper(dataset))
-    renderer._vtk_renderer.GetActors.return_value = _DummyActors([actor])
-    renderer._object_manager.GetId.side_effect = (
-        lambda a: actor_wasm_id if a is actor else -1
-    )
-    return actor
 
 
 # ===========================================================================
@@ -1249,79 +1162,8 @@ class TestHighlightPixelScale:
 
 
 
-class TestPickGeometry:
-
-    def test_pick_vertex_returns_nearest_point(self, renderer):
-        """Vertex mode returns the cell point closest to the pick position."""
-        pts = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
-        dataset = _DummyDataset([_DummyCell(pts)])
-        _seed_actor(renderer, 123, dataset)
-
-        res = renderer.pick_geometry(123, 0, "vertex", (0.9, 0.1, 0.0))
-
-        assert res["found"] is True
-        assert res["mode"] == "vertex"
-        assert tuple(res["position"]) == (1.0, 0.0, 0.0)
-
-    def test_pick_edge_returns_closest_edge_endpoints_and_length(self, renderer):
-        """Edge mode returns the two endpoints of the edge nearest to the pick."""
-        pts = [(0, 0, 0), (2, 0, 0), (2, 2, 0), (0, 2, 0)]
-        dataset = _DummyDataset([_DummyCell(pts)])
-        _seed_actor(renderer, 7, dataset)
-
-        res = renderer.pick_geometry(7, 0, "edge", (2.01, 1.0, 0.0))
-
-        assert res["found"] is True
-        assert res["mode"] == "edge"
-        assert tuple(res["pointA"]) == (2.0, 0.0, 0.0)
-        assert tuple(res["pointB"]) == (2.0, 2.0, 0.0)
-        assert pytest.approx(res["edgeLength"]) == 2.0
-
-    def test_pick_face_returns_area_and_all_points(self, renderer):
-        """Face mode returns the polygon area and every cell point."""
-        pts = [(0, 0, 0), (1, 0, 0), (1, 2, 0), (0, 2, 0)]
-        dataset = _DummyDataset([_DummyCell(pts)])
-        _seed_actor(renderer, 5, dataset)
-
-        res = renderer.pick_geometry(5, 0, "face", (0.5, 1.0, 0.0))
-
-        assert res["found"] is True
-        assert res["mode"] == "face"
-        assert pytest.approx(res["area"]) == 2.0
-        assert len(res["points"]) == 4
-
-    def test_pick_negative_actor_id_returns_not_found(self, renderer):
-        res = renderer.pick_geometry(-1, 0, "vertex", (0.0, 0.0, 0.0))
-        assert res == {"found": False}
-
-    def test_pick_negative_cell_id_returns_not_found(self, renderer):
-        res = renderer.pick_geometry(1, -1, "vertex", (0.0, 0.0, 0.0))
-        assert res == {"found": False}
-
-    def test_pick_unregistered_actor_returns_not_found(self, renderer):
-        """If no actor matches the given wasm id, pick returns not-found."""
-        renderer._vtk_renderer.GetActors.return_value = _DummyActors([])
-        res = renderer.pick_geometry(42, 0, "vertex", (0.0, 0.0, 0.0))
-        assert res["found"] is False
-
-    def test_pick_cell_id_out_of_range_returns_not_found(self, renderer):
-        """Cell index beyond dataset size returns not-found."""
-        dataset = _DummyDataset([_DummyCell([(0, 0, 0), (1, 0, 0), (0, 1, 0)])])
-        _seed_actor(renderer, 10, dataset)
-        res = renderer.pick_geometry(10, 99, "vertex", (0.0, 0.0, 0.0))
-        assert res["found"] is False
-
-    def test_pick_unknown_mode_returns_not_found(self, renderer):
-        """An unrecognised mode string falls through to not-found."""
-        pts = [(0, 0, 0), (1, 0, 0), (0, 1, 0)]
-        dataset = _DummyDataset([_DummyCell(pts)])
-        _seed_actor(renderer, 1, dataset)
-        res = renderer.pick_geometry(1, 0, "INVALID_MODE", (0.0, 0.0, 0.0))
-        assert res == {"found": False}
-
-
 # ===========================================================================
-# 7.  The cross-section plane record
+# 6.  The cross-section plane record
 #
 # Hand-written widget double rather than a MagicMock, on the precedent
 # ``_CameraDouble`` sets in this module: the seed reads ``GetOrigin`` and
