@@ -113,11 +113,13 @@ page errors, not console errors. Ordinary test discovery excludes this
 directory through `norecursedirs`. Release/nightly workflows are not extended
 by this change.
 
-Logs, package versions, installed Visor module/wheel provenance, browser errors,
-screenshots, isolated project files and saved geometry are retained under
-`tests/artifacts/saf-smoke`. Service logs and provenance are written once per
-run, and each case writes its own `state`, `browser-errors.json`, `page.png`
-and `visor-stop.json` to a subdirectory named after the case. Playwright traces
+Logs, SAF package versions, installed Visor module/wheel provenance and the
+isolated project files are retained under `tests/artifacts/saf-smoke/run`, which
+is replaced on every run. Service logs and provenance are written once per run.
+A case writes `browser-errors.json` only when the browser reported errors, and
+`visor-stop.json` only when resetting Visor failed. A failed case also keeps a
+`page.png` screenshot. The saved geometry in `state` is removed after a
+passing case. Each case uses a subdirectory named after it. Playwright traces
 are saved on failure under `tests/artifacts/traces`. Server processes are
 cleaned up as a tree at the end of the module, including on startup failure.
 No external services or credentials should be needed at runtime.

@@ -4,14 +4,14 @@ import importlib.util
 import inspect
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
 from collections.abc import Generator, Iterator
 from contextlib import ExitStack, contextmanager
-from importlib.metadata import distribution, distributions, version
+from importlib.metadata import distribution, version
 from pathlib import Path
-from uuid import uuid4
 
 import pytest
 import requests
@@ -89,8 +89,9 @@ def saf_stack() -> Iterator[tuple[str, str, int, Path]]:
     if importlib.util.find_spec("visor_saf_smoke") is None:
         pytest.fail("Install tests/fixtures/saf_visor_solution[test] and the current Visor wheel first.")
 
-    # Per-run folder for logs, the SQLite database, provenance and the package snapshot.
-    artifact_dir = ROOT / "tests" / "artifacts" / "saf-smoke" / uuid4().hex
+    # One folder for logs, the SQLite database and provenance, replaced on every run so artifacts do not pile up.
+    artifact_dir = ROOT / "tests" / "artifacts" / "saf-smoke" / "run"
+    shutil.rmtree(artifact_dir, ignore_errors=True)
     artifact_dir.mkdir(parents=True)
     # Build an isolated child environment: drop inherited GLOW_, OTEL_ and SAF_VISOR_ settings, then force a local SQLite desktop deployment.
     env = {
@@ -125,9 +126,6 @@ def saf_stack() -> Iterator[tuple[str, str, int, Path]]:
         ),
         encoding="utf-8",
     )
-    # Snapshot every installed package so the run's dependencies can be reproduced later.
-    installed = sorted(f"{package.metadata['Name']}=={package.version}" for package in distributions())
-    (artifact_dir / "requirements.txt").write_text("\n".join(installed) + "\n", encoding="utf-8")
     # Start the services under one ExitStack so every server is stopped when the fixture ends, even on failure.
     # Three free localhost ports are reserved up front (Visor, API, UI).
     with ExitStack() as stack:
@@ -184,13 +182,14 @@ def saf_project(
     )
     response.raise_for_status()
     yield f"{ui_url}/{response.json()['name']}", visor_port, case_dir
-    # Best-effort reset so the next case initializes a new empty visualizer.
+    # Best-effort reset so the next case initializes a new empty visualizer. Only a failed reset is recorded.
     try:
         reset = requests.post(f"http://{HOST}:{visor_port}/stop", timeout=30)
-        result = {"status": reset.status_code, "body": reset.text}
+        result = None if reset.ok else {"status": reset.status_code, "body": reset.text}
     except requests.RequestException as exc:
         result = {"error": str(exc)}
-    (case_dir / "visor-stop.json").write_text(json.dumps(result), encoding="utf-8")
+    if result:
+        (case_dir / "visor-stop.json").write_text(json.dumps(result), encoding="utf-8")
 
 
 @pytest.mark.smoke
@@ -203,8 +202,8 @@ def test_saf_visor_vtk_filetype_loads(
 
     project_url, api_port, artifact_dir = saf_project
     input_path = ROOT / "tests" / "files" / filename
-
     assert input_path.is_file(), f"Required smoke asset is missing: {input_path}"
+    passed = False
 
     # Collect uncaught browser errors and use a fixed viewport so UI checks are repeatable.
     browser_errors: list[str] = []
@@ -222,7 +221,10 @@ def test_saf_visor_vtk_filetype_loads(
 
         wait_for_canvas_alive(page, "before upload", timeout_ms=60_000)
         page.locator("input[type=file]").set_input_files(str(input_path))
-        expect(page.locator("#upload-status")).to_have_text(f"loaded: {filename}", timeout=60_000)
+        # Wait for any result first, so a rejected upload fails fast with its error text instead of timing out.
+        status = page.locator("#upload-status")
+        expect(status).not_to_be_empty(timeout=30_000)
+        expect(status).to_have_text(f"loaded: {filename}", timeout=5_000)
         datasets = list_datasets(HOST, api_port)
         
         assert len(datasets) == 1, f"Expected only the current upload, got {datasets}"
@@ -240,11 +242,16 @@ def test_saf_visor_vtk_filetype_loads(
         assert saved.GetBounds() == pytest.approx(expected.GetBounds())
         wait_for_canvas_alive(page, "after upload")
         assert not browser_errors, f"Uncaught browser errors: {browser_errors}"
+        passed = True
 
-    # Always record browser errors and a screenshot for diagnosis, even when the test failed.
+    # Keep diagnostics only when the case failed: browser errors and a screenshot. Drop the saved geometry after a pass.
     finally:
-        (artifact_dir / "browser-errors.json").write_text(json.dumps(browser_errors), encoding="utf-8")
-        if not page.is_closed():
+        if passed:
+            for snapshot in (artifact_dir / "state").rglob("*.vtkhdf"):
+                snapshot.unlink()
+        if browser_errors:
+            (artifact_dir / "browser-errors.json").write_text(json.dumps(browser_errors), encoding="utf-8")
+        if not passed and not page.is_closed():
             try:
                 page.screenshot(path=str(artifact_dir / "page.png"), full_page=True, timeout=5_000)
             except PlaywrightTimeoutError as exc:
