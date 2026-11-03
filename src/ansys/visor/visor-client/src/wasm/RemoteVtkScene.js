@@ -105,29 +105,33 @@ export default class RemoteVtkScene {
     };
 
     /**
+     * Build the wasm scene over a connected trame session; every config field is required.
      * @param {{
+     * trame:import('@kitware/trame/src/trame.js').Trame,
      * wasmIdsStateKey:string,
      * refNameStateKey:string,
-     * webSocketUrl:string,
      * wasmUrl:string,
+     * serverOrigin:string,
      * }} config
      * @returns {Promise<RemoteVtkScene>}
      */
     static getInstanceAsync = async (config) => {
         if (config == null) {
             throw new Error(`config cannot be null`);
+        } else if (config.trame == null) {
+            throw new Error(`config.trame cannot be null`);
         } else if (typeof config.wasmIdsStateKey !== 'string') {
             throw new Error(`config.wasmIdsStateKey must be a string`);
         } else if (typeof config.refNameStateKey !== 'string') {
             throw new Error(`config.refNameStateKey must be a string`);
-        } else if (typeof config.webSocketUrl !== 'string') {
-            throw new Error(`config.webSocketUrl must be a string`);
         } else if (typeof config.wasmUrl !== 'string') {
             throw new Error(`config.wasmUrl must be a string`);
+        } else if (typeof config.serverOrigin !== 'string') {
+            throw new Error(`config.serverOrigin must be a string`);
         }
-        const { refNameStateKey, wasmIdsStateKey, webSocketUrl } = config;
+        const { trame, refNameStateKey, wasmIdsStateKey, serverOrigin } = config;
         let wasmUrl = config.wasmUrl;
-        const trameInterface = await TrameInterface.getInstanceAsync(webSocketUrl, refNameStateKey);
+        const trameInterface = await TrameInterface.getInstanceAsync(trame, refNameStateKey);
 
         // trame-vtklocal registers wasm files under a versioned path.
         // Older versions exposed a plain string under
@@ -135,7 +139,6 @@ export default class RemoteVtkScene {
         // keys like `__trame_vtklocal_wasm32` / `__trame_vtklocal_wasm64` with
         // a `url` property. Try multiple possible state keys and use the
         // first one we find.
-        const wsOrigin = webSocketUrl.replace(/^ws(s?):\/\//, 'http$1://').replace(/\/ws$/, '');
         const wasmStateCandidates = [
             '__trame_vtklocal_wasm_url',
             '__trame_vtklocal_wasm',
@@ -145,11 +148,11 @@ export default class RemoteVtkScene {
         for (const key of wasmStateCandidates) {
             const val = trameInterface.getState(key);
             if (typeof val === 'string' && val.length > 0) {
-                wasmUrl = `${wsOrigin}/${val}`;
+                wasmUrl = `${serverOrigin}/${val}`;
                 break;
             }
             if (val && typeof val === 'object' && typeof val.url === 'string') {
-                wasmUrl = `${wsOrigin}/${val.url}`;
+                wasmUrl = `${serverOrigin}/${val.url}`;
                 break;
             }
         }
