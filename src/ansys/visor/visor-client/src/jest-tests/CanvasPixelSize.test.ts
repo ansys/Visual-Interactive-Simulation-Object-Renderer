@@ -22,3 +22,13 @@ describe('CanvasPixelSize.of', () => {
         expect(CanvasPixelSize.of(width, height, 1)).toBeNull();
     });
 });
+
+describe('CanvasPixelSize.equals', () => {
+    test('is true for the same size and false for a different width, height or null', () => {
+        const size = CanvasPixelSize.of(400, 300, 1)!;
+        expect(size.equals(CanvasPixelSize.of(400, 300, 1))).toBe(true);
+        expect(size.equals(CanvasPixelSize.of(401, 300, 1))).toBe(false);
+        expect(size.equals(CanvasPixelSize.of(400, 301, 1))).toBe(false);
+        expect(size.equals(null)).toBe(false);
+    });
+});

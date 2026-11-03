@@ -15,6 +15,11 @@ export class CanvasPixelSize {
         this.height = height;
     }
 
+    /** Whether other is the same device-pixel size; false for null. */
+    equals(other: CanvasPixelSize | null): boolean {
+        return other !== null && other.width === this.width && other.height === this.height;
+    }
+
     readonly width: number;
     readonly height: number;
 }
