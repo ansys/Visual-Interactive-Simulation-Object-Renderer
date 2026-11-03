@@ -8,7 +8,7 @@ import { WasmRenderer } from '../renderer/WasmRenderer';
 import { requireWasmAnnotation } from '../renderer/RendererAnnotation';
 import { attachCameraSyncReporter } from '../CameraSyncReporter';
 import { buildFrontendAsync } from '../buildFrontendAsync';
-import { trameWebSocketUrl } from '../trameWebSocketUrl';
+import type { Trame } from '@kitware/trame/src/trame.js';
 import type { VisorArgs } from '../hooks/useVisorArgs';
 import {
     CurrentFrontend,
@@ -32,18 +32,21 @@ class ClientFrontendBuild implements FrontendBuild {
 
 /** A client-mode view over the wasm scene: rebuilds on each server update and applies set_state to the current frontend. */
 export class ClientViewer {
-    /** Connect the wasm scene, listen for server updates and run the first build; both parameters required. */
+    /** Connect the wasm scene over the given session, listen for server updates and run the first build; all parameters required. */
     static async connectAsync(
         visorArgs: VisorArgs,
+        trame: Trame,
         onChange: FrontendChangeListener
     ): Promise<ClientViewer> {
         const { host, port } = visorArgs;
         const secure = window.location.protocol === 'https:';
+        const serverOrigin = `http${secure ? 's' : ''}://${host}:${port}`;
         const wasm = await RemoteVtkScene.getInstanceAsync({
+            trame,
             wasmIdsStateKey: 'wasm_ids',
             refNameStateKey: 'wasm_ref_name',
-            wasmUrl: `http${secure ? 's' : ''}://${host}:${port}/wasm`,
-            webSocketUrl: trameWebSocketUrl(host, port),
+            wasmUrl: `${serverOrigin}/wasm`,
+            serverOrigin,
         });
         const viewer = new ClientViewer(wasm, visorArgs.darkMode, onChange);
         wasm.addServerUpdatedListener(viewer.#onServerUpdated);

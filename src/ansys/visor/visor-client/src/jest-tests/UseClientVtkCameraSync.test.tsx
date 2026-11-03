@@ -1,6 +1,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { useClientVtk } from '../hooks/useClientVtk';
 import type { VisorArgs } from '../hooks/useVisorArgs';
+import type { Trame } from '@kitware/trame/src/trame.js';
 import type { CameraOrigin, VisorCameraState } from '../renderer/IRenderer';
 
 /**
@@ -141,6 +142,9 @@ const ARGS = {
     basePath: '',
 } as VisorArgs;
 
+/** The probe's session; the scene connection is mocked, so it is only handed on. */
+const TRAME = {} as Trame;
+
 function syncCameraSendCount(): number {
     return mockScene.trameTriggerAsync.mock.calls.filter((call) => call[0] === 'sync_camera')
         .length;
@@ -168,7 +172,7 @@ afterEach(() => {
 
 describe('useClientVtk camera sync', () => {
     test('one gesture settle after two rebuilds sends one sync_camera', async () => {
-        const { result } = renderHook(() => useClientVtk(ARGS, true));
+        const { result } = renderHook(() => useClientVtk(ARGS, TRAME));
         await waitFor(() => expect(result.current.visorFrontend).not.toBeNull());
         await act(async () => {
             await mockScene.serverUpdated!();
@@ -188,7 +192,7 @@ describe('useClientVtk camera sync', () => {
     test('a settle during the first build state seed is reported once', async () => {
         mockScene.settleDuringFirstSeed = true;
 
-        const { result } = renderHook(() => useClientVtk(ARGS, true));
+        const { result } = renderHook(() => useClientVtk(ARGS, TRAME));
         await waitFor(() => expect(result.current.visorFrontend).not.toBeNull());
         await act(async () => {
             await drain();
