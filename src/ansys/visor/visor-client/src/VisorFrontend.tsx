@@ -174,7 +174,9 @@ export class VisorFrontend {
         this.#viewerClickedRemover = renderer.addViewerClickedListener(
             (_nodeId, _ctrlKey, _shiftKey, normX, normY) => {
                 if (selectionMode !== 'part') {
-                    this.pickGeometryAsync(normX, normY).catch(() => {});
+                    this.pickGeometryAsync(normX, normY).catch((err) =>
+                        console.error('[VISOR] geometry pick failed', err)
+                    );
                 }
             }
         );
