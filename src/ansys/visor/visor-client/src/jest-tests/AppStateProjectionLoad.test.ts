@@ -66,7 +66,7 @@ function makeRendererDouble() {
         // Touched by the constructor.
         domElement: document.createElement('div'),
         addCameraSettledListener: jest.fn(() => jest.fn()),
-        addViewerClickedListener: jest.fn(() => jest.fn()),
+        addCanvasClickListener: jest.fn(() => jest.fn()),
         // The projection writers. Only the apply member may be called: the
         // setter also sends, and the camera setter leaves the widget flag stale.
         applyOrthographicModeAsync: jest.fn(async () => undefined),

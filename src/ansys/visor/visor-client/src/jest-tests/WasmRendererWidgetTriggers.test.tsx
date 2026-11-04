@@ -42,6 +42,8 @@ import type { TrameTriggerSender } from '../renderer/IRenderer';
  * Also pinned: a geometry pick sends `pick_geometry_in_view` once, with the
  * clicked pixel of the window in render-window pixels, the window's size and
  * the camera record, so the server picks through the view the user sees.
+ * A part pick does the same through `pick_part_in_view` and returns the
+ * server's node id.
  *
  * Modelled on `WasmRendererPartTriggers.test.tsx`, which does the same for
  * the six per-part sends.
@@ -535,5 +537,44 @@ describe('WasmRenderer geometry pick', () => {
         await expect(renderer.pickGeometryAsync(0.25, 0.25, 'vertex')).rejects.toThrow(
             'no trigger sender'
         );
+    });
+});
+
+describe('WasmRenderer part pick', () => {
+    // (0.25, 0.25) on 600x400 is pixel (150, 100), as for the geometry pick.
+    test('pickPartAsync sends one pick_part_in_view with the window pixel, its size and the camera record and returns the node', async () => {
+        const sender = jest.fn(async () => 7) as unknown as jest.Mock & TrameTriggerSender;
+        const { renderer, scene } = await makeRenderer(sender);
+        scene.renderWindow.GetSize.mockResolvedValue([600, 400]);
+
+        const nodeId = await renderer.pickPartAsync(0.25, 0.25);
+
+        expect(nodeId).toBe(7);
+        expect(sender.mock.calls).toStrictEqual([
+            [
+                'pick_part_in_view',
+                {
+                    x: 150,
+                    y: 100,
+                    width: 600,
+                    height: 400,
+                    camera: {
+                        position: [1, 2, 3],
+                        focalPoint: [4, 5, 6],
+                        viewUp: [0, 0, 1],
+                        clippingRange: [0.5, 50],
+                        parallelProjection: false,
+                        viewAngle: 25,
+                        parallelScale: 7,
+                    },
+                },
+            ],
+        ]);
+    });
+
+    test('pickPartAsync with no trigger sender rejects', async () => {
+        const { renderer } = await makeRenderer(null);
+
+        await expect(renderer.pickPartAsync(0.25, 0.25)).rejects.toThrow('no trigger sender');
     });
 });

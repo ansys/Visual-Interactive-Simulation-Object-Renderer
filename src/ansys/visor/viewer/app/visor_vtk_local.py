@@ -49,6 +49,7 @@ class VisorVTKLocal(VisorVTK):
             # and signatures the triggers call.
             scene_mutation_api=self._scene,
             pick_geometry_in_view=self._scene.pick_geometry_in_view,
+            pick_part_in_view=self._scene.pick_part_in_view,
         )
 
     def _post_scene_change_hook(self) -> None:
