@@ -9,7 +9,9 @@ import VtkScene from '../wasm/VtkScene.js';
  *
  * The scene is built over a fake remote scene: its canvas sits inside its
  * canvas div, and its renderer, camera, interactor and picker are doubles.
- * The picker reports actor 7 for any pick.  `requestAnimationFrame` does
+ * The picker reports actor 7 for any pick through an invoked `GetActor()`.
+ * Its `getActor` property read fetches and registers the actor wrapper, creating
+ * a new wasm id that can clash with the server's.  `requestAnimationFrame` does
  * nothing, so the frame-rate monitor never runs.
  *
  * Expected values are hand-written literals.
@@ -46,7 +48,10 @@ async function makeScene() {
         y: 0,
     });
     const camera = { observe: () => undefined };
-    const picker = { Pick: async () => true, getActor: async () => ({ id: 7 }) };
+    const picker = {
+        Pick: async () => true,
+        GetActor: jest.fn(async () => ({ id: 7 })),
+    };
     const interactor = { GetPicker: async () => picker, GetEventPosition: async () => [20, 70] };
     const remoteVtkScene = {
         renderer: { GetActiveCamera: async () => camera },
@@ -55,7 +60,7 @@ async function makeScene() {
         canvas,
     };
     scene = await VtkScene.getInstanceAsync(null, remoteVtkScene);
-    return { scene, canvas };
+    return { scene, canvas, picker };
 }
 
 /** Dispatch a bubbling mouse event of type with DOM button on target at client (clientX, clientY). */
