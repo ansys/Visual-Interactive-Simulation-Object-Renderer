@@ -28,6 +28,9 @@ import type { TrameTriggerSender } from '../renderer/IRenderer';
  * throw, and a failed widget send is logged under its own prefix, naming the
  * trigger and carrying no node id.
  *
+ * Also pinned: `resizeAsync` fits the orientation widget to the window as it
+ * stands after the scene resize.
+ *
  * Modelled on `WasmRendererPartTriggers.test.tsx`, which does the same for
  * the six per-part sends.
  */
@@ -108,10 +111,14 @@ function makeFakeWasmObjects() {
     // above. Both are observed on `EndInteractionEvent`, and one double for
     // both cannot tell those two registrations apart: the plane's own test
     // asserts exactly one such registration, and would see two.
+    const orientationRepresentation = {
+        SetSize: jest.fn(async () => undefined),
+    };
     const orientationWidget = {
         observe: jest.fn(),
+        GetRepresentation: jest.fn(async () => orientationRepresentation),
     };
-    return { actor, property, widget, orientationWidget };
+    return { actor, property, widget, orientationWidget, orientationRepresentation };
 }
 
 async function makeRenderer(
@@ -125,9 +132,16 @@ async function makeRenderer(
         ParallelProjectionOn: jest.fn(async () => undefined),
         ParallelProjectionOff: jest.fn(async () => undefined),
     };
+    let windowSize = [300, 300];
     const scene = {
         canvasDiv: document.createElement('div'),
         render: jest.fn(),
+        resizeAsync: jest.fn(async () => {
+            windowSize = [1200, 700];
+        }),
+        renderWindow: {
+            GetSize: jest.fn(async () => windowSize),
+        },
         clearObserversAndEventListeners: jest.fn(),
         // The tracker itself is `#private` to VtkScene, so what the renderer
         // can reach is this one passthrough, and this is what the orientation
@@ -386,5 +400,19 @@ describe('WasmRenderer marks an orientation-widget move as a gesture', () => {
         // The mark carries no payload and triggers no send: the report stays
         // the settle's, through the unchanged sync_camera path.
         expect(sender).not.toHaveBeenCalled();
+    });
+});
+
+describe('WasmRenderer fits the orientation widget on resize', () => {
+    // The scene double's resize moves the window from 300x300 to 1200x700, so
+    // a fit that read the window before the resize would carry [45, 45].
+    test('resizeAsync sizes the orientation widget from the resized window', async () => {
+        const { renderer, scene, orientationRepresentation } = await makeRenderer(null);
+
+        await renderer.resizeAsync();
+
+        expect(scene.resizeAsync).toHaveBeenCalledTimes(1);
+        expect(orientationRepresentation.SetSize).toHaveBeenCalledTimes(1);
+        expect(orientationRepresentation.SetSize).toHaveBeenCalledWith([105, 105]);
     });
 });

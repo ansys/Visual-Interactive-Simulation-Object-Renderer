@@ -1,18 +1,23 @@
 """Unit tests for ``ServerApp``: its trigger set, its mode seed, its two
-server-only triggers, and the stream binding made when the server is ready.
+server-only triggers, the stream binding made when the server is ready, and the
+render-window size a client's size report gives.
 
 The shared triggers' coordinator and payload behaviour is pinned in
 ``test_local_app.py`` and its sibling modules and is not restated here.
 ``RemoteControlledArea`` is replaced by a double, so nothing here builds a
-render scheduler; the real stream is exercised in
+real render scheduler; the real stream is exercised in
 ``tests/integration/test_server_stream.py``.
 """
 
+import threading
 from unittest.mock import MagicMock, patch
 
+import numpy as np
 import pytest
+from trame_rca.view_adapter import RcaViewAdapter
 
 from ansys.visor.viewer.app.trame.server_app import ServerApp
+from ansys.visor.viewer.renderer.server_window import VisorRcaWindow
 
 # The exact 20 trigger names ServerApp registers: the 18 shared with every
 # rendering mode, plus its own two.  Written out by hand, not derived from the
@@ -179,4 +184,60 @@ def test_server_ready_builds_handler_and_binds(mock_server, area_cls):
         still_quality=90,
     )
     bridge.bind.assert_called_once_with(area.create_view_handler.return_value)
+
+
+class _RecordingScheduler:
+    """A render scheduler over one area that only counts render requests."""
+
+    def __init__(self, rca) -> None:
+        self.rca = rca
+        self.renders = 0
+
+    def set_push_callback(self, _callback) -> None:
+        pass
+
+    def schedule_render(self) -> None:
+        self.renders += 1
+
+
+class _SizeRecordingRenderer:
+    """The part of a ServerRenderer the RCA window uses; records each viewport size."""
+
+    background_rgb = (0.0, 0.0, 0.0)
+
+    def __init__(self) -> None:
+        self.sizes: list[tuple[int, int]] = []
+
+    def set_viewport_size(self, width: int, height: int) -> None:
+        self.sizes.append((width, height))
+
+
+class _StillCapture:
+    """A capture that returns one literal frame and accepts events."""
+
+    img_cols_rows = (np.zeros((1, 1, 3), dtype=np.uint8), 1, 1)
+
+    def process_interaction_event(self, _event: dict) -> None:
+        pass
+
+
+def test_client_resize_sizes_render_window(mock_server, area_cls):
+    """A client size of 401 x 301 CSS px at pixel ratio 1.5 gives the render
+    window 601 x 451 device pixels at the next frame: the handler ServerApp
+    builds neither rescales nor caps the size."""
+    renderer = _SizeRecordingRenderer()
+    rca_window = VisorRcaWindow(_StillCapture(), renderer, threading.RLock(), lambda: None)
+    bridge = MagicMock(name="bridge")
+    area_cls.return_value.create_view_handler.side_effect = lambda window, **_: RcaViewAdapter(
+        window, "view", scheduler=_RecordingScheduler(window)
+    )
+    _build(mock_server, rca_window=rca_window, bridge=bridge)
+    for handler in mock_server.controller.handlers["on_server_ready"]:
+        handler()
+    view_handler = bridge.bind.call_args.args[0]
+
+    view_handler.update_size("ServerCanvas", {"w": 401, "h": 301, "p": 1.5})
+    rca_window.img_cols_rows
+
+    assert renderer.sizes == [(601, 451)]
 

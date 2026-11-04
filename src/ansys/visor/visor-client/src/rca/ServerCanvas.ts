@@ -39,6 +39,7 @@ export interface IServerCanvas {
     readonly frameSize: FrameSize | null;
     addFrameListener(callback: (fps: number) => void): () => void;
     addClickListener(callback: (click: CanvasClick) => void): () => void;
+    addResizeListener(callback: () => void): () => void;
 }
 
 /** One message on the stream topic: an encoded frame for one area. */
@@ -116,6 +117,15 @@ export class ServerCanvas implements IServerCanvas {
         return remover;
     }
 
+    /** Call callback after each non-zero element size is sent to the area; returns its remover. */
+    addResizeListener(callback: () => void): () => void {
+        const remover = () => {
+            this.#resizeListeners.delete(remover);
+        };
+        this.#resizeListeners.set(remover, callback);
+        return remover;
+    }
+
     /** Unsubscribe, stop observing the size, remove DOM listeners and revoke the current frame URL. */
     dispose(): void {
         this.#subscription.unsubscribe();
@@ -132,6 +142,7 @@ export class ServerCanvas implements IServerCanvas {
         element.removeEventListener('contextmenu', this.#onContextMenu);
         this.#frameListeners.clear();
         this.#clickListeners.clear();
+        this.#resizeListeners.clear();
         this.#revokeFrameUrl();
     }
 
@@ -143,6 +154,7 @@ export class ServerCanvas implements IServerCanvas {
     readonly #frameListeners = new Map<() => void, (fps: number) => void>();
     readonly #frameTimes: number[] = [];
     readonly #clickListeners = new Map<() => void, (click: CanvasClick) => void>();
+    readonly #resizeListeners = new Map<() => void, () => void>();
     readonly #buttons = new MouseButtonState();
     readonly #clickTracker = new ClickTracker();
     #frameSize: FrameSize | null = null;
@@ -201,7 +213,7 @@ export class ServerCanvas implements IServerCanvas {
         console.error('[VISOR] frame decode failed');
     };
 
-    /** Send each non-zero element size to the area; the server resizes its window and renders a frame. */
+    /** Send each non-zero element size to the area, then tell the resize listeners; the server resizes its window and renders a frame. */
     #onResize = (entries: ResizeObserverEntry[]): void => {
         for (const entry of entries) {
             const w = Math.round(entry.contentRect.width);
@@ -213,6 +225,9 @@ export class ServerCanvas implements IServerCanvas {
             this.#session
                 .call('trame.rca.size', [this.#areaName, MESSAGE_ORIGIN, { w, h, p }])
                 .catch((err) => console.error('[VISOR] trame.rca.size send failed', err));
+            for (const callback of this.#resizeListeners.values()) {
+                callback();
+            }
         }
     };
 
