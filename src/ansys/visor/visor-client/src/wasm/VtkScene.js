@@ -224,7 +224,7 @@ export default class VtkScene {
                 await this.#viewerClicks.dispatchAsync(click, async () => {
                     const [x, y] = await interactor.GetEventPosition();
                     const found = await picker.Pick([x, y, 0], renderer);
-                    const actor = found ? await picker.getActor() : null;
+                    const actor = found ? await picker.GetActor() : null;
                     return actor?.id ?? null;
                 });
             } finally {
