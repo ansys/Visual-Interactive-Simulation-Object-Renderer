@@ -81,6 +81,22 @@ def handle_errors(action: str = "operation"):
     return decorator
 
 
+def notifies_scene_change(func):
+    """Call self._post_scene_change_hook() once after func, whether func returns or raises.
+
+    A failed operation can still have changed the scene, so it notifies too.
+    Placed directly above the method, so the argument and server checks above
+    it reject a call before anything is notified.
+    """
+    @wraps(func)
+    def wrapper(self, *args, **kwargs):
+        try:
+            return func(self, *args, **kwargs)
+        finally:
+            self._post_scene_change_hook()
+    return wrapper
+
+
 class VisorVTK(Visor):
     """
     VisorVTK is a class that provides an interface for initializing and managing a
@@ -186,6 +202,11 @@ class VisorVTK(Visor):
         Called from ``__init__`` after ``_server_manager`` and ``_file_io`` are in place.
         """
 
+    @abstractmethod
+    def _post_scene_change_hook(self) -> None:
+        """Signal one finished scene-changing operation to connected clients."""
+        raise NotImplementedError
+
     """ Properties """
     @property
     def running(self) -> bool:
@@ -239,6 +260,7 @@ class VisorVTK(Visor):
     @require_server_on
     @require_input_is_not_none
     @validate_input_metadata_types
+    @notifies_scene_change
     def update(self,
                input: str | VisorDatasetType,
                metadata: Metadata | None = None
@@ -266,6 +288,7 @@ class VisorVTK(Visor):
     @handle_errors("add_dataset")
     @require_input_is_not_none
     @validate_input_metadata_types
+    @notifies_scene_change
     def add_dataset(self,
                     input: str | VisorDatasetType,
                     metadata: Metadata | None = None
@@ -288,6 +311,7 @@ class VisorVTK(Visor):
         return dataset_id
 
     @handle_errors("remove_dataset")
+    @notifies_scene_change
     def remove_dataset(self, dataset_id: int) -> None:
         """
         Remove a dataset from the current scene based on its dataset ID.
@@ -295,7 +319,7 @@ class VisorVTK(Visor):
         self._scene.remove_dataset(dataset_id)
         if self.dataset_count == 0:
             # if we've removed the last dataset, reset widgets and camera so the blank scene is normalized
-            self.clear()
+            self._clear_scene()
         else:
             self._scene.update_widgets()
             self._scene.render()
@@ -311,14 +335,14 @@ class VisorVTK(Visor):
         return self._scene.list_all_dataset_info()
 
     @handle_errors("clear")
+    @notifies_scene_change
     def clear(self):
         """
         Clear the current scene and reset the visualization pipeline.
         This function removes all actors from the scene and resets the state.
         """
         logger.info("Clearing the scene")
-        self._scene.clear()
-        self._scene.finalize_scene()
+        self._clear_scene()
         logger.info("Scene cleared successfully")
 
     @handle_errors("list_variables")
@@ -335,6 +359,7 @@ class VisorVTK(Visor):
         return self._scene.list_variables_for_dataset(dataset_id)
 
     @handle_errors("update_variables")
+    @notifies_scene_change
     def update_variables(self, dataset_id: int, variables: List[Dict[str, Any]]) -> None:
         """
         Update the variables of a specific dataset in the scene.
@@ -397,6 +422,7 @@ class VisorVTK(Visor):
         self._file_io.delete_stale_snapshots(state_dir, state)
 
     @handle_errors("load state")
+    @notifies_scene_change
     def load_state(self, state_dir: str) -> None:
         """
         Load viewer state from a directory.
@@ -485,6 +511,11 @@ class VisorVTK(Visor):
         return self._server_manager.health
 
     # Private Methods
+    def _clear_scene(self) -> None:
+        """Clear the scene and finalise it; shared by clear and remove_dataset."""
+        self._scene.clear()
+        self._scene.finalize_scene()
+
     def _initialize_server(self, trame_log_dir: str | None) -> TrameServerManager:
         """Initialize the Trame server manager."""
         # Start Trame listening on the configured binding host (or the instance host if unset)

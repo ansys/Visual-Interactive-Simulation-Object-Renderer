@@ -166,6 +166,7 @@ export class ServerRenderer implements IRenderer {
     readonly #camera = new CameraRecordCache();
     readonly #cameraChangedListeners = new Map<() => void, (state: VisorCameraState) => void>();
     readonly #viewerClicks = new ViewerClickDispatcher();
+    readonly #frameListenerRemovers = new Set<() => void>();
     #crossSectionVisible = false;
     #boundingBoxVisible = false;
     #edgesVisible = false;
@@ -286,6 +287,9 @@ export class ServerRenderer implements IRenderer {
         this.#removeResizeListener();
         this.#cameraChangedListeners.clear();
         this.#viewerClicks.clear();
+        for (const remover of [...this.#frameListenerRemovers]) {
+            remover();
+        }
     }
 
     // ---- Camera ---------------------------------------------------------------
@@ -337,8 +341,16 @@ export class ServerRenderer implements IRenderer {
         return remover;
     }
 
+    /** Add a listener on the canvas's frames; returns its remover, which dispose also calls if it has not run. */
     addFrameRenderedListener(callback: (fps: number) => void): () => void {
-        return this.#canvas.addFrameListener(callback);
+        const removeFromCanvas = this.#canvas.addFrameListener(callback);
+        const remover = () => {
+            if (this.#frameListenerRemovers.delete(remover)) {
+                removeFromCanvas();
+            }
+        };
+        this.#frameListenerRemovers.add(remover);
+        return remover;
     }
 
     /** Add a listener called once per click with the part pick_part_at found under it, or null; returns its remover. */
