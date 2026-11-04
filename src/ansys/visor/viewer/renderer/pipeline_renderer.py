@@ -289,14 +289,21 @@ class VtkPipelineRenderer(IRenderer):
     def sync_camera(self, camera_state: "VisorCameraState") -> None:
         """See :meth:`IRenderer.sync_camera`; then project onto the pipeline camera.
 
-        Records through ``super()`` before projecting, so a raising VTK setter
-        still leaves the record holding what the caller asked for.  Ends with
-        :meth:`_publish_camera`, after the projection.  Does not
-        notify the client.
+        Records and projects through :meth:`_write_camera`, then ends with
+        :meth:`_publish_camera`, after the projection.  Does not notify the
+        client.
+        """
+        self._write_camera(camera_state)
+        self._publish_camera()
+
+    def _write_camera(self, camera_state: "VisorCameraState") -> None:
+        """Record *camera_state* through :meth:`IRenderer.sync_camera`, then project it onto the pipeline camera; publishes nothing.
+
+        Records before projecting, so a raising VTK setter still leaves the
+        record holding what the caller asked for.
         """
         super().sync_camera(camera_state)
         self._apply_to_pipeline_camera(camera_state)
-        self._publish_camera()
 
     def set_projection(self, parallel: bool) -> None:
         """See :meth:`IRenderer.set_projection`; then apply it to the pipeline camera.
@@ -371,19 +378,25 @@ class VtkPipelineRenderer(IRenderer):
     ) -> None:
         """See :meth:`IRenderer.sync_cross_section_plane`; then write both VTK objects.
 
-        Records through ``super()``, then writes both VTK objects.  ``set_origin`` and
-        ``set_normal`` each write the plane *and* the representation, so the
-        clip function and the draggable handle cannot diverge on this path --
-        which is the defect the client's own set/get asymmetry has.
+        Records and writes through :meth:`_write_cross_section`, then ends
+        with :meth:`_publish_cross_section`, after both writes, so the state
+        served to the client carries the new plane.  Does not notify the
+        client.
+        """
+        self._write_cross_section(origin, normal)
+        self._publish_cross_section()
 
-        Ends with :meth:`_publish_cross_section`, after both writes,
-        so the state served to the client carries the new plane.  Does not
-        notify the client.
+    def _write_cross_section(self, origin: list[float], normal: list[float]) -> None:
+        """Record through :meth:`IRenderer.sync_cross_section_plane`, then write both VTK objects; publishes nothing.
+
+        ``set_origin`` and ``set_normal`` each write the plane *and* the
+        representation, so the clip function and the draggable handle cannot
+        diverge on this path -- which is the defect the client's own set/get
+        asymmetry has.
         """
         super().sync_cross_section_plane(origin, normal)
         self._cross_section_widget.set_origin(origin)
         self._cross_section_widget.set_normal(normal)
-        self._publish_cross_section()
 
     # ------------------------------------------------------------------
     # IRenderer: widget fan-out

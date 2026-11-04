@@ -199,3 +199,13 @@ def test_deferred_events_in_order_none_dropped(window, capture, lock):
         {"type": "LeftButtonRelease", "x": 15, "y": 25},
     ]
 
+
+def test_gesture_end_recorded_under_lock_only(window, renderer, lock):
+    with patch.object(renderer, "record_pipeline_camera") as spy:
+        with lock_held_by_another_thread(lock):
+            window.process_interaction_event(EVENT_3)
+            window.img_cols_rows
+            assert spy.call_count == 0
+        window.img_cols_rows
+    assert spy.call_count == 1
+
