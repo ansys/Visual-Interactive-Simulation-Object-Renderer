@@ -14,7 +14,10 @@ from ansys.visor.viewer.config import settings
 from ansys.visor.viewer.core.visor_enums import RenderingMode
 from ansys.visor.viewer.core.visor_logging import VisorDefaultLogger
 from ansys.visor.viewer.models.runtime.picking.geometry_pick import GeometryPick
-from ansys.visor.viewer.models.runtime.requests.geometry_pick_payloads import PickGeometryInViewPayload
+from ansys.visor.viewer.models.runtime.requests.geometry_pick_payloads import (
+    PickGeometryInViewPayload,
+    PickPartInViewPayload,
+)
 from ansys.visor.viewer.models.runtime.requests.pixel_scale_payload import SetPixelScalePayload
 from ansys.visor.viewer.vtk.picking.part_cell_hit import PickView
 
@@ -34,13 +37,14 @@ class LocalSceneMutationApi(SceneMutationApi, Protocol):
 class LocalApp(SceneTriggerApp):
     """
     LocalApp serves the scene triggers shared by every rendering mode, plus
-    the local-only triggers for sub-geometry picking through the client's
-    view and client performance reporting, for client-side rendering via
-    VTK-WASM in the browser.
+    the local-only triggers for part and sub-geometry picking through the
+    client's view and client performance reporting, for client-side rendering
+    via VTK-WASM in the browser.
 
     Attributes:
         server (Server): the Trame server instance
     Methods:
+        pick_part_in_view: picks the part under a pixel of the client's window
         pick_geometry_in_view: picks the geometry feature under a pixel of the client's window
         perf_report_wasm: reports the performance of the wasm update cycle
         perf_report_server_update: reports the performance of the server update cycle
@@ -56,8 +60,10 @@ class LocalApp(SceneTriggerApp):
             scene_mutation_api: LocalSceneMutationApi | None = None,
             *,
             pick_geometry_in_view: Callable[[PickView, int, int, str], GeometryPick],
+            pick_part_in_view: Callable[[PickView, int, int], int | None],
     ):
         self._pick_geometry_in_view = pick_geometry_in_view
+        self._pick_part_in_view = pick_part_in_view
         super().__init__(
             server=server,
             get_scene_details_json=get_scene_details_json,
@@ -70,6 +76,13 @@ class LocalApp(SceneTriggerApp):
     def rendering_mode(self) -> RenderingMode:
         """This app serves client-side rendering via VTK-WASM in the browser."""
         return RenderingMode.CLIENT
+
+    @trigger("pick_part_in_view")
+    @parse_payload(PickPartInViewPayload)
+    def pick_part_in_view(self, payload) -> int | None:
+        """Frontend -> Backend: the node under a pixel of the client's window, seen through its camera, or None; selects nothing."""
+        view = PickView(camera_state=payload.camera, width=payload.width, height=payload.height)
+        return self._pick_part_in_view(view, payload.x, payload.y)
 
     @trigger("pick_geometry_in_view")
     @parse_payload(PickGeometryInViewPayload)
