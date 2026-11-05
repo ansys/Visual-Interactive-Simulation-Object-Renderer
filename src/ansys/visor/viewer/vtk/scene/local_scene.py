@@ -25,7 +25,7 @@ class VisorLocalScene(VisorSceneBase):
 
     This is the scene used by
     :class:`~ansys.visor.viewer.app.visor_vtk_local.VisorVTKLocal`
-    (``RenderingMode.LOCAL``).
+    (``RenderingMode.CLIENT``).
     """
 
     _renderer: "VisorLocalRenderer"

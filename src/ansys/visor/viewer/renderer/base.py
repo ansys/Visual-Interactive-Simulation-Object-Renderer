@@ -39,6 +39,14 @@ class IRenderer(ABC):
     record half of the camera and plane contracts.  An implementation that has
     a pipeline camera or widget to project onto overrides the writers, calling
     ``super()`` first, and adds the projection.
+
+    Per-part colour and selection contract.  :meth:`apply_diffuse_color`,
+    :meth:`apply_selected`, :meth:`apply_color_variable` and
+    :meth:`clear_color_variable` each write a fixed set of properties, stated
+    on each method.  As a result the four calls commute, given consistent
+    arguments: the ``diffuse_rgb`` passed to :meth:`apply_selected` equals the
+    part's current diffuse colour.  The caller owns that consistency; on the
+    server it is the part registry.
     """
 
     _last_camera_state: "VisorCameraState | None"
@@ -132,6 +140,8 @@ class IRenderer(ABC):
     ) -> None:
         """Set the actor-property diffuse colour for *node_id*.
 
+        Writes ``DiffuseColor = (r, g, b)`` only.
+
         On return, the state this renderer serves to the client reflects the
         write, and the client is not notified.
         """
@@ -143,9 +153,11 @@ class IRenderer(ABC):
         """
         Apply or remove the selection highlight on *node_id*.
 
-        *diffuse_rgb* is the part's stored diffuse colour, used when
-        deselecting to restore the property DiffuseColor alongside resetting
-        Ambient/Diffuse.
+        Writes ``AmbientColor`` (the selection tint), ``Ambient`` and
+        ``Diffuse`` as a function of *selected* only, and
+        ``DiffuseColor = diffuse_rgb`` on both branches.  Selection never
+        replaces the part colour.  *diffuse_rgb* is the part's current diffuse
+        colour.
 
         On return, the state this renderer serves to the client reflects the
         write, and the client is not notified.
@@ -178,6 +190,10 @@ class IRenderer(ABC):
         min_val / max_val:
             Scalar display range.
 
+        Writes the scalar mode, array, component, range, colour mode, lookup
+        table and ``ScalarVisibility`` on.  Never touches ``DiffuseColor``,
+        ``AmbientColor``, ``Ambient`` or ``Diffuse``.
+
         On return, the state this renderer serves to the client reflects the
         write, and the client is not notified.
         """
@@ -185,6 +201,9 @@ class IRenderer(ABC):
     @abstractmethod
     def clear_color_variable(self, node_id: int) -> None:
         """Disable scalar colouring on *node_id*, reverting to solid diffuse.
+
+        Writes ``ScalarVisibility`` off only; the diffuse colour is whatever
+        was last applied.
 
         On return, the state this renderer serves to the client reflects the
         write, and the client is not notified.

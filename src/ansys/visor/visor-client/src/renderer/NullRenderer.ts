@@ -1,5 +1,4 @@
 import {
-    CameraOrigin,
     ColorVariableDescriptor,
     GeometryPickMode,
     IRenderer,
@@ -74,12 +73,6 @@ export class NullRenderer implements IRenderer {
     }
 
     addCameraChangedListener(_callback: (state: VisorCameraState) => void): () => void {
-        return () => {
-            // no-op unsubscribe
-        };
-    }
-
-    addCameraSettledListener(_callback: (origin: CameraOrigin) => void): () => void {
         return () => {
             // no-op unsubscribe
         };

@@ -62,6 +62,7 @@ def mock_server():
     server.http_headers.set_header = MagicMock()
     server.name = "TestServer"
     server._www = None
+    server.state = {}
     return server
 
 
@@ -129,7 +130,7 @@ def test_set_bounding_box_visibility_delegates_the_visible_value(app, api):
 
 def test_set_cross_section_visibility_missing_visible_is_a_logged_no_op(app, api):
     """An empty payload never reaches the handler body."""
-    with patch("ansys.visor.viewer.app.trame.local_app.logger") as log:
+    with patch("ansys.visor.viewer.app.trame.scene_trigger_app.logger") as log:
         result = app.set_cross_section_visibility({})
 
     assert result is None
@@ -139,7 +140,7 @@ def test_set_cross_section_visibility_missing_visible_is_a_logged_no_op(app, api
 
 def test_set_edges_visible_missing_visible_is_a_logged_no_op(app, api):
     """An empty payload never reaches the handler body."""
-    with patch("ansys.visor.viewer.app.trame.local_app.logger") as log:
+    with patch("ansys.visor.viewer.app.trame.scene_trigger_app.logger") as log:
         result = app.set_edges_visible({})
 
     assert result is None
@@ -149,7 +150,7 @@ def test_set_edges_visible_missing_visible_is_a_logged_no_op(app, api):
 
 def test_set_bounding_box_visibility_missing_visible_is_a_logged_no_op(app, api):
     """An empty payload never reaches the handler body."""
-    with patch("ansys.visor.viewer.app.trame.local_app.logger") as log:
+    with patch("ansys.visor.viewer.app.trame.scene_trigger_app.logger") as log:
         result = app.set_bounding_box_visibility({})
 
     assert result is None
@@ -165,7 +166,7 @@ def test_set_edges_visible_non_mapping_payload_is_a_logged_no_op(app, api):
     same guard as a payload with a missing key.  Asserted against the whole
     mock, so a leak under any other method name still fails.
     """
-    with patch("ansys.visor.viewer.app.trame.local_app.logger") as log:
+    with patch("ansys.visor.viewer.app.trame.scene_trigger_app.logger") as log:
         result = app.set_edges_visible("visible")
 
     assert result is None
@@ -181,7 +182,7 @@ def test_set_cross_section_visibility_is_a_logged_no_op_when_no_coordinator_inje
     app_without_api,
 ):
     """With nothing injected the trigger logs and returns without raising."""
-    with patch("ansys.visor.viewer.app.trame.local_app.logger") as log:
+    with patch("ansys.visor.viewer.app.trame.scene_trigger_app.logger") as log:
         result = app_without_api.set_cross_section_visibility({"visible": True})
 
     assert result is None
@@ -190,7 +191,7 @@ def test_set_cross_section_visibility_is_a_logged_no_op_when_no_coordinator_inje
 
 def test_set_edges_visible_is_a_logged_no_op_when_no_coordinator_injected(app_without_api):
     """With nothing injected the trigger logs and returns without raising."""
-    with patch("ansys.visor.viewer.app.trame.local_app.logger") as log:
+    with patch("ansys.visor.viewer.app.trame.scene_trigger_app.logger") as log:
         result = app_without_api.set_edges_visible({"visible": True})
 
     assert result is None
@@ -201,7 +202,7 @@ def test_set_bounding_box_visibility_is_a_logged_no_op_when_no_coordinator_injec
     app_without_api,
 ):
     """With nothing injected the trigger logs and returns without raising."""
-    with patch("ansys.visor.viewer.app.trame.local_app.logger") as log:
+    with patch("ansys.visor.viewer.app.trame.scene_trigger_app.logger") as log:
         result = app_without_api.set_bounding_box_visibility({"visible": True})
 
     assert result is None

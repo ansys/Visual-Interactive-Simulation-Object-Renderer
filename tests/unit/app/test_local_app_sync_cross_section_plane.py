@@ -62,6 +62,7 @@ def mock_server():
     server.http_headers.set_header = MagicMock()
     server.name = "TestServer"
     server._www = None
+    server.state = {}
     return server
 
 

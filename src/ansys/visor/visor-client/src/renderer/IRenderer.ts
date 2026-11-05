@@ -4,7 +4,7 @@ export type NodeId = number;
 /**
  * Renderer-agnostic camera snapshot. Superset of what UI panels read and what
  * getAppStateAsync/setAppStateAsync round-trip. Every field is a plain value
- * so a RemoteRenderer can cache and serve it without querying a wasm object.
+ * so a ServerRenderer can cache and serve it without querying a wasm object.
  */
 export type VisorCameraState = Readonly<{
     // Derived display properties (UI panels, camera-changed listeners)
@@ -77,7 +77,7 @@ export interface IRenderer {
     // ---- Canvas / lifecycle -------------------------------------------------
     /** DOM element hosting the render output (canvas + overlay). */
     readonly domElement: HTMLDivElement;
-    /** Kick a frame flush. Wasm: wasm.update() + Render(). Remote: no-op / RPC. */
+    /** Kick a frame flush. Wasm: wasm.update() + Render(). Server: no-op. */
     renderAsync(): Promise<void>;
     /** Resize output to its container. Call after container size changes. */
     resizeAsync(): Promise<void>;
@@ -97,14 +97,6 @@ export interface IRenderer {
     // ---- Subscriptions (return unsubscribe closures) ------------------------
     /** Fires whenever the camera changes. Callback receives a full snapshot. */
     addCameraChangedListener(callback: (state: VisorCameraState) => void): () => void;
-    /**
-     * Fires once per gesture, after the last camera change has stopped changing for
-     * CAMERA_SETTLE_MS, with the origin of that change. The callback receives
-     * the origin only; read the camera with getCameraStateAsync if needed.
-     * A `gesture` report is the user's own camera; a `programmatic` one is a
-     * camera the application or the server applied.
-     */
-    addCameraSettledListener(callback: (origin: CameraOrigin) => void): () => void;
     /** Fires each frame with the current FPS. */
     addFrameRenderedListener(callback: (fps: number) => void): () => void;
     /**
@@ -124,6 +116,17 @@ export interface IRenderer {
     ): () => void;
 
     // ---- Per-part visual state ---------------------------------------------
+    //
+    // Colour and selection contract. setDiffuseColorRgbAsync,
+    // resetDiffuseColorAsync and setSelectedAsync each write the full set:
+    // AmbientColor (the selection tint), Ambient and Diffuse as a function of
+    // `selected` only, then DiffuseColor from the rgb they are given. Selection
+    // never replaces the part colour. setColorVariableAsync writes the mapper
+    // only and never touches those four properties; clearColorVariableAsync
+    // writes ScalarVisibility off only. As a result the calls commute, given
+    // consistent arguments: `selected` and the rgb passed to each call match
+    // the part's current state. The caller owns that consistency.
+
     /**
      * r/g/b are normalised (0..1), matching setSelectedAsync's currentDiffuseRgb.
      * `selected` is the caller's current selection state for the node: the renderer

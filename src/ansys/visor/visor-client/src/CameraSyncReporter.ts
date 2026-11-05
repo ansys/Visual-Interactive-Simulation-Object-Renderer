@@ -1,20 +1,13 @@
-import type {
-    CameraOrigin,
-    IRenderer,
-    TrameTriggerSender,
-    VisorCameraState,
-} from './renderer/IRenderer';
+import type { CameraOrigin, TrameTriggerSender, VisorCameraState } from './renderer/IRenderer';
+import type { WasmRenderer } from './renderer/WasmRenderer';
 
 /**
  * The `sync_camera` trigger: the client's half of the server-tracked camera.
  *
- * This module exists apart from `VisorFrontend` so that it can be tested. A
- * `VisorFrontend` cannot be constructed under jest -- it needs a real scene
- * graph node, the module-global variable manager and a renderer, and it ends
- * in `Object.freeze` -- so a listener body
- * written inline there would be pinned by nothing, and the payload shape is
- * precisely the part no server-side gate can check. `CameraGestureTracker`
- * was split out for the same reason in the previous increment.
+ * This module is the client-mode reporter, attached by the client-mode hook
+ * to each renderer it builds, and kept apart so that the listener body and
+ * the payload shape -- precisely the part no server-side gate can check --
+ * are tested directly.
  *
  * What reaches here is already debounced: `addCameraSettledListener` fires
  * once per settle window, never once per camera event, and it carries that
@@ -38,11 +31,15 @@ export type SyncCameraPayload = Readonly<{
 }>;
 
 /**
- * The part of a renderer this module uses. Narrower than `IRenderer` so the
+ * The part of a renderer this module uses. Narrower than `WasmRenderer` so the
  * unit test can supply exactly these two members without a cast that would
- * defeat the type check it is here to get.
+ * defeat the type check it is here to get. Only the client-rendering renderer
+ * reports settled camera windows, so the source is typed from it.
  */
-export type CameraSyncSource = Pick<IRenderer, 'addCameraSettledListener' | 'getCameraStateAsync'>;
+export type CameraSyncSource = Pick<
+    WasmRenderer,
+    'addCameraSettledListener' | 'getCameraStateAsync'
+>;
 
 /**
  * Build the trigger payload from a settled camera snapshot.
@@ -87,10 +84,10 @@ export function buildSyncCameraPayload(
  * Subscribe to settled camera windows and report each one to the server.
  *
  * Returns the remover from `addCameraSettledListener`, **verbatim**. The
- * caller owns it and must call it when the frontend holding it is replaced:
- * the `VtkScene` survives a client rebuild, so a frontend that is discarded
- * without releasing leaves its subscription live and every later gesture is
- * reported once per rebuild that has ever happened. Each of those reports is
+ * caller owns it and must call it when the renderer it was attached to is
+ * replaced: the `VtkScene` survives a client rebuild, so a renderer that is
+ * discarded without releasing leaves its subscription live and every later
+ * gesture is reported once per rebuild that has ever happened. Each of those reports is
  * individually valid, which is why no gate can see the fault.
  *
  * The sender is required. A frontend with no transport is not a state this

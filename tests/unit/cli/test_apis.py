@@ -46,7 +46,7 @@ def test_serverapi_initialize_prints_response():
     api = ServerAPI("host", 1234)
     with patch("requests.post") as mock_post, patch("builtins.print") as mock_print:
         mock_post.return_value.json.return_value = {"result": "ok"}
-        api.initialize("h", 1, RenderingMode.LOCAL, True, dark_mode=False, start=False)
+        api.initialize("h", 1, RenderingMode.CLIENT, True, dark_mode=False, start=False)
         mock_post.assert_called_once()
         mock_print.assert_called_with({"result": "ok"})
 
@@ -55,10 +55,10 @@ def test_serverapi_initialize_with_start_also_starts_instance():
     api = ServerAPI("host", 1234)
     with patch("requests.post") as mock_post, patch("builtins.print"):
         mock_post.return_value.json.return_value = {"result": "ok"}
-        api.initialize("h", 1, RenderingMode.LOCAL, True, dark_mode=False, start=True)
+        api.initialize("h", 1, RenderingMode.CLIENT, True, dark_mode=False, start=True)
         assert mock_post.call_count == 2
         mock_post.assert_any_call(f"{api.base}/initialize", json={
-            "host": "h", "port": 1, "rendering_mode": RenderingMode.LOCAL,
+            "host": "h", "port": 1, "rendering_mode": RenderingMode.CLIENT,
             "standalone": True, "dark_mode": False,
         })
         mock_post.assert_any_call(f"{api.base}/start", json={})
@@ -73,7 +73,7 @@ def test_serverapi_initialize_with_start_raises_on_start_failure():
     start_resp.raise_for_status.side_effect = requests.HTTPError("500")
     with patch("requests.post", side_effect=[init_resp, start_resp]), patch("builtins.print"):
         with pytest.raises(requests.HTTPError):
-            api.initialize("h", 1, RenderingMode.LOCAL, True, dark_mode=False, start=True)
+            api.initialize("h", 1, RenderingMode.CLIENT, True, dark_mode=False, start=True)
     init_resp.raise_for_status.assert_called_once()
     start_resp.raise_for_status.assert_called_once()
 

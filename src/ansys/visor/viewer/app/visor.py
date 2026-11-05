@@ -37,7 +37,7 @@ class Visor:
     """
     def __new__(cls,
                 rendering_engine: RenderingEngine = RenderingEngine.VTK,
-                rendering_mode: RenderingMode = RenderingMode.LOCAL,
+                rendering_mode: RenderingMode = RenderingMode.CLIENT,
                 url: str | None = None,
                 standalone: bool = True,
                 dark_mode: bool | None = None,

@@ -24,6 +24,7 @@ def mock_server():
     server.http_headers.set_header = MagicMock()
     server.name = "TestServer"
     server._www = None
+    server.state = {}
     return server
 
 
@@ -41,7 +42,7 @@ def mock_get_scene_details_json():
     return MagicMock(return_value={"scene": "details"})
 
 
-@patch("ansys.visor.viewer.app.trame.local_app.settings")
+@patch("ansys.visor.viewer.app.trame.scene_trigger_app.settings")
 def test_init_sets_attributes(
     mock_settings,
     mock_server,
@@ -58,7 +59,7 @@ def test_init_sets_attributes(
     )
     assert app.server == mock_server
     assert app._get_scene_details_json == mock_get_scene_details_json
-    assert app._LocalApp__trame_logger == mock_logger
+    assert app._SceneTriggerApp__trame_logger == mock_logger
 
 
 def test_register_lifecycle_hooks_adds_handlers(
@@ -90,7 +91,7 @@ def test_set_headers_sets_http_headers(
     )
 
 
-@patch("ansys.visor.viewer.app.trame.local_app.settings")
+@patch("ansys.visor.viewer.app.trame.scene_trigger_app.settings")
 def test_set_www_path_sets_www(
     mock_settings,
     mock_server,
@@ -119,7 +120,7 @@ def test_get_visor_scene_details_json_returns_scene_details(
     assert result == {"scene": "details"}
 
 
-@patch("ansys.visor.viewer.app.trame.local_app.settings")
+@patch("ansys.visor.viewer.app.trame.scene_trigger_app.settings")
 def test_trame_logger_is_set_when_provided(
     mock_settings,
     mock_server,
@@ -134,10 +135,10 @@ def test_trame_logger_is_set_when_provided(
         standalone=True,
         trame_logger=mock_logger,
     )
-    assert app._LocalApp__trame_logger == mock_logger
+    assert app._SceneTriggerApp__trame_logger == mock_logger
 
 
-@patch("ansys.visor.viewer.app.trame.local_app.settings")
+@patch("ansys.visor.viewer.app.trame.scene_trigger_app.settings")
 def test_trame_logger_is_none_when_not_provided(
     mock_settings,
     mock_server,
@@ -150,10 +151,10 @@ def test_trame_logger_is_none_when_not_provided(
         get_scene_details_json=mock_get_scene_details_json,
         standalone=True,
     )
-    assert app._LocalApp__trame_logger is None
+    assert app._SceneTriggerApp__trame_logger is None
 
 
-@patch("ansys.visor.viewer.app.trame.local_app.settings")
+@patch("ansys.visor.viewer.app.trame.scene_trigger_app.settings")
 def test_lifecycle_logging_calls_debug(
     mock_settings,
     mock_server,

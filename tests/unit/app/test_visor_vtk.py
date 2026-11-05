@@ -4,10 +4,14 @@ tests/unit/app/test_visor_vtk.py
 Tests for VisorVTK.__new__ dispatch and abstract-method contract.
 
 Lifecycle behaviour is covered by test_visor_vtk_local.py; nothing here
-starts a trame server.  Mocking boundary is identical to that file:
+starts a trame server.  Mocking boundary is identical to that file, plus the
+server-mode wiring:
   - ansys.visor.viewer.app.visor_vtk.TrameServerManager
   - ansys.visor.viewer.app.visor_vtk_local.LocalApp
   - ansys.visor.viewer.app.visor_vtk_local.VisorLocalScene
+  - ansys.visor.viewer.app.visor_vtk_server.ServerApp
+  - ansys.visor.viewer.app.visor_vtk_server.VisorServerScene
+  - ansys.visor.viewer.app.visor_vtk_server.ServerLoopBridge
 """
 
 from contextlib import contextmanager
@@ -17,10 +21,12 @@ import pytest
 
 from ansys.visor.viewer.app.visor_vtk import VisorVTK
 from ansys.visor.viewer.app.visor_vtk_local import VisorVTKLocal
+from ansys.visor.viewer.app.visor_vtk_server import VisorVTKServer
 from ansys.visor.viewer.core.visor_enums import RenderingMode
 
 MODE_TO_CLASS = [
-    pytest.param(RenderingMode.LOCAL, VisorVTKLocal, id="LOCAL"),
+    pytest.param(RenderingMode.CLIENT, VisorVTKLocal, id="CLIENT"),
+    pytest.param(RenderingMode.SERVER, VisorVTKServer, id="SERVER"),
 ]
 
 
@@ -29,7 +35,10 @@ def vtk_patches():
     """Suppress all trame / VTK side-effects so no server is started."""
     with patch("ansys.visor.viewer.app.visor_vtk.TrameServerManager") as mock_mgr, \
          patch("ansys.visor.viewer.app.visor_vtk_local.LocalApp"), \
-         patch("ansys.visor.viewer.app.visor_vtk_local.VisorLocalScene") as mock_scene:
+         patch("ansys.visor.viewer.app.visor_vtk_local.VisorLocalScene") as mock_scene, \
+         patch("ansys.visor.viewer.app.visor_vtk_server.ServerApp"), \
+         patch("ansys.visor.viewer.app.visor_vtk_server.VisorServerScene"), \
+         patch("ansys.visor.viewer.app.visor_vtk_server.ServerLoopBridge"):
         mock_mgr_inst = MagicMock()
         mock_mgr_inst.running = False
         mock_scene_inst = MagicMock()
@@ -57,11 +66,11 @@ def test_init_called_once_with_original_args():
     """__init__ is invoked exactly once, forwarding the original call-site kwargs."""
     with vtk_patches():
         with patch.object(VisorVTK, "__init__", return_value=None) as mock_init:
-            VisorVTK(rendering_mode=RenderingMode.LOCAL, url="http://test", standalone=False)
+            VisorVTK(rendering_mode=RenderingMode.CLIENT, url="http://test", standalone=False)
 
     mock_init.assert_called_once()
     _, kwargs = mock_init.call_args
-    assert kwargs.get("rendering_mode") == RenderingMode.LOCAL
+    assert kwargs.get("rendering_mode") == RenderingMode.CLIENT
     assert kwargs.get("url") == "http://test"
     assert kwargs.get("standalone") is False
 
@@ -89,7 +98,7 @@ def test_unrecognized_mode_raises_value_error():
 
 
 def test_default_rendering_mode_dispatches_to_local():
-    """VisorVTK() with no rendering_mode argument falls back to LOCAL."""
+    """VisorVTK() with no rendering_mode argument falls back to CLIENT."""
     with vtk_patches():
         inst = VisorVTK()
     assert isinstance(inst, VisorVTKLocal)

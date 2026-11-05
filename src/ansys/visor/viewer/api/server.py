@@ -205,7 +205,7 @@ class VisorAPI:
         dark_mode = init_props.dark_mode if init_props.dark_mode is not None\
             else settings.default_dark_mode
         rendering_mode = init_props.rendering_mode if init_props.rendering_mode is not None\
-            else RenderingMode.LOCAL
+            else RenderingMode.CLIENT
         # initialize an instance of Visor
         self.visualizer, warnings = self._connect_or_initialize_visualizer(
             host,
@@ -416,7 +416,7 @@ class VisorAPI:
             port: int,
             standalone: bool,
             dark_mode: bool,
-            rendering_mode: RenderingMode = RenderingMode.LOCAL,
+            rendering_mode: RenderingMode = RenderingMode.CLIENT,
     ) -> Tuple[Visor, str]:
         """Connect to a visualizer instance with the given host and port if one
         exists; otherwise, create a new visualizer instance on that host and port."""

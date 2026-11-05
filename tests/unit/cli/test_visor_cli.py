@@ -97,7 +97,7 @@ def test_main_server_init(mock_parse_args, mock_server_api):
     """Verify that server initialization forwards the expected arguments."""
     args = make_args(
         "server", "init",
-        host="h", port=42, rendering_mode=RenderingMode.LOCAL,
+        host="h", port=42, rendering_mode=RenderingMode.CLIENT,
         standalone=True, dark_mode=False, start=False,
     )
     mock_parse_args.return_value = args
@@ -105,13 +105,13 @@ def test_main_server_init(mock_parse_args, mock_server_api):
     mock_server_api.return_value = api
     with patch("ansys.visor.viewer.cli.visor_cli.check_server_running", return_value=True):
         visor_cli.main()
-        api.initialize.assert_called_once_with("h", 42, RenderingMode.LOCAL, True, False, False)
+        api.initialize.assert_called_once_with("h", 42, RenderingMode.CLIENT, True, False, False)
 
 def test_main_server_init_with_start(mock_parse_args, mock_server_api):
     """Verify that server initialization forwards the --start flag."""
     args = make_args(
         "server", "init",
-        host="h", port=42, rendering_mode=RenderingMode.LOCAL,
+        host="h", port=42, rendering_mode=RenderingMode.CLIENT,
         standalone=True, dark_mode=False, start=True,
     )
     mock_parse_args.return_value = args
@@ -119,7 +119,7 @@ def test_main_server_init_with_start(mock_parse_args, mock_server_api):
     mock_server_api.return_value = api
     with patch("ansys.visor.viewer.cli.visor_cli.check_server_running", return_value=True):
         visor_cli.main()
-        api.initialize.assert_called_once_with("h", 42, RenderingMode.LOCAL, True, False, True)
+        api.initialize.assert_called_once_with("h", 42, RenderingMode.CLIENT, True, False, True)
 
 def test_main_instance_actions(mock_parse_args, mock_instance_api):
     """Verify that instance actions invoke the corresponding API methods."""

@@ -66,6 +66,7 @@ def mock_server():
     server.http_headers.set_header = MagicMock()
     server.name = "TestServer"
     server._www = None
+    server.state = {}
     return server
 
 
@@ -135,7 +136,7 @@ def test_set_projection_missing_parallel_is_a_logged_no_op(app, api):
     Asserted against the whole mock rather than one method name, so a leak
     under any other name still fails.
     """
-    with patch("ansys.visor.viewer.app.trame.local_app.logger") as log:
+    with patch("ansys.visor.viewer.app.trame.scene_trigger_app.logger") as log:
         result = app.set_projection({})
 
     assert result is None
@@ -150,7 +151,7 @@ def test_set_projection_non_mapping_payload_is_a_logged_no_op(app, api):
     ``model(**payload)`` precisely so that a payload which is not a mapping at
     all is caught by the same guard as a payload with a missing key.
     """
-    with patch("ansys.visor.viewer.app.trame.local_app.logger") as log:
+    with patch("ansys.visor.viewer.app.trame.scene_trigger_app.logger") as log:
         result = app.set_projection("parallel")
 
     assert result is None
@@ -176,7 +177,7 @@ def test_set_projection_is_a_logged_no_op_when_no_coordinator_injected(app_witho
     copied from the neighbouring trigger modules, which assert ``1`` and are
     red at this increment's base commit for exactly that reason.
     """
-    with patch("ansys.visor.viewer.app.trame.local_app.logger") as log:
+    with patch("ansys.visor.viewer.app.trame.scene_trigger_app.logger") as log:
         result = app_without_api.set_projection({"parallel": True})
 
     assert result is None

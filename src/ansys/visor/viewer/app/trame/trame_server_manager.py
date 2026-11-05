@@ -67,6 +67,11 @@ class TrameServerManager:
         return self._server
 
     @property
+    def async_runner(self) -> AsyncRunner:
+        """The runner whose loop thread runs the trame server."""
+        return self._async_runner
+
+    @property
     def state(self):
         """
         VisorState is not yet defined.

@@ -6,6 +6,8 @@
  * remote one.
  */
 import CameraGestureTracker from './CameraGestureTracker.js';
+import { MouseButtonState } from '../input/MouseButtonState';
+import { ViewerClickDispatcher } from '../input/ViewerClickDispatcher';
 
 export default class VtkScene {
     /**
@@ -125,7 +127,7 @@ export default class VtkScene {
             remover();
         }
         this.#cameraChangedListeners.clear();
-        this.#viewerClickedListeners.clear();
+        this.#viewerClicks.clear();
         this.#frameRenderedListeners.clear();
         this.#cameraGestureTracker?.dispose();
     };
@@ -133,8 +135,7 @@ export default class VtkScene {
     #cameraGestureTracker = null;
     /**@type{Map<Function,()=>void>}*/
     #userObserverRemovers = new Map();
-    /**@type{Map<Function,(actorId:number,ctrlKey:boolean,shiftKey:boolean,normX:number,normY:number)=>void>}*/
-    #viewerClickedListeners = new Map();
+    #viewerClicks = new ViewerClickDispatcher();
     /**@type{Map<Function,(camera:FrontendVtkObject)=>void>}*/
     #cameraChangedListeners = new Map();
     /**@type{Map<Function,(fps:number)=>void>}*/
@@ -175,9 +176,7 @@ export default class VtkScene {
      * @return {()=>void}
      */
     addViewerClickedListener = (handler) => {
-        const remover = () => this.#viewerClickedListeners.delete(remover);
-        this.#viewerClickedListeners.set(remover, handler);
-        return remover;
+        return this.#viewerClicks.addListener(handler);
     };
     /**
      * Pick geometry at the last clicked position.
@@ -358,10 +357,8 @@ export default class VtkScene {
      */
     #setupPicker = () => {
         const { renderer, interactor, picker, canvasDiv } = this;
-        const viewerClickedListeners = this.#viewerClickedListeners;
         ///////////////////////////////////////////
         ///////////////////////////////////////////
-        let pickingPending = false;
         /**@type{number|null}*/
         let lastMouseX = null;
         /**@type{number|null}*/
@@ -376,7 +373,7 @@ export default class VtkScene {
         });
         canvasDiv.addEventListener('mouseup', async (e) => {
             try {
-                if (lastMouseX == null || lastMouseY == null || pickingPending) {
+                if (lastMouseX == null || lastMouseY == null) {
                     return;
                 } else {
                     const margin = 0;
@@ -386,20 +383,22 @@ export default class VtkScene {
                         return;
                     }
                 }
-                pickingPending = true;
                 const rect = canvasDiv.getBoundingClientRect();
-                const normX = (e.clientX - rect.left) / rect.width;
-                const normY_vtk = 1.0 - (e.clientY - rect.top) / rect.height;
-                const [x, y] = await interactor.GetEventPosition();
-                this.#lastPickDisplayPos = [x, y];
-                const found = await picker.Pick([x, y, 0], renderer);
-                const actor = found ? await picker.getActor() : null;
-                for (const callback of viewerClickedListeners.values()) {
-                    callback(actor?.id ?? null, e.ctrlKey, e.shiftKey, normX, normY_vtk);
-                }
+                const click = {
+                    normX: (e.clientX - rect.left) / rect.width,
+                    normY: 1.0 - (e.clientY - rect.top) / rect.height,
+                    ctrlKey: e.ctrlKey,
+                    shiftKey: e.shiftKey,
+                };
+                await this.#viewerClicks.dispatchAsync(click, async () => {
+                    const [x, y] = await interactor.GetEventPosition();
+                    this.#lastPickDisplayPos = [x, y];
+                    const found = await picker.Pick([x, y, 0], renderer);
+                    const actor = found ? await picker.getActor() : null;
+                    return actor?.id ?? null;
+                });
             } finally {
                 lastMouseX = lastMouseY = null;
-                pickingPending = false;
             }
         });
     };
@@ -421,12 +420,7 @@ export default class VtkScene {
 
         /**@type{boolean}*/
         let eventFiring = false;
-        /**@type{boolean}*/
-        let mouseLeftDown = false;
-        /**@type{boolean}*/
-        let mouseMiddleDown = false;
-        /**@type{boolean}*/
-        let mouseRightDown = false;
+        const buttons = new MouseButtonState();
 
         /**
          * @param {MouseEvent} e
@@ -453,29 +447,18 @@ export default class VtkScene {
             }
             try {
                 eventFiring = true;
-                if (e.button === 0) {
-                    mouseLeftDown = down;
-                } else if (e.button === 1) {
-                    mouseMiddleDown = down;
-                } else if (e.button === 2) {
-                    mouseRightDown = down;
-                }
+                buttons.setButton(e.button, down);
                 canvas.dispatchEvent(new MouseEvent('mouseup', getEventDict(e, 0)));
                 canvas.dispatchEvent(new MouseEvent('mouseup', getEventDict(e, 1)));
                 canvas.dispatchEvent(new MouseEvent('mouseup', getEventDict(e, 2)));
-                if (mouseLeftDown && mouseRightDown) {
-                    canvas.dispatchEvent(new MouseEvent('mousedown', getEventDict(e, 1)));
-                    e.stopPropagation();
-                } else if (mouseRightDown) {
-                    canvas.dispatchEvent(new MouseEvent('mousedown', getEventDict(e, 2)));
-                    e.stopPropagation();
-                } else if (mouseLeftDown) {
-                    canvas.dispatchEvent(new MouseEvent('mousedown', getEventDict(e, 0)));
-                    // don't call e.stopPropagation() here because we need to
-                    // send the left-mouse-button event to the VTK canvas.
-                } else if (mouseMiddleDown) {
-                    canvas.dispatchEvent(new MouseEvent('mousedown', getEventDict(e, 0)));
-                    e.stopPropagation();
+                const effective = buttons.effectiveButton();
+                if (effective != null) {
+                    canvas.dispatchEvent(new MouseEvent('mousedown', getEventDict(e, effective)));
+                    // While left drives button 0 the event goes on to the VTK
+                    // canvas (and to the picker); every other combination stops it.
+                    if (effective !== 0 || !buttons.isDown(0)) {
+                        e.stopPropagation();
+                    }
                 }
             } finally {
                 eventFiring = false;

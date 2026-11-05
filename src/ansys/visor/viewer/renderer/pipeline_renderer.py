@@ -39,6 +39,9 @@ if TYPE_CHECKING:
 
 logger = VisorDefaultLogger(__name__)
 
+PART_PICK_TOLERANCE: float = 0.005
+"""Cell-picker tolerance, as a fraction of the render-window diagonal."""
+
 
 class VtkPipelineRenderer(IRenderer):
     """Owns the VTK renderer, window, interactor, widgets and per-node pipelines, and writes part, camera and widget state through them."""
@@ -286,14 +289,21 @@ class VtkPipelineRenderer(IRenderer):
     def sync_camera(self, camera_state: "VisorCameraState") -> None:
         """See :meth:`IRenderer.sync_camera`; then project onto the pipeline camera.
 
-        Records through ``super()`` before projecting, so a raising VTK setter
-        still leaves the record holding what the caller asked for.  Ends with
-        :meth:`_publish_camera`, after the projection.  Does not
-        notify the client.
+        Records and projects through :meth:`_write_camera`, then ends with
+        :meth:`_publish_camera`, after the projection.  Does not notify the
+        client.
+        """
+        self._write_camera(camera_state)
+        self._publish_camera()
+
+    def _write_camera(self, camera_state: "VisorCameraState") -> None:
+        """Record *camera_state* through :meth:`IRenderer.sync_camera`, then project it onto the pipeline camera; publishes nothing.
+
+        Records before projecting, so a raising VTK setter still leaves the
+        record holding what the caller asked for.
         """
         super().sync_camera(camera_state)
         self._apply_to_pipeline_camera(camera_state)
-        self._publish_camera()
 
     def set_projection(self, parallel: bool) -> None:
         """See :meth:`IRenderer.set_projection`; then apply it to the pipeline camera.
@@ -368,19 +378,25 @@ class VtkPipelineRenderer(IRenderer):
     ) -> None:
         """See :meth:`IRenderer.sync_cross_section_plane`; then write both VTK objects.
 
-        Records through ``super()``, then writes both VTK objects.  ``set_origin`` and
-        ``set_normal`` each write the plane *and* the representation, so the
-        clip function and the draggable handle cannot diverge on this path --
-        which is the defect the client's own set/get asymmetry has.
+        Records and writes through :meth:`_write_cross_section`, then ends
+        with :meth:`_publish_cross_section`, after both writes, so the state
+        served to the client carries the new plane.  Does not notify the
+        client.
+        """
+        self._write_cross_section(origin, normal)
+        self._publish_cross_section()
 
-        Ends with :meth:`_publish_cross_section`, after both writes,
-        so the state served to the client carries the new plane.  Does not
-        notify the client.
+    def _write_cross_section(self, origin: list[float], normal: list[float]) -> None:
+        """Record through :meth:`IRenderer.sync_cross_section_plane`, then write both VTK objects; publishes nothing.
+
+        ``set_origin`` and ``set_normal`` each write the plane *and* the
+        representation, so the clip function and the draggable handle cannot
+        diverge on this path -- which is the defect the client's own set/get
+        asymmetry has.
         """
         super().sync_cross_section_plane(origin, normal)
         self._cross_section_widget.set_origin(origin)
         self._cross_section_widget.set_normal(normal)
-        self._publish_cross_section()
 
     # ------------------------------------------------------------------
     # IRenderer: widget fan-out
@@ -427,6 +443,33 @@ class VtkPipelineRenderer(IRenderer):
         self._bounding_box_widget.update_node_count(count)
 
     # ------------------------------------------------------------------
+    # Part picking
+    # ------------------------------------------------------------------
+
+    def pick_part_at(self, x: int, y: int) -> int | None:
+        """Return the node id of the part under a render-window pixel, origin bottom-left, or None.
+
+        *x* and *y* are render-window device pixels.  Only part actors are
+        pickable: the pick list holds every registered pipeline's actor and
+        nothing else, so the bounding-box outline and the widgets never hide a
+        part behind them.  A software ray cast; it does not render.  Takes no
+        lock: the caller holds the scene lock, as for every other method.
+        """
+        picker = vtkCellPicker()
+        picker.SetTolerance(PART_PICK_TOLERANCE)
+        picker.InitializePickList()
+        for pipe in self._pipelines.values():
+            picker.AddPickList(pipe.actor)
+        picker.PickFromListOn()
+        if not picker.Pick(x, y, 0, self._vtk_renderer):
+            return None
+        picked_actor = picker.GetActor()
+        for node_id, pipe in self._pipelines.items():
+            if pipe.actor is picked_actor:
+                return node_id
+        return None
+
+    # ------------------------------------------------------------------
     # Internal init helpers
     # ------------------------------------------------------------------
 
@@ -441,7 +484,7 @@ class VtkPipelineRenderer(IRenderer):
         interactor.SetInteractorStyle(vtkInteractorStyleTrackballCamera())
         # vtkCellPicker so GetCellId() is available on the WASM side.
         cell_picker = vtkCellPicker()
-        cell_picker.SetTolerance(0.005)
+        cell_picker.SetTolerance(PART_PICK_TOLERANCE)
         interactor.SetPicker(cell_picker)
         return interactor
 

@@ -191,7 +191,7 @@ def test_no_flags_does_not_call_requests(monkeypatch):
     )
 
     # Neither standalone nor dark_mode set -> should return cleanly and not call requests.get
-    check_init_args("api-host", 0, "host", 9000, RenderingMode.LOCAL, None, None)
+    check_init_args("api-host", 0, "host", 9000, RenderingMode.CLIENT, None, None)
 
 def test_flags_and_request_raises_warning(monkeypatch, capsys):
     """Verify that request failures emit a warning without exiting."""
@@ -203,7 +203,7 @@ def test_flags_and_request_raises_warning(monkeypatch, capsys):
     )
 
     # Should not raise SystemExit; should print a warning
-    check_init_args("api-host", 0, "host", 9000, RenderingMode.LOCAL, True, None)
+    check_init_args("api-host", 0, "host", 9000, RenderingMode.CLIENT, True, None)
 
     captured = capsys.readouterr()
     assert "Warning: could not check existing instances: boom" in captured.out
@@ -222,7 +222,7 @@ def test_existing_instance_triggers_exit(monkeypatch, capsys):
     )
 
     with pytest.raises(SystemExit) as excinfo:
-        check_init_args("api-host", 0, "target-host", 1234, RenderingMode.LOCAL, True, None)
+        check_init_args("api-host", 0, "target-host", 1234, RenderingMode.CLIENT, True, None)
 
     # sys.exit(1) should produce SystemExit with code 1
     assert excinfo.value.code == 1
@@ -244,4 +244,4 @@ def test_flags_but_no_existing_instance(monkeypatch):
     )
 
     # Should not raise
-    check_init_args("api-host", 0, "target-host", 1234, RenderingMode.LOCAL, True, False)
+    check_init_args("api-host", 0, "target-host", 1234, RenderingMode.CLIENT, True, False)
