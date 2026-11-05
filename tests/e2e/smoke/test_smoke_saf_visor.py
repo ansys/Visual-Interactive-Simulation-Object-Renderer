@@ -226,7 +226,7 @@ def test_saf_visor_vtk_filetype_loads(
         expect(status).not_to_be_empty(timeout=30_000)
         expect(status).to_have_text(f"loaded: {filename}", timeout=5_000)
         datasets = list_datasets(HOST, api_port)
-        
+
         assert len(datasets) == 1, f"Expected only the current upload, got {datasets}"
         assert filename in json.dumps(datasets), f"Loaded dataset does not identify {filename}: {datasets}"
 
