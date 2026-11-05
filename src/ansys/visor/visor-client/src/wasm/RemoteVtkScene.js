@@ -56,7 +56,11 @@ export default class RemoteVtkScene {
      * @return {{Id:number, ClassName:string, SuperClassNames:string[]}}
      */
     static #idFloorState() {
-        return { Id: this.#BROWSER_ID_FLOOR, ClassName: 'vtkPoints', SuperClassNames: ['vtkObject'] };
+        return {
+            Id: this.#BROWSER_ID_FLOOR,
+            ClassName: 'vtkPoints',
+            SuperClassNames: ['vtkObject'],
+        };
     }
 
     /**
@@ -71,7 +75,9 @@ export default class RemoteVtkScene {
      */
     static #reserveBrowserIdRange(wasmHandler) {
         const state = this.#idFloorState();
-        const registered = wasmHandler.sceneManager.updateObjectFromState(wasmHandler.stateDecorator(state));
+        const registered = wasmHandler.sceneManager.updateObjectFromState(
+            wasmHandler.stateDecorator(state)
+        );
         wasmHandler.sceneManager.unRegisterState(state.Id);
         if (!registered) {
             console.warn(`Could not reserve the browser id range at id ${state.Id}.`);
