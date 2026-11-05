@@ -41,12 +41,6 @@ EDGE_LINE_WIDTH_CSS: float = 5.0
 FACE_LINE_WIDTH_CSS: float = 3.0
 """A face outline's line width in CSS pixels."""
 
-# Negative offsets pull the highlight towards the camera, so it does not fight
-# the part surface it lies on.
-COINCIDENT_POLYGON_OFFSET: tuple[float, float] = (-2.0, -2.0)
-COINCIDENT_LINE_OFFSET: tuple[float, float] = (-2.0, -2.0)
-COINCIDENT_POINT_OFFSET: float = -2.0
-
 
 class GeometryHighlight:
     """A non-pickable actor drawing one geometry pick: a dot, a line, or a filled outline."""
@@ -69,9 +63,6 @@ class GeometryHighlight:
         mapper.ScalarVisibilityOn()
         mapper.SetScalarModeToUseCellData()
         mapper.SetColorModeToDirectScalars()
-        mapper.SetRelativeCoincidentTopologyPolygonOffsetParameters(*COINCIDENT_POLYGON_OFFSET)
-        mapper.SetRelativeCoincidentTopologyLineOffsetParameters(*COINCIDENT_LINE_OFFSET)
-        mapper.SetRelativeCoincidentTopologyPointOffsetParameter(COINCIDENT_POINT_OFFSET)
 
         self._actor = vtkActor()
         self._actor.SetMapper(mapper)
