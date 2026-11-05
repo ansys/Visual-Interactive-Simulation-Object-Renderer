@@ -48,6 +48,36 @@ export default class RemoteVtkScene {
         return canvasDiv;
     };
 
+    /** First id the browser may allocate; the server's ids stay below it. */
+    static #BROWSER_ID_FLOOR = 2 ** 30;
+
+    /**
+     * The state that registers one vtkPoints at the floor id.
+     * @return {{Id:number, ClassName:string, SuperClassNames:string[]}}
+     */
+    static #idFloorState() {
+        return { Id: this.#BROWSER_ID_FLOOR, ClassName: 'vtkPoints', SuperClassNames: ['vtkObject'] };
+    }
+
+    /**
+     * Register one object at the floor id so every id this session allocates lands above the server's range.
+     * The browser and the server draw ids from one counter range, so an id the browser allocates itself can
+     * be handed out again by the server's next new object, and the browser then applies that object's state
+     * to the wrong object.  Registering at an explicit id raises the counter to that id and it never falls,
+     * so this has to run before any other wasm call.  Only the counter matters: the state is unregistered
+     * so later updates do not rebuild the object.
+     * @param {VtkWASMHandler|any} wasmHandler - a handler whose wasm module has loaded
+     * @return {void}
+     */
+    static #reserveBrowserIdRange(wasmHandler) {
+        const state = this.#idFloorState();
+        const registered = wasmHandler.sceneManager.updateObjectFromState(wasmHandler.stateDecorator(state));
+        wasmHandler.sceneManager.unRegisterState(state.Id);
+        if (!registered) {
+            console.warn(`Could not reserve the browser id range at id ${state.Id}.`);
+        }
+    }
+
     /**
      * @param {TrameSession} trameSession
      * @param {string} wasmUrl
@@ -102,6 +132,7 @@ export default class RemoteVtkScene {
                 console.warn(`${prefix}: ${msg}`);
             },
         });
+        this.#reserveBrowserIdRange(wasmHandler);
         return { wasmHandler, vtkWasmPerfCounter };
     };
 
