@@ -4,7 +4,7 @@ import json
 from unittest.mock import MagicMock, patch
 
 import pytest
-from vtkmodules.vtkCommonCore import vtkFloatArray
+from vtkmodules.vtkCommonCore import reference, vtkFloatArray
 from vtkmodules.vtkCommonDataModel import vtkPlane, vtkPolyData, vtkUnstructuredGrid
 from vtkmodules.vtkFiltersCore import vtkAppendPolyData
 from vtkmodules.vtkFiltersGeometry import vtkGeometryFilter
@@ -14,7 +14,7 @@ from vtkmodules.vtkSerializationManager import vtkObjectManager
 
 from ansys.visor.viewer.core.visor_colors import VisorColors
 from ansys.visor.viewer.core.visor_enums import VisorVtkVariableType
-from ansys.visor.viewer.vtk.node_pipeline import VtkNodePipeline
+from ansys.visor.viewer.vtk.node_pipeline import PART_POLYGON_OFFSET, VtkNodePipeline
 
 
 @pytest.fixture
@@ -110,6 +110,28 @@ def test_from_dataset_sets_default_color_and_flat_shading(poly_dataset):
     assert tuple(diffuse) == tuple(VisorColors.DefaultMeshColor)
     # Interpolation 0 == flat shading in VTK.
     assert pipe.actor.GetProperty().GetInterpolation() == 0
+
+
+def test_from_dataset_pushes_faces_back_with_relative_polygon_offset(poly_dataset):
+    """The part's faces are pushed back so that edges and highlights draw in front."""
+    pipe = VtkNodePipeline.from_dataset(poly_dataset)
+    factor, units = reference(0.0), reference(0.0)
+
+    pipe.mapper.GetRelativeCoincidentTopologyPolygonOffsetParameters(factor, units)
+
+    assert (factor, units) == PART_POLYGON_OFFSET
+
+
+def test_from_dataset_servers_relative_polygon_offset(poly_dataset):
+    """The offset is in the mapper state, so the wasm client can use when it draws the highlight."""
+    pipe = VtkNodePipeline.from_dataset(poly_dataset)
+    mgr = vtkObjectManager()
+    mgr.Initialize()
+    mgr.RegisterObject(pipe.actor)
+    mgr.UpdateStatesFromObjects()
+
+    mapper_state = json.loads(mgr.GetState(mgr.GetId(pipe.mapper)))
+    assert tuple(mapper_state["RelativeCoincidentTopologyPolygonOffsetParameters"]) == PART_POLYGON_OFFSET
 
 
 def test_from_dataset_unsupported_type_raises():
