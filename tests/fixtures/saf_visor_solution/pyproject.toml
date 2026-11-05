@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "visor-saf-smoke-solution"
+version = "0.1.0"
+description = "Public, PIM-free SAF fixture for the Visor smoke tests"
+requires-python = ">=3.11,<3.15"
+dependencies = [
+    "ansys-saf-sdk[core-dash]",
+    "requests>=2.32,<3",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=8.3,<9",
+    "pytest-playwright>=0.7,<0.8",
+    "pytest-html>=4.2,<5",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
