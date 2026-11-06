@@ -165,6 +165,8 @@ def main():
             api.remove_dataset(args.dataset_id)
         elif args.action == "list":
             api.list_datasets()
+        elif args.action == "list_variables":
+            api.list_variables(args.dataset_id)
         elif args.action == "stop_visualization":
             api.stop_visualization()
         elif args.action == "stop":

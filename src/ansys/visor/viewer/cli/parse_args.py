@@ -105,6 +105,10 @@ def parse_args():
     remove_dataset_parser = instance_sub.add_parser("remove", help="Remove dataset from instance")
     remove_dataset_parser.add_argument("dataset_id", type=int, help="ID of datasets to remove")
 
+    # list variables API
+    list_variables_parser = instance_sub.add_parser("list_variables", help="List variables loaded in a dataset")
+    list_variables_parser.add_argument("dataset_id", type=int, help="ID of dataset to list variables for")
+
     # stop_visualization API
     instance_sub.add_parser("stop_visualization", help="Stop visualization")
 
