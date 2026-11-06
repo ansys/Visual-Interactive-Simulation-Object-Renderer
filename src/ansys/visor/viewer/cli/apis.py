@@ -9,7 +9,7 @@ import requests
 import uvicorn
 
 from ansys.visor.viewer.config import settings
-
+from ansys.visor.viewer.client.visor_client import VisorCliClient as InstanceAPI
 
 class ServerAPI:
     """Client for managing the Visor server process.
@@ -108,120 +108,6 @@ class ServerAPI:
                 print("  " + url)
 
 
-class InstanceAPI:
-    """Client for controlling a single Visor viewer instance.
-
-    Wraps the instance-level REST endpoints exposed by the Visor server,
-    allowing callers to start and stop visualizations, manage datasets,
-    and save or restore viewer state.
-
-    Parameters
-    ----------
-    host : str
-        Hostname or IP address of the Visor server.
-    port : int or str
-        Port number of the Visor server.
-    """
-    def __init__(self, host, port):
-        binding_host = settings.binding_host or host
-        scheme = settings.url_scheme
-        self.base = f"{scheme}://{binding_host}:{port}"
-
-    def start(self, file_path, metadata_path, timeout):
-        """Start a visualization for the given file.
-
-        Parameters
-        ----------
-        file_path : str
-            Path to the data file to visualize.
-        metadata_path : str
-            Path to the associated metadata file.
-        timeout : int or float
-            Maximum number of seconds to wait for the visualization to start.
-        """
-        data = {"file_path": file_path, "metadata": metadata_path, "timeout": timeout}
-        resp = requests.post(f"{self.base}/start", json=data)
-        print(resp)
-        print(resp.json())
-
-    def update(self, file_path, metadata_path):
-        """Update the current visualization with new data.
-
-        Parameters
-        ----------
-        file_path : str
-            Path to the updated data file.
-        metadata_path : str
-            Path to the updated metadata file.
-        """
-        data = {"file_path": file_path, "metadata": metadata_path}
-        resp = requests.post(f"{self.base}/update", json=data)
-        print(resp.json())
-
-    def add_dataset(self, file_path, metadata_path):
-        """Add an additional dataset to the current visualization.
-
-        Parameters
-        ----------
-        file_path : str
-            Path to the data file to add.
-        metadata_path : str
-            Path to the associated metadata file.
-        """
-        data = {"file_path": file_path, "metadata": metadata_path}
-        resp = requests.post(f"{self.base}/add_dataset", json=data)
-        print(resp.json())
-
-    def list_datasets(self):
-        """Print all datasets currently loaded in the viewer."""
-        resp = requests.get(f"{self.base}/list_datasets")
-        print(json.dumps(resp.json().get("datasets", {}), indent=4))
-
-    def remove_dataset(self, dataset_id: int):
-        """Remove a dataset from the current visualization.
-
-        Parameters
-        ----------
-        dataset_id : int
-            Numeric identifier of the dataset to remove.
-        """
-        data = {"dataset_id": dataset_id}
-        resp = requests.post(f"{self.base}/remove_dataset", json=data)
-        print(resp.json())
-
-    def stop_visualization(self):
-        """Stop the active visualization without shutting down the instance."""
-        resp = requests.post(f"{self.base}/stop_visualization")
-        print(resp.json())
-
-    def stop(self):
-        """Stop the viewer instance entirely."""
-        resp = requests.post(f"{self.base}/stop")
-        print(resp.json())
-
-    def save(self, state_dir):
-        """Save the current viewer state to disk.
-
-        Parameters
-        ----------
-        state_dir : str
-            Directory path where the state files will be written.
-        """
-        data = {"state_dir": state_dir}
-        resp = requests.post(f"{self.base}/save_state", json=data)
-        print(resp.json())
-
-    def load(self, state_dir):
-        """Load a previously saved viewer state from disk.
-
-        Parameters
-        ----------
-        state_dir : str
-            Directory path containing the state files to load.
-        """
-        data = {"state_dir": state_dir}
-        resp = requests.post(f"{self.base}/load_state", json=data)
-        print(resp.json())
 
 
 class LogsAPI:
