@@ -191,12 +191,18 @@ class _VisorClient:
         resp.raise_for_status()
         return resp
 
-    def update_variables(self, dataset_id: int, args: UpdateVariableBinaryProps) -> requests.Response:
-        """Send variable updates as one multipart request with float32 binary parts."""
-        metadata = {"variables": [self._metadata_of(var) for var in args.variables]}
+    def update_variables(self, dataset_id: int, variables: List[Dict[str, Any]]) -> requests.Response:
+        """Send variable updates as one multipart request with float32 binary parts.
+
+        Each entry holds ``name``, ``type``, ``num_components``, optional ``part_id`` and ``data``.
+        """
+        props = UpdateVariableBinaryProps(
+            variables=[self._info_of(var) for var in variables]
+        )
+        metadata = props.model_dump(mode="json")
         files = [
             ("data", (f"{i}.bin", self._payload_of(var), "application/octet-stream"))
-            for i, var in enumerate(args.variables)
+            for i, var in enumerate(variables)
         ]
         resp = requests.post(
             f"{self.base}/{dataset_id}/update_variables",
@@ -207,18 +213,18 @@ class _VisorClient:
         return resp
 
     @staticmethod
-    def _metadata_of(variable: UpdateVariableBinaryInfo) -> Dict[str, Any]:
-        """Returns the variable's fields other than data, with an enum type converted to its name."""
+    def _info_of(variable: Dict[str, Any]) -> UpdateVariableBinaryInfo:
+        """Returns the variable's metadata (everything but data), with an enum type converted to its name."""
         var_type = variable["type"]
-        return {
-            "name": variable["name"],
-            "type": var_type.name if isinstance(var_type, Enum) else str(var_type),
-            "num_components": int(variable["num_components"]),
-            "part_id": variable.get("part_id"),
-        }
+        return UpdateVariableBinaryInfo(
+            name=variable["name"],
+            type=var_type.name if isinstance(var_type, Enum) else str(var_type),
+            num_components=int(variable["num_components"]),
+            part_id=variable.get("part_id"),
+        )
 
     @staticmethod
-    def _payload_of(variable: UpdateVariableBinaryInfo) -> bytes:
+    def _payload_of(variable: Dict[str, Any]) -> bytes:
         """Encodes the variable's data as C-ordered little-endian float32 bytes."""
         return np.asarray(variable["data"], dtype="<f4").tobytes(order="C")
 
@@ -413,8 +419,7 @@ class VisorCliClient:
 
     def update_variables(self, dataset_id: int, variables: List[Dict[str, Any]]) -> None:
         """Send variable updates as one multipart request with float32 binary parts."""
-        data = {"variables": [UpdateVariableBinaryInfo(**var) for var in variables]}
-        resp = self._client.update_variables(dataset_id, UpdateVariableBinaryProps(**data))
+        resp = self._client.update_variables(dataset_id, variables)
         print(resp.json())
         print(f'Updated {len(variables)} variables for dataset {dataset_id}. Status code: {resp.status_code}')
 
