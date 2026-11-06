@@ -6,10 +6,10 @@ import sys
 import requests
 
 from ansys.visor.viewer.cli.apis import (
-    InstanceAPI,
     LogsAPI,
     ServerAPI,
 )
+from ansys.visor.viewer.client.visor_client import VisorCliClient
 from ansys.visor.viewer.cli.parse_args import parse_args
 from ansys.visor.viewer.config import settings
 
@@ -133,10 +133,12 @@ def main():
 
     # Execute the appropriate API action based on the group and action
     if args.group == "server":
-        api = ServerAPI(args.api_host, args.api_port)
         if args.action == "start":
+            api = ServerAPI(args.api_host, args.api_port)
             api.start()
-        elif args.action == "health":
+            return
+        api = VisorCliClient(args.api_host, args.api_port)
+        if args.action == "health":
             api.health()
         elif args.action == "info":
             api.info()
@@ -154,7 +156,7 @@ def main():
         elif args.action == "list":
             api.list()
     elif args.group == "instance":
-        api = InstanceAPI(args.api_host, args.api_port)
+        api = VisorCliClient(args.api_host, args.api_port)
         if args.action == "start":
             api.start(args.file_path, args.metadata_path, args.timeout)
         elif args.action == "update":
