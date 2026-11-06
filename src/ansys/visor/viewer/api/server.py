@@ -23,7 +23,6 @@ from ansys.visor.viewer.api.models import (
     StartProps,
     UpdateProps,
     UpdateVariableBinaryProps,
-    UpdateVariableProps,
 )
 from ansys.visor.viewer.api.visor_cache import VisorCache
 from ansys.visor.viewer.config import settings
@@ -158,7 +157,6 @@ class VisorAPI:
         self.app.get("/list_datasets")(self.list_datasets)
         self.app.get("/{dataset_id}/list_variables")(self.list_variables)
         self.app.post("/{dataset_id}/update_variables")(self.update_variables)
-        self.app.post("/{dataset_id}/update_variables_binary")(self.update_variables_binary)
         self.app.post("/save_state")(self.save_state)
         self.app.post("/load_state")(self.load_state)
         self.app.get("/health")(self.health_live)
@@ -356,19 +354,7 @@ class VisorAPI:
         return {"parts": [part.to_dict() for part in variables]}
 
     @handle_exceptions
-    async def update_variables(self, dataset_id: int, variables: UpdateVariableProps):
-        """Update variables for a dataset, grouped by part."""
-        if self.visualizer is None:
-            msg = "No active Visor instance. Please initialize and start the server first."
-            logger.error(msg)
-            raise HTTPException(status_code=503, detail=msg)
-
-        # List datasets loaded in the visualizer instance
-        update_variables = [var.model_dump() for var in variables.variables]
-        return {"variables": self.visualizer.update_variables(dataset_id, update_variables)}
-
-    @handle_exceptions
-    async def update_variables_binary(
+    async def update_variables(
             self,
             dataset_id: int,
             metadata: str = Form(

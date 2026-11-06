@@ -476,21 +476,6 @@ async def test_list_variables_no_visualizer(api):
 
 
 @pytest.mark.asyncio
-async def test_update_variables_no_visualizer(api):
-    """Verify that updating variables requires an active visualizer."""
-
-    api.visualizer = None
-
-    props = MagicMock()
-    props.variables = []
-
-    with pytest.raises(server_mod.HTTPException) as exc:
-        await api.update_variables(1, props)
-
-    assert exc.value.status_code == 503
-
-
-@pytest.mark.asyncio
 async def test_save_state_no_visualizer(api):
     """Verify that saving state requires an active visualizer."""
 
@@ -535,25 +520,6 @@ async def test_list_variables_success(api):
     assert result == {"parts": [{"id": 1}]}
 
 
-@pytest.mark.asyncio
-async def test_update_variables_success(api):
-    """Verify that variables are serialized before being forwarded."""
-
-    var = MagicMock()
-    var.model_dump.return_value = {"x": 1}
-
-    props = MagicMock()
-    props.variables = [var]
-
-    api.visualizer = MagicMock()
-    api.visualizer.update_variables.return_value = {"ok": True}
-
-    result = await api.update_variables(5, props)
-
-    assert result == {"variables": {"ok": True}}
-    api.visualizer.update_variables.assert_called_once_with(5, [{"x": 1}])
-
-
 def _binary_part(payload: bytes) -> MagicMock:
     """Return an UploadFile double whose read() yields payload."""
     part = MagicMock()
@@ -579,23 +545,23 @@ _VELOCITY_BYTES = (
 
 
 @pytest.mark.asyncio
-async def test_update_variables_binary_no_visualizer(api):
-    """Verify that a binary variable update requires an active visualizer."""
+async def test_update_variables_no_visualizer(api):
+    """Verify that a variable update requires an active visualizer."""
     api.visualizer = None
 
     with pytest.raises(server_mod.HTTPException) as exc:
-        await api.update_variables_binary(1, _BINARY_METADATA, [])
+        await api.update_variables(1, _BINARY_METADATA, [])
 
     assert exc.value.status_code == 503
 
 
 @pytest.mark.asyncio
-async def test_update_variables_binary_forwards_batch_in_one_call(api):
+async def test_update_variables_forwards_batch_in_one_call(api):
     """Verify that every variable in the request reaches the visualizer in a single call."""
     api.visualizer = MagicMock()
     api.visualizer.update_variables.return_value = None
 
-    result = await api.update_variables_binary(
+    result = await api.update_variables(
         5, _BINARY_METADATA, [_binary_part(_TEMPERATURE_BYTES), _binary_part(_VELOCITY_BYTES)]
     )
 
@@ -610,11 +576,11 @@ async def test_update_variables_binary_forwards_batch_in_one_call(api):
 
 
 @pytest.mark.asyncio
-async def test_update_variables_binary_decodes_little_endian_float32(api):
+async def test_update_variables_decodes_little_endian_float32(api):
     """Verify that each part is decoded as little-endian float32, shaped and paired in order."""
     api.visualizer = MagicMock()
 
-    await api.update_variables_binary(
+    await api.update_variables(
         5, _BINARY_METADATA, [_binary_part(_TEMPERATURE_BYTES), _binary_part(_VELOCITY_BYTES)]
     )
 
@@ -624,24 +590,24 @@ async def test_update_variables_binary_decodes_little_endian_float32(api):
 
 
 @pytest.mark.asyncio
-async def test_update_variables_binary_part_count_mismatch_returns_422(api):
+async def test_update_variables_part_count_mismatch_returns_422(api):
     """Verify that a request with fewer binary parts than variables is rejected."""
     api.visualizer = MagicMock()
 
     with pytest.raises(server_mod.HTTPException) as exc:
-        await api.update_variables_binary(5, _BINARY_METADATA, [_binary_part(_TEMPERATURE_BYTES)])
+        await api.update_variables(5, _BINARY_METADATA, [_binary_part(_TEMPERATURE_BYTES)])
 
     assert exc.value.status_code == 422
     api.visualizer.update_variables.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_update_variables_binary_bad_payload_length_returns_422(api):
+async def test_update_variables_bad_payload_length_returns_422(api):
     """Verify that a payload not divisible into whole float32 tuples is rejected."""
     api.visualizer = MagicMock()
 
     with pytest.raises(server_mod.HTTPException) as exc:
-        await api.update_variables_binary(
+        await api.update_variables(
             5,
             _BINARY_METADATA,
             # velocity gets 8 bytes: two floats, not a whole 3-component tuple

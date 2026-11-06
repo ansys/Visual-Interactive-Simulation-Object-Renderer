@@ -83,14 +83,14 @@ async def test_update_endpoint_calls_update_with_file_path():
         mock_update.assert_called_once_with(test_file_path, test_metadata)
 
 @pytest.mark.anyio
-async def test_update_variables_binary_endpoint_parses_multipart():
+async def test_update_variables_endpoint_parses_multipart():
     """Test that a multipart request reaches update_variables with the decoded batch."""
     for route in app.routes:
-        if route.path == "/{dataset_id}/update_variables_binary":
+        if route.path == "/{dataset_id}/update_variables":
             visor_api_instance = route.endpoint.__self__
             break
     else:
-        raise RuntimeError("Could not find VisorAPI instance for /{dataset_id}/update_variables_binary route")
+        raise RuntimeError("Could not find VisorAPI instance for /{dataset_id}/update_variables route")
 
     metadata = (
         '{"variables": [{"name": "temperature", "type": "point", "num_components": 1}]}'
@@ -102,7 +102,7 @@ async def test_update_variables_binary_endpoint_parses_multipart():
     ) as mock_update_variables:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
             response = await ac.post(
-                "/7/update_variables_binary",
+                "/7/update_variables",
                 data={"metadata": metadata},
                 files=[("data", ("0.bin", payload, "application/octet-stream"))],
             )

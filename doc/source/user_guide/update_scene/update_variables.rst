@@ -151,6 +151,57 @@ Each entry in the update list uses this structure:
         "part_id": 1234567890,  # required for composite datasets; omit for non-composite
     }
 
+Over the HTTP API, ``data`` is not part of the JSON. It travels as a separate
+binary part, as described in the next section.
+
+
+HTTP request format
+-------------------
+
+The ``update_variables`` HTTP endpoint takes a ``multipart/form-data`` request
+with:
+
+- a ``metadata`` form field holding JSON of the form
+  ``{"variables": [{"name", "type", "num_components", "part_id"}, ...]}``,
+  where ``part_id`` is optional; and
+- one ``data`` file part per variable, in the same order as the ``metadata``
+  entries, containing the values as little-endian ``float32`` in C order
+  (``num_points * num_components`` values).
+
+All variables in one request are applied as a single scene update. A request
+whose part count does not match the metadata, or whose part length is not a
+whole number of ``float32`` tuples, is rejected with HTTP 422.
+
+This example updates a scalar and a vector variable in one request:
+
+.. code-block:: python
+
+    import json
+
+    import numpy as np
+    import requests
+
+    variables = [
+        {"type": "point", "name": "temperature", "num_components": 1},
+        {"type": "cell", "name": "velocity", "num_components": 3},
+    ]
+    values = [
+        np.array([300.0, 305.5, 310.2], dtype="<f4"),  # 3 points
+        np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]], dtype="<f4"),  # 2 cells
+    ]
+    requests.post(
+        f"http://localhost:53211/{dataset_id}/update_variables",
+        data={"metadata": json.dumps({"variables": variables})},
+        files=[
+            ("data", (f"{i}.bin", array.tobytes(), "application/octet-stream"))
+            for i, array in enumerate(values)
+        ],
+    )
+
+Every binary part uses the field name ``data``. The server matches the parts to
+the ``metadata`` entries by order. It ignores the filenames, so ``f"{i}.bin"``
+only labels each part.
+
 
 Target a specific part (composite datasets)
 --------------------------------------------
@@ -191,20 +242,27 @@ directly from the ``list_variables()`` response.
 
         .. code-block:: python
 
-            import requests, numpy as np
+            import json
 
-            payload = {
+            import numpy as np
+            import requests
+
+            metadata = {
                 "variables": [
                     {
                         "type": "point",
                         "name": "temperature",
                         "num_components": 1,
-                        "data": [0.0] * 962,
                         "part_id": 1234567890,
                     }
                 ]
             }
-            requests.post(f"http://localhost:53211/{dataset_id}/update_variables", json=payload)
+            values = np.zeros(962, dtype="<f4")
+            requests.post(
+                f"http://localhost:53211/{dataset_id}/update_variables",
+                data={"metadata": json.dumps(metadata)},
+                files=[("data", ("0.bin", values.tobytes(), "application/octet-stream"))],
+            )
 
 
 Broadcast update (composite datasets)
@@ -246,20 +304,27 @@ variable to a uniform value across all parts.
 
         .. code-block:: python
 
+            import json
+
+            import numpy as np
             import requests
 
-            payload = {
+            metadata = {
                 "variables": [
                     {
                         "type": "point",
                         "name": "temperature",
                         "num_components": 1,
-                        "data": [0.0] * 962,
                         # no "part_id" key: broadcast
                     }
                 ]
             }
-            requests.post(f"http://localhost:53211/{dataset_id}/update_variables", json=payload)
+            values = np.zeros(962, dtype="<f4")
+            requests.post(
+                f"http://localhost:53211/{dataset_id}/update_variables",
+                data={"metadata": json.dumps(metadata)},
+                files=[("data", ("0.bin", values.tobytes(), "application/octet-stream"))],
+            )
 
 .. warning::
 
@@ -305,16 +370,19 @@ For non-composite datasets, (``vtkPolyData``, ``vtkUnstructuredGrid``),
 
         .. code-block:: python
 
+            import json
+
+            import numpy as np
             import requests
 
-            payload = {
+            metadata = {
                 "variables": [
-                    {
-                        "type": "point",
-                        "name": "temperature",
-                        "num_components": 1,
-                        "data": [300.0, 305.5, 310.2],
-                    }
+                    {"type": "point", "name": "temperature", "num_components": 1},
                 ]
             }
-            requests.post(f"http://localhost:53211/{dataset_id}/update_variables", json=payload)
+            values = np.array([300.0, 305.5, 310.2], dtype="<f4")
+            requests.post(
+                f"http://localhost:53211/{dataset_id}/update_variables",
+                data={"metadata": json.dumps(metadata)},
+                files=[("data", ("0.bin", values.tobytes(), "application/octet-stream"))],
+            )

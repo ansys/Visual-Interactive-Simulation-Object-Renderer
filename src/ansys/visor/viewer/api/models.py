@@ -70,12 +70,11 @@ class RemoveDatasetProps(BaseModel):
     """Input for removing a dataset from the visualizer instance."""
     dataset_id: int = Field(..., description="ID of the dataset to remove", examples=[12345])
 
-class UpdateVariableInfo(BaseModel):
-    """Input for updating a variable in the visualizer instance."""
+class UpdateVariableBinaryInfo(BaseModel):
+    """Metadata for one variable whose values travel in a separate binary part."""
     name: str = Field(..., description="Name of the variable to update", examples=["temperature"])
     type: str = Field(..., description="Type of the variable (point/cell)", examples=["point"])
     num_components: int = Field(..., description="Number of components", examples=[1])
-    data: list[float] = Field(..., description="Data array for the variable", examples=[[0.0, 1.0, 2.0, 3.0]])
     part_id: int | None = Field(
         None,
         description=(
@@ -86,24 +85,6 @@ class UpdateVariableInfo(BaseModel):
             "exists and the data length matches — parts that do not satisfy both conditions are "
             "skipped with a warning. "
             "For single-block datasets this field is ignored."
-        ),
-        examples=[1234567890123456],
-    )
-
-class UpdateVariableProps(BaseModel):
-    """Input for updating a variable in the visualizer instance."""
-    variables: list[UpdateVariableInfo] = Field(..., description="List of variables to update")
-
-class UpdateVariableBinaryInfo(BaseModel):
-    """Metadata for one variable whose values travel in a separate binary part."""
-    name: str = Field(..., description="Name of the variable to update", examples=["temperature"])
-    type: str = Field(..., description="Type of the variable (point/cell)", examples=["point"])
-    num_components: int = Field(..., description="Number of components", examples=[1])
-    part_id: int | None = Field(
-        None,
-        description=(
-            "Part ID targeting a specific leaf block in a multiblock dataset; "
-            "same semantics as part_id on the JSON update_variables endpoint."
         ),
         examples=[1234567890123456],
     )
