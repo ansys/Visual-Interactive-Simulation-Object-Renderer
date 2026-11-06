@@ -719,6 +719,20 @@ def test_reset_camera_no_scene_graph_noop(pipeline_instance):
     pipeline_instance._renderer.reset_camera.assert_not_called()
 
 
+def test_pick_part_in_view_holds_lock(pipeline_instance):
+    """The renderer's part view pick runs with the scene lock held, and its node id returns."""
+    pipeline_instance._vtk_lock = LockSpy()
+    depths = []
+
+    def recording_pick_part_in_view(view, x, y):
+        depths.append(pipeline_instance._vtk_lock.depth)
+        return 7
+
+    pipeline_instance._renderer.pick_part_in_view = recording_pick_part_in_view
+    assert pipeline_instance.pick_part_in_view(MagicMock(name="view"), 31, 17) == 7
+    assert depths == [1]
+
+
 def test_pick_geometry_in_view_holds_lock(pipeline_instance):
     """The renderer's view pick runs with the scene lock held."""
     pipeline_instance._vtk_lock = LockSpy()

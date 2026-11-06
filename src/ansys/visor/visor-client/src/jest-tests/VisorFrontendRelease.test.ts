@@ -1,10 +1,11 @@
 import { VisorFrontend } from '../VisorFrontend';
 import type { IRenderer } from '../renderer/IRenderer';
+import type { CanvasClick } from '../rca/ServerCanvas';
 import type VisorVtkSceneNode from '../state/appstate/vtkInfo/VisorVtkSceneNode.tsx';
 import { deliveredScene } from './deliveredSceneFixture.ts';
 
 /**
- * `release()` removes the viewer-click listener the frontend registered on its
+ * `release()` removes the canvas-click listener the frontend registered on its
  * renderer.  The `VtkScene` behind a client renderer survives a rebuild, so a
  * replaced frontend that is never released keeps picking geometry on every
  * click.  A second release removes nothing further.
@@ -31,7 +32,7 @@ function makeSceneGraphNode() {
 function makeRendererDouble() {
     return {
         domElement: document.createElement('div'),
-        addViewerClickedListener: jest.fn(() => jest.fn()),
+        addCanvasClickListener: jest.fn(() => jest.fn()),
     };
 }
 
@@ -44,12 +45,12 @@ function makeFrontend() {
         deliveredScene(),
         jest.fn(async () => undefined)
     );
-    const remover = renderer.addViewerClickedListener.mock.results[0].value as jest.Mock;
+    const remover = renderer.addCanvasClickListener.mock.results[0].value as jest.Mock;
     return { frontend, remover };
 }
 
 describe('VisorFrontend.release', () => {
-    test('release removes the viewer-click listener the constructor registered', () => {
+    test('release removes the canvas-click listener the constructor registered', () => {
         const { frontend, remover } = makeFrontend();
 
         frontend.release();
@@ -72,7 +73,7 @@ describe('VisorFrontend geometry pick', () => {
         const error = new Error('x');
         const renderer = {
             domElement: document.createElement('div'),
-            addViewerClickedListener: jest.fn(() => jest.fn()),
+            addCanvasClickListener: jest.fn(() => jest.fn()),
             clearGeometryHighlight: jest.fn(),
             pickGeometryAsync: jest.fn(async () => {
                 throw error;
@@ -84,14 +85,14 @@ describe('VisorFrontend geometry pick', () => {
             deliveredScene(),
             jest.fn(async () => undefined)
         );
-        const geometryListener = (
-            renderer.addViewerClickedListener.mock.calls[0] as unknown[]
-        )[0] as (...args: unknown[]) => void;
+        const clickListener = (renderer.addCanvasClickListener.mock.calls[0] as unknown[])[0] as (
+            click: CanvasClick
+        ) => void;
         const consoleError = jest.spyOn(console, 'error').mockImplementation(() => {});
         try {
             frontend.setSelectionMode('vertex');
 
-            geometryListener(null, false, false, 0.5, 0.5);
+            clickListener({ normX: 0.5, normY: 0.5, ctrlKey: false, shiftKey: false });
             await new Promise((resolve) => setTimeout(resolve, 0));
 
             expect(consoleError).toHaveBeenCalledWith('[VISOR] geometry pick failed', error);
