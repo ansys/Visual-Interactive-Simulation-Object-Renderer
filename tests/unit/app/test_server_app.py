@@ -207,6 +207,7 @@ class _SizeRecordingRenderer:
 
     def __init__(self) -> None:
         self.sizes: list[tuple[int, int]] = []
+        self.render_window = MagicMock(name="render_window")
 
     def set_viewport_size(self, width: int, height: int) -> None:
         self.sizes.append((width, height))
