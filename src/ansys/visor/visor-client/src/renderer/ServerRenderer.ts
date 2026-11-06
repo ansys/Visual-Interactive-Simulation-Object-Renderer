@@ -14,6 +14,9 @@ import { SceneTriggerSends } from './SceneTriggerSends';
 /** The trame state key the server writes the camera record to. */
 export const SERVER_CAMERA_STATE_KEY = 'server_camera_state';
 
+/** The trame state key the server writes the cross-section plane record to. */
+export const SERVER_CROSS_SECTION_STATE_KEY = 'server_cross_section_state';
+
 /** The part of trame's state the renderer reads. */
 export type ServerStateSource = Readonly<{
     watch(keys: string[], fn: (...values: unknown[]) => void): () => void;
@@ -52,6 +55,12 @@ type CameraRecord = Readonly<{
     parallelProjection: boolean;
     viewAngle: number;
     parallelScale: number;
+}>;
+
+/** The cross-section plane the server publishes. */
+type CrossSectionRecord = Readonly<{
+    origin: readonly number[];
+    normal: readonly number[];
 }>;
 
 /** The seven camera fields the server publishes, cached as they arrive. */
@@ -141,7 +150,7 @@ class CameraRecordCache {
 
 /** IRenderer for server rendering: frames come from the canvas, writes go to the server, reads come from a cache. */
 export class ServerRenderer implements IRenderer {
-    /** Watch server_camera_state on state, show canvas, and send every mutation through triggerSender. */
+    /** Watch the camera and plane keys on state, show canvas, and send every mutation through triggerSender. */
     constructor(
         canvas: IServerCanvas,
         state: ServerStateSource,
@@ -153,6 +162,10 @@ export class ServerRenderer implements IRenderer {
         this.domElement = canvas.element;
         // `watch` also calls back at once with the key's current value.
         this.#unwatch = state.watch([SERVER_CAMERA_STATE_KEY], this.#onCameraState);
+        this.#unwatchCrossSection = state.watch(
+            [SERVER_CROSS_SECTION_STATE_KEY],
+            this.#onCrossSectionState
+        );
         this.#removeClickListener = canvas.addClickListener(this.#onCanvasClick);
         this.#removeResizeListener = canvas.addResizeListener(this.#onCanvasResize);
     }
@@ -161,6 +174,7 @@ export class ServerRenderer implements IRenderer {
     readonly #triggerSender: TrameTriggerSender;
     readonly #sends: SceneTriggerSends;
     readonly #unwatch: () => void;
+    readonly #unwatchCrossSection: () => void;
     readonly #removeClickListener: () => void;
     readonly #removeResizeListener: () => void;
     readonly #camera = new CameraRecordCache();
@@ -192,6 +206,48 @@ export class ServerRenderer implements IRenderer {
         this.#camera.setRecord(record);
         this.#fireCameraChanged();
     };
+
+    /** Take the server's plane record into the cache; nothing is sent from here. */
+    #onCrossSectionState = (value: unknown): void => {
+        let record: CrossSectionRecord | null;
+        try {
+            record = ServerRenderer.#parseCrossSection(value);
+        } catch (err) {
+            console.error('[VISOR] server_cross_section_state malformed', err);
+            return;
+        }
+        if (record == null) {
+            return;
+        }
+        this.#crossSectionOrigin = record.origin;
+        this.#crossSectionNormal = record.normal;
+    };
+
+    /** Read a server_cross_section_state value: the record, or null for None/absent; throws TypeError if malformed. */
+    static #parseCrossSection(value: unknown): CrossSectionRecord | null {
+        if (value == null) {
+            return null;
+        }
+        if (typeof value !== 'object') {
+            throw new TypeError(`cross-section record is not an object`);
+        }
+        const obj = value as Record<string, unknown>;
+        return {
+            origin: ServerRenderer.#planeVector(obj.origin, 'origin'),
+            normal: ServerRenderer.#planeVector(obj.normal, 'normal'),
+        };
+    }
+
+    static #planeVector(value: unknown, name: string): readonly number[] {
+        if (
+            !Array.isArray(value) ||
+            value.length !== 3 ||
+            !value.every((v) => typeof v === 'number')
+        ) {
+            throw new TypeError(`cross-section record ${name} is not 3 numbers`);
+        }
+        return [...value];
+    }
 
     /** Pick the part under a click on the last frame, then tell every viewer-clicked listener once. */
     #onCanvasClick = (click: CanvasClick): void => {
@@ -283,6 +339,7 @@ export class ServerRenderer implements IRenderer {
 
     dispose(): void {
         this.#unwatch();
+        this.#unwatchCrossSection();
         this.#removeClickListener();
         this.#removeResizeListener();
         this.#cameraChangedListeners.clear();
