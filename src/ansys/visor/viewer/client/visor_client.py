@@ -28,6 +28,8 @@ class _VisorClient:
     allowing callers to start and stop visualizations, manage datasets,
     and save or restore viewer state.
 
+    Private base class used by VisorCliClient; not intended for direct use by end users.
+
     Parameters
     ----------
     host : str
@@ -82,7 +84,6 @@ class _VisorClient:
             If the ``/initialize`` request or, when ``start`` is ``True``,
             the ``/start`` request returns an HTTP error status.
         """
-        print(args)
         resp = requests.post(f"{self.base}/initialize", json=args.model_dump(mode="json", exclude_none=True))
         resp.raise_for_status()
         return resp
