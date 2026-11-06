@@ -25,7 +25,7 @@ function App() {
               };
     const uiScaffoldUtil: RefObject<UiScaffoldUtil> = useRef(null!);
     const probe = useRenderingMode(visorArgs.host, visorArgs.port);
-    const client = useClientVtk(visorArgs, probe.mode === 'client');
+    const client = useClientVtk(visorArgs, probe.mode === 'client' ? probe.trame : null);
     const server = useServerVtk(probe.mode === 'server' ? probe.trame : null, visorArgs);
     const active = probe.mode === 'server' ? server : client;
     const { visorFrontend: visorState, schemaMismatchError } = active;

@@ -1,4 +1,6 @@
-import { Trame } from '@kitware/trame/src/trame.js';
+/**
+ * @typedef {import('@kitware/trame/src/trame.js').Trame} Trame
+ */
 
 /**
  * @typedef {string|number|boolean|null|Object|Record<string,TrameStateValue>} TrameStateValue
@@ -40,9 +42,8 @@ import { Trame } from '@kitware/trame/src/trame.js';
  */
 
 /**
- * @desc `TrameInterface` represents a connection to a Trame server.
- * This class is simply a wrapper around a `Trame` object with the
- * goal of simplifying communication with `Trame`.
+ * @desc `TrameInterface` wraps a connected `Trame` session with the goal of
+ * simplifying communication with `Trame`.  It opens and closes no connection.
  */
 export default class TrameInterface {
     static #allowConstruction = false;
@@ -67,19 +68,16 @@ export default class TrameInterface {
     }
 
     /**
-     * @param {string} webSocketUrl
+     * Wrap a connected trame session and register this wrapper's callbacks under the server's ref name; opens no
+     * connection.
+     * @param {Trame} trame
      * @param {string} refNameStateKey
      * @return {Promise<TrameInterface>}
      */
-    static async getInstanceAsync(webSocketUrl, refNameStateKey) {
+    static async getInstanceAsync(trame, refNameStateKey) {
         if (TrameInterface.#stringIsInvalid(refNameStateKey)) {
             throw new Error(`refNameStateKey must be a non-empty string`);
         }
-        const trame = new Trame();
-        await trame.connect({
-            application: 'trame',
-            sessionURL: webSocketUrl,
-        });
         const connection = trame.client.getConnection();
 
         /**@type{TrameInterface}*/

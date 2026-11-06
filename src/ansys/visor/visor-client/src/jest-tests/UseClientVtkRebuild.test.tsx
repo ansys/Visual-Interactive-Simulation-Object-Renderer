@@ -1,12 +1,13 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { useClientVtk } from '../hooks/useClientVtk';
 import type { VisorArgs } from '../hooks/useVisorArgs';
+import type { Trame } from '@kitware/trame/src/trame.js';
 
 /**
  * In client mode every server update rebuilds the frontend over the same wasm
  * scene.  A successful rebuild releases the replaced frontend and names the new
  * one on `window.__visorState`; a schema mismatch keeps the current frontend
- * and reports the error.
+ * and reports the error.  The scene connects over the session the hook is given.
  *
  * Expected values are hand-written literals.
  */
@@ -16,11 +17,17 @@ const mockScene = {
     payloads: [] as unknown[],
     fetches: 0,
     renderers: [] as { liveViewerClicks: Set<() => void> }[],
+    configs: [] as { trame?: unknown }[],
 };
 
 jest.mock('../wasm/RemoteVtkScene', () => ({
     __esModule: true,
-    default: { getInstanceAsync: async () => mockMakeWasmView() },
+    default: {
+        getInstanceAsync: async (config: { trame?: unknown }) => {
+            mockScene.configs.push(config);
+            return mockMakeWasmView();
+        },
+    },
 }));
 
 jest.mock('../renderer/WasmRenderer', () => ({
@@ -108,9 +115,12 @@ const ARGS = {
     basePath: '',
 } as VisorArgs;
 
+/** The probe's session; the scene connection is mocked, so it is only handed on. */
+const TRAME = {} as Trame;
+
 /** Mount the hook and wait for its first frontend. */
 async function mountBuiltAsync() {
-    const hook = renderHook(() => useClientVtk(ARGS, true));
+    const hook = renderHook(() => useClientVtk(ARGS, TRAME));
     await waitFor(() => expect(hook.result.current.visorFrontend).not.toBeNull());
     return hook;
 }
@@ -127,6 +137,7 @@ beforeEach(() => {
     mockScene.payloads = [];
     mockScene.fetches = 0;
     mockScene.renderers = [];
+    mockScene.configs = [];
 });
 
 afterEach(() => {
@@ -134,6 +145,13 @@ afterEach(() => {
 });
 
 describe('useClientVtk rebuild', () => {
+    test('the scene connects over the session the hook is given', async () => {
+        mockScene.payloads = [mockSceneDetailsPayload()];
+        await mountBuiltAsync();
+
+        expect(mockScene.configs).toHaveLength(1);
+        expect(mockScene.configs[0].trame).toBe(TRAME);
+    });
     test('a client rebuild releases the old frontend', async () => {
         mockScene.payloads = [mockSceneDetailsPayload(), mockSceneDetailsPayload()];
         await mountBuiltAsync();

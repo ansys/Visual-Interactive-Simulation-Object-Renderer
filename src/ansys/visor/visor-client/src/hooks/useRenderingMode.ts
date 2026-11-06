@@ -24,14 +24,14 @@ export function parseRenderingMode(value: unknown): RenderingMode {
     throw new UnknownRenderingModeError(value);
 }
 
-/** The probe's outcome: exactly one of mode and error is set once it settles; trame is set in server mode only. */
+/** The probe's outcome: exactly one of mode and error is set once it settles; trame is set together with mode. */
 export type RenderingModeProbe = Readonly<{
     mode: RenderingMode | null;
     trame: Trame | null;
     error: Error | null;
 }>;
 
-/** Connect once on the page's ws/wss scheme, read rendering_mode, and keep the session only in server mode. */
+/** Connect once on the page's ws/wss scheme, read rendering_mode, and keep the session for that mode's scene. */
 export function useRenderingMode(host: string, port: number): RenderingModeProbe {
     const [probe, setProbe] = useState<RenderingModeProbe>({
         mode: null,
@@ -55,13 +55,7 @@ export function useRenderingMode(host: string, port: number): RenderingModeProbe
                     return;
                 }
                 const mode = parseRenderingMode(trame.state?.get('rendering_mode'));
-                if (mode === 'client') {
-                    // The client-mode scene opens its own connection.
-                    trame.disconnect();
-                    setProbe({ mode, trame: null, error: null });
-                } else {
-                    setProbe({ mode, trame, error: null });
-                }
+                setProbe({ mode, trame, error: null });
             } catch (err) {
                 trame.disconnect();
                 if (!cancelled) {
