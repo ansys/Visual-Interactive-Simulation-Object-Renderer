@@ -9,6 +9,8 @@ import type {
 } from './IRenderer';
 import type { CanvasClick, IServerCanvas } from '../rca/ServerCanvas';
 import { ViewerClickDispatcher } from '../input/ViewerClickDispatcher';
+import { ViewportPixel } from '../input/ViewportPixel';
+import { GeometryPickReader } from './GeometryPickReader';
 import { SceneTriggerSends } from './SceneTriggerSends';
 
 /** The trame state key the server writes the camera record to. */
@@ -35,14 +37,6 @@ export class CrossSectionStateUnavailableError extends Error {
     constructor() {
         super(`The server has not delivered the cross-section plane yet`);
         this.name = `CrossSectionStateUnavailableError`;
-    }
-}
-
-/** Raised by the geometry-pick members: geometry picking is not available when the server renders. */
-export class GeometryPickingUnavailableError extends Error {
-    constructor() {
-        super(`Geometry picking is not available when the server renders`);
-        this.name = `GeometryPickingUnavailableError`;
     }
 }
 
@@ -257,8 +251,8 @@ export class ServerRenderer implements IRenderer {
             return;
         }
         // The frame is the render window as last drawn, in device pixels.
-        const x = ServerRenderer.#framePixel(click.normX, frameSize.width);
-        const y = ServerRenderer.#framePixel(click.normY, frameSize.height);
+        const x = ViewportPixel.of(click.normX, frameSize.width);
+        const y = ViewportPixel.of(click.normY, frameSize.height);
         this.#viewerClicks
             .dispatchAsync(click, async () =>
                 ServerRenderer.#parsePickResult(await this.#triggerSender('pick_part_at', { x, y }))
@@ -270,11 +264,6 @@ export class ServerRenderer implements IRenderer {
     #onCanvasResize = (): void => {
         this.#fireCameraChanged();
     };
-
-    /** The render-window pixel under a normalised coordinate on an axis of the given size, clamped to the window. */
-    static #framePixel(norm: number, size: number): number {
-        return Math.min(Math.max(Math.floor(norm * size), 0), size - 1);
-    }
 
     /** Read a pick_part_at result: the node id, or null for no part; throws TypeError otherwise. */
     static #parsePickResult(value: unknown): NodeId | null {
@@ -577,19 +566,30 @@ export class ServerRenderer implements IRenderer {
     }
 
     // ---- Picking ------------------------------------------------------------
+    /** Ask the server for the feature under a point of the last frame, in render-window pixels; rejects before the first frame. */
     async pickGeometryAsync(
-        _normX: number,
-        _normY: number,
-        _mode: GeometryPickMode
+        normX: number,
+        normY: number,
+        mode: GeometryPickMode
     ): Promise<PickGeometryResult> {
-        throw new GeometryPickingUnavailableError();
+        const frameSize = this.#canvas.frameSize;
+        if (frameSize == null) {
+            throw new Error('no frame drawn yet');
+        }
+        const x = ViewportPixel.of(normX, frameSize.width);
+        const y = ViewportPixel.of(normY, frameSize.height);
+        return GeometryPickReader.parse(
+            await this.#triggerSender('pick_geometry_at', { x, y, mode })
+        );
     }
 
-    /** Rejects rather than doing nothing, so a caller that skips the pick fails loudly. */
-    async setGeometryHighlightAsync(_result: PickGeometryResult): Promise<void> {
-        throw new GeometryPickingUnavailableError();
+    /** Ask the server to highlight the picked feature. */
+    async setGeometryHighlightAsync(result: PickGeometryResult): Promise<void> {
+        await this.#sends.sendGeometryHighlightAsync(result);
     }
 
-    /** There is never a highlight to clear. */
-    clearGeometryHighlight(): void {}
+    /** Ask the server to clear the highlight; the send is not awaited. */
+    clearGeometryHighlight(): void {
+        void this.#sends.sendGeometryHighlightAsync({ found: false });
+    }
 }

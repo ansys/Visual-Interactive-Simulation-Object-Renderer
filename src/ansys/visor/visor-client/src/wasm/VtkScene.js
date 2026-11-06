@@ -189,7 +189,7 @@ export default class VtkScene {
      * @param {number} normX - Normalized x [0..1] (kept for API compatibility)
      * @param {number} normY - Normalized y [0..1] bottom→top (VTK convention)
      * @param {string} mode  - 'vertex' | 'edge' | 'face'
-     * @return {Promise<{found:boolean, mode?:string, position?:number[], pointA?:number[], pointB?:number[], length?:number, area?:number, points?:number[][]}>}
+     * @return {Promise<{found:boolean, mode?:string, position?:number[], pointA?:number[], pointB?:number[], edgeLength?:number, area?:number, points?:number[][]}>}
      */
     pickGeometryAsync = async (normX, normY, mode) => {
         const displayPos = this.#lastPickDisplayPos;

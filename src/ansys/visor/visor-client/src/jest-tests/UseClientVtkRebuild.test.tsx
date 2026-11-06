@@ -86,6 +86,7 @@ function mockMakeRenderer() {
     mockScene.renderers.push(record);
     return {
         domElement: document.createElement('div'),
+        clearGeometryHighlight: () => {},
         addCameraSettledListener: () => () => {},
         addViewerClickedListener: () => {
             const remover = () => {
