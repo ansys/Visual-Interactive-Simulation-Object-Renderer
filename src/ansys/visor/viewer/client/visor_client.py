@@ -229,6 +229,11 @@ class VisorCliClient:
     Uses _VisorClient internally to send requests to the Visor server, but provides a simpler interface
     for CLI commands.
 
+    Differs from a user-facing API client in that:
+    * it expects arguments to be passed with no defaults, so that the CLI can handle defaults and validation.
+    * it prints the JSON responses to stdout instead of returning them, and
+    * it does not return the requests.Response objects
+
     Parameters
     ----------
     host : str
