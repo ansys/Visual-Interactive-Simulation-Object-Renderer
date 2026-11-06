@@ -31,6 +31,18 @@ import type { TrameTriggerSender } from '../renderer/IRenderer';
  * Also pinned: `resizeAsync` fits the orientation widget to the window as it
  * stands after the scene resize.
  *
+ * Also pinned: `resizeAsync` reports the window's device pixel ratio to
+ * `set_pixel_scale`, so the server draws the geometry highlight at the size
+ * the wasm canvas shows it.
+ *
+ * Also pinned: a geometry highlight and a clear each send
+ * `set_geometry_highlight` with the pick, so the server draws and drops it;
+ * the scene no longer draws one of its own.
+ *
+ * Also pinned: a geometry pick sends `pick_geometry_in_view` once, with the
+ * clicked pixel of the window in render-window pixels, the window's size and
+ * the camera record, so the server picks through the view the user sees.
+ *
  * Modelled on `WasmRendererPartTriggers.test.tsx`, which does the same for
  * the six per-part sends.
  */
@@ -127,8 +139,18 @@ async function makeRenderer(
     nodeIds: number[] = [NODE_ID]
 ) {
     const objects = makeFakeWasmObjects();
+    // The six camera reads besides the projection return distinctive
+    // hand-written literals, none a vtkCamera default, so a record carrying
+    // them can only have come from reading this camera.
     const camera = {
         GetParallelProjection: jest.fn(async () => parallelProjection),
+        GetParallelScale: jest.fn(async () => 7),
+        GetDistance: jest.fn(async () => 9),
+        GetPosition: jest.fn(async () => [1, 2, 3]),
+        GetFocalPoint: jest.fn(async () => [4, 5, 6]),
+        GetViewUp: jest.fn(async () => [0, 0, 1]),
+        GetClippingRange: jest.fn(async () => [0.5, 50]),
+        GetViewAngle: jest.fn(async () => 25),
         ParallelProjectionOn: jest.fn(async () => undefined),
         ParallelProjectionOff: jest.fn(async () => undefined),
     };
@@ -142,6 +164,7 @@ async function makeRenderer(
         renderWindow: {
             GetSize: jest.fn(async () => windowSize),
         },
+        getViewPortHeightAsync: jest.fn(async () => windowSize[1]),
         clearObserversAndEventListeners: jest.fn(),
         // The tracker itself is `#private` to VtkScene, so what the renderer
         // can reach is this one passthrough, and this is what the orientation
@@ -414,5 +437,103 @@ describe('WasmRenderer fits the orientation widget on resize', () => {
         expect(scene.resizeAsync).toHaveBeenCalledTimes(1);
         expect(orientationRepresentation.SetSize).toHaveBeenCalledTimes(1);
         expect(orientationRepresentation.SetSize).toHaveBeenCalledWith([105, 105]);
+    });
+});
+
+/** Let the sends that are not awaited run to completion. */
+async function settle() {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+describe('WasmRenderer reports its device pixel ratio on resize', () => {
+    let originalDevicePixelRatio: number;
+
+    beforeEach(() => {
+        originalDevicePixelRatio = window.devicePixelRatio;
+        Object.defineProperty(window, 'devicePixelRatio', { configurable: true, value: 2 });
+    });
+
+    afterEach(() => {
+        Object.defineProperty(window, 'devicePixelRatio', {
+            configurable: true,
+            value: originalDevicePixelRatio,
+        });
+    });
+
+    test("resizeAsync sends set_pixel_scale with the window's device pixel ratio", async () => {
+        const sender = makeSender();
+        const { renderer } = await makeRenderer(sender);
+
+        await renderer.resizeAsync();
+        await settle();
+
+        expect(sender.mock.calls).toStrictEqual([['set_pixel_scale', { scale: 2 }]]);
+    });
+});
+
+describe('WasmRenderer geometry highlight sends', () => {
+    test('a highlight then a clear each send set_geometry_highlight with the pick', async () => {
+        const sender = makeSender();
+        const { renderer } = await makeRenderer(sender);
+
+        await renderer.setGeometryHighlightAsync({
+            found: true,
+            mode: 'vertex',
+            position: [1, 2, 3],
+        });
+        renderer.clearGeometryHighlight();
+        await settle();
+
+        expect(sender.mock.calls).toStrictEqual([
+            [
+                'set_geometry_highlight',
+                { pick: { found: true, mode: 'vertex', position: [1, 2, 3] } },
+            ],
+            ['set_geometry_highlight', { pick: { found: false } }],
+        ]);
+    });
+});
+
+describe('WasmRenderer geometry pick', () => {
+    // (0.25, 0.25) on 600x400 is pixel (150, 100). A y flip would give 300,
+    // an x flip 450, and swapped axes (100, 150).
+    test('pickGeometryAsync sends one pick_geometry_in_view with the window pixel, its size and the camera record', async () => {
+        const sender = jest.fn(async () => ({ found: false })) as unknown as jest.Mock &
+            TrameTriggerSender;
+        const { renderer, scene } = await makeRenderer(sender);
+        scene.renderWindow.GetSize.mockResolvedValue([600, 400]);
+
+        const result = await renderer.pickGeometryAsync(0.25, 0.25, 'vertex');
+
+        expect(result).toStrictEqual({ found: false });
+        expect(sender.mock.calls).toStrictEqual([
+            [
+                'pick_geometry_in_view',
+                {
+                    x: 150,
+                    y: 100,
+                    width: 600,
+                    height: 400,
+                    mode: 'vertex',
+                    camera: {
+                        position: [1, 2, 3],
+                        focalPoint: [4, 5, 6],
+                        viewUp: [0, 0, 1],
+                        clippingRange: [0.5, 50],
+                        parallelProjection: false,
+                        viewAngle: 25,
+                        parallelScale: 7,
+                    },
+                },
+            ],
+        ]);
+    });
+
+    test('pickGeometryAsync with no trigger sender rejects', async () => {
+        const { renderer } = await makeRenderer(null);
+
+        await expect(renderer.pickGeometryAsync(0.25, 0.25, 'vertex')).rejects.toThrow(
+            'no trigger sender'
+        );
     });
 });

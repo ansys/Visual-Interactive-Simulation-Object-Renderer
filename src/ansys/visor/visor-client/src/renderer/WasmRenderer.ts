@@ -16,6 +16,9 @@ import { OrthographicWidget } from '../widgets/orthographicWidget.ts';
 import { EdgesWidget } from '../widgets/edgesWidget.ts';
 import { OrientationWidget } from '../widgets/orientationWidget.ts';
 import { SceneTriggerSends } from './SceneTriggerSends';
+import { ViewportPixel } from '../input/ViewportPixel';
+import { GeometryPickReader } from './GeometryPickReader';
+import { cameraRecordOf } from '../CameraSyncReporter';
 
 const SELECTION_TINT_RGB: Readonly<number[]> = [0 / 255, 62 / 255, 111 / 255];
 
@@ -32,6 +35,7 @@ export class WasmRenderer implements IRenderer {
         triggerSender: TrameTriggerSender | null
     ) {
         this.#vtkScene = vtkScene;
+        this.#triggerSender = triggerSender;
         this.#sends = new SceneTriggerSends(triggerSender);
 
         const wasmPlaneId = annotation.widgets.crossSectionPlaneId;
@@ -148,6 +152,7 @@ export class WasmRenderer implements IRenderer {
     }
 
     readonly #vtkScene: VtkScene;
+    readonly #triggerSender: TrameTriggerSender | null;
     readonly #sends: SceneTriggerSends;
     readonly #actorIdToNodeId = new Map<number, NodeId>();
     readonly #nodeIdToHandles = new Map<NodeId, WasmNodeHandles>();
@@ -165,6 +170,9 @@ export class WasmRenderer implements IRenderer {
     }
 
     async resizeAsync(): Promise<void> {
+        // Not awaited: the resize does not wait on a round trip, and the send
+        // logs and swallows its own rejection.
+        void this.#sends.sendPixelScaleAsync(window.devicePixelRatio);
         await this.#vtkScene.resizeAsync();
         await this.#orientationWidget.fitToWindowAsync();
         this.#vtkScene.render();
@@ -505,19 +513,32 @@ export class WasmRenderer implements IRenderer {
     }
 
     // ---- Picking ------------------------------------------------------------
+    /** Ask the server for the feature under a point of this window, seen through its camera, in render-window pixels; rejects with no trigger sender. */
     async pickGeometryAsync(
         normX: number,
         normY: number,
         mode: GeometryPickMode
     ): Promise<PickGeometryResult> {
-        return (await this.#vtkScene.pickGeometryAsync(normX, normY, mode)) as PickGeometryResult;
+        const send = this.#triggerSender;
+        if (send == null) {
+            throw new Error('no trigger sender');
+        }
+        const [width, height] = await this.#vtkScene.renderWindow.GetSize();
+        const x = ViewportPixel.of(normX, width);
+        const y = ViewportPixel.of(normY, height);
+        const camera = cameraRecordOf(await this.getCameraStateAsync());
+        return GeometryPickReader.parse(
+            await send('pick_geometry_in_view', { x, y, width, height, mode, camera })
+        );
     }
 
+    /** Ask the server to highlight the picked feature; a not-found result clears it. */
     async setGeometryHighlightAsync(result: PickGeometryResult): Promise<void> {
-        await this.#vtkScene.setGeometryHighlightAsync(result);
+        await this.#sends.sendGeometryHighlightAsync(result);
     }
 
+    /** Ask the server to clear the highlight; the send is not awaited. */
     clearGeometryHighlight(): void {
-        this.#vtkScene.clearGeometryHighlight();
+        void this.#sends.sendGeometryHighlightAsync({ found: false });
     }
 }
