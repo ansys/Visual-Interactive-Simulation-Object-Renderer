@@ -138,6 +138,12 @@ class _VisorClient:
         resp.raise_for_status()
         return resp
 
+    def list_variables(self, dataset_id: int) -> requests.Response:
+        """List all variables for a given dataset."""
+        resp = requests.get(f"{self.base}/{dataset_id}/list_variables")
+        resp.raise_for_status()
+        return resp
+
     def update_variables(self, dataset_id: int, args: UpdateVariableBinaryProps) -> requests.Response:
         """Send variable updates as one multipart request with float32 binary parts."""
         metadata = {"variables": [self._metadata_of(var) for var in args.variables]}
@@ -171,11 +177,10 @@ class _VisorClient:
 
 
 class VisorCliClient:
-    """Client for controlling a single Visor viewer instance.
+    """Client for controlling a single Visor viewer instance via the command-line interface.
 
-    Wraps the instance-level REST endpoints exposed by the Visor server,
-    allowing callers to start and stop visualizations, manage datasets,
-    and save or restore viewer state.
+    Uses _VisorClient internally to send requests to the Visor server, but provides a simpler interface
+    for CLI commands.
 
     Parameters
     ----------
@@ -283,6 +288,21 @@ class VisorCliClient:
         resp = self._client.load_state(LoadStateProps(**data))
         print(resp.json())
 
+    def list_variables(self, dataset_id: int) -> None:
+        """List all variables for a given dataset."""
+        resp = self._client.list_variables(dataset_id)
+        data = [self._variable_summary(part) for part in resp.json().get("parts", [])]
+        print(json.dumps(data, indent=4))
+
+    def _variable_summary(self, part: Dict[str, Any]) -> Dict[str, Any]:
+        """Return a summary of the variables in a part, excluding the actual data."""
+        return {
+            "part_id": part.get("part_id"),
+            "variables": [f"{var.get('name')}::{var.get('type')}::{var.get('num_components')}"
+                for var in part.get("variables", [])
+            ],
+        }
+
     def update_variables(self, dataset_id: int, variables: List[Dict[str, Any]]) -> None:
         """Send variable updates as one multipart request with float32 binary parts."""
         data = {"variables": [UpdateVariableBinaryInfo(**var) for var in variables]}
@@ -290,18 +310,3 @@ class VisorCliClient:
         print(resp.json())
         print(f'Updated {len(variables)} variables for dataset {dataset_id}. Status code: {resp.status_code}')
 
-    @staticmethod
-    def _metadata_of(variable: Dict[str, Any]) -> Dict[str, Any]:
-        """Returns the variable's fields other than data, with an enum type converted to its name."""
-        var_type = variable["type"]
-        return {
-            "name": variable["name"],
-            "type": var_type.name if isinstance(var_type, Enum) else str(var_type),
-            "num_components": int(variable["num_components"]),
-            "part_id": variable.get("part_id"),
-        }
-
-    @staticmethod
-    def _payload_of(variable: Dict[str, Any]) -> bytes:
-        """Encodes the variable's data as C-ordered little-endian float32 bytes."""
-        return np.asarray(variable["data"], dtype="<f4").tobytes(order="C")
