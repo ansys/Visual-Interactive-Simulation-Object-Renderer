@@ -1,6 +1,5 @@
 """API client for controlling a Visor server."""
 
-import json
 import os
 import shutil
 import time
@@ -9,7 +8,7 @@ import requests
 import uvicorn
 
 from ansys.visor.viewer.config import settings
-from ansys.visor.viewer.client.visor_client import VisorCliClient as InstanceAPI
+
 
 class ServerAPI:
     """Client for managing the Visor server process.
@@ -49,17 +48,6 @@ class ServerAPI:
         # Note: uvicorn.run() blocks until shutdown.
         uvicorn.run(app, host=self.host, port=int(self.port), log_level="info")
 
-    def health(self):
-        """Print the server health-check response."""
-        url = f"{self.base}/health"
-        resp = requests.get(url)
-        print(resp.json())
-
-    def info(self):
-        """Print general information about the running server."""
-        resp = requests.get(f"{self.base}/info")
-        print(resp.json())
-
     def initialize(self, host, port, rendering_mode, standalone, dark_mode, start=False):
         """Initialize the server with viewer configuration.
 
@@ -96,18 +84,6 @@ class ServerAPI:
             print(resp)
             print(resp.json())
             resp.raise_for_status()
-
-
-    def list(self):
-        """Print the URLs of all currently available viewer instances."""
-        resp = requests.get(f"{self.base}")
-        data = resp.json()
-        if 'urls' in data and data['urls']:
-            print("Available instances:")
-            for url in data['urls']:
-                print("  " + url)
-
-
 
 
 class LogsAPI:

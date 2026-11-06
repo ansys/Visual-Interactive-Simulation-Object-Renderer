@@ -17,7 +17,7 @@ import numpy as np
 import requests
 
 from ansys.visor.viewer.api.models import StartProps, UpdateProps, SaveStateProps, LoadStateProps, \
-    UpdateVariableBinaryProps, RemoveDatasetProps, UpdateVariableBinaryInfo
+    UpdateVariableBinaryProps, RemoveDatasetProps, UpdateVariableBinaryInfo, InitProps
 from ansys.visor.viewer.config import settings
 
 
@@ -39,6 +39,53 @@ class _VisorClient:
         binding_host = settings.binding_host or host
         scheme = settings.url_scheme
         self.base = f"{scheme}://{binding_host}:{port}"
+
+    def health(self) -> requests.Response:
+        """Check the server health."""
+        resp = requests.get(f"{self.base}/health")
+        resp.raise_for_status()
+        return resp
+
+    def info(self) -> requests.Response:
+        """Get general information about the running server."""
+        resp = requests.get(f"{self.base}/info")
+        resp.raise_for_status()
+        return resp
+
+    def list(self) -> requests.Response:
+        """Get the URLs of all currently available viewer instances."""
+        resp = requests.get(f"{self.base}")
+        resp.raise_for_status()
+        return resp
+
+    def initialize(self, args: InitProps) -> requests.Response:
+        """Initialize the server with viewer configuration.
+
+        Parameters
+        ----------
+        host : str
+            Hostname the viewer client should connect to.
+        port : int
+            Port the viewer client should connect to.  Pass ``0`` to let
+            the Visor server pick an unused port on its own host.
+        rendering_mode : RenderingMode
+            Rendering mode to use for the viewer instance.  Must be one of the
+            values defined in ``RenderingMode``.
+        standalone : bool
+            Whether to run in standalone mode (no external orchestrator).
+        dark_mode : bool
+            Whether to enable dark mode in the viewer UI.
+
+        Raises
+        ------
+        requests.HTTPError
+            If the ``/initialize`` request or, when ``start`` is ``True``,
+            the ``/start`` request returns an HTTP error status.
+        """
+        print(args)
+        resp = requests.post(f"{self.base}/initialize", json=args.model_dump(mode="json", exclude_none=True))
+        resp.raise_for_status()
+        return resp
 
     def start(self, args: StartProps) -> requests.Response:
         """Start a visualization for the given file.
@@ -191,6 +238,62 @@ class VisorCliClient:
     """
     def __init__(self, host, port):
         self._client = _VisorClient(host, port)
+
+    def health(self):
+        """Print the server health-check response."""
+        resp = self._client.health()
+        print(resp.json())
+
+    def info(self):
+        """Print general information about the running server."""
+        resp = self._client.info()
+        print(resp.json())
+
+    def list(self):
+        """Print the URLs of all currently available viewer instances."""
+        resp = self._client.list()
+        data = resp.json()
+        if 'urls' in data and data['urls']:
+            print("Available instances:")
+            for url in data['urls']:
+                print("  " + url)
+
+    def initialize(self, host, port, rendering_mode, standalone, dark_mode, start=False):
+        """Initialize the server with viewer configuration.
+
+        Parameters
+        ----------
+        host : str
+            Hostname the viewer client should connect to.
+        port : int
+            Port the viewer client should connect to.  Pass ``0`` to let
+            the Visor server pick an unused port on its own host.
+        rendering_mode : RenderingMode
+            Rendering mode to use for the viewer instance.  Must be one of the
+            values defined in ``RenderingMode``.
+        standalone : bool
+            Whether to run in standalone mode (no external orchestrator).
+        dark_mode : bool
+            Whether to enable dark mode in the viewer UI.
+        start : bool
+            Whether to start the viewer instance immediately after initialization.
+
+        Raises
+        ------
+        requests.HTTPError
+            If the ``/initialize`` request or, when ``start`` is ``True``,
+            the ``/start`` request returns an HTTP error status.
+        """
+        data = {"host": host, "port": port, "rendering_mode": rendering_mode, "standalone": standalone,
+                "dark_mode": dark_mode}
+        resp = self._client.initialize(InitProps(**data))
+        print(resp.json())
+        resp.raise_for_status()
+        if start:
+            resp = self._client.start(StartProps(file_path=None))
+            print(resp)
+            print(resp.json())
+            resp.raise_for_status()
 
     def start(self, file_path, metadata_path, timeout):
         """Start a visualization for the given file.
