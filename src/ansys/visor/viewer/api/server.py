@@ -6,7 +6,10 @@ from typing import Tuple
 from fastapi import (
     Body,
     FastAPI,
+    File,
+    Form,
     HTTPException,
+    UploadFile,
 )
 
 import ansys.visor.viewer.core.errors as errors
@@ -19,7 +22,7 @@ from ansys.visor.viewer.api.models import (
     SaveStateProps,
     StartProps,
     UpdateProps,
-    UpdateVariableProps,
+    UpdateVariableBinaryProps,
 )
 from ansys.visor.viewer.api.visor_cache import VisorCache
 from ansys.visor.viewer.config import settings
@@ -351,15 +354,36 @@ class VisorAPI:
         return {"parts": [part.to_dict() for part in variables]}
 
     @handle_exceptions
-    async def update_variables(self, dataset_id: int, variables: UpdateVariableProps):
-        """Update variables for a dataset, grouped by part."""
+    async def update_variables(
+            self,
+            dataset_id: int,
+            metadata: str = Form(
+                ...,
+                description=(
+                    "JSON matching UpdateVariableBinaryProps: one entry per binary part, "
+                    "in the same order as the data parts."
+                ),
+            ),
+            data: list[UploadFile] = File(
+                ...,
+                description="One part per variable: little-endian float32 values, C order.",
+            ),
+    ):
+        """Update variables for a dataset from float32 binary parts, applied as one batch."""
         if self.visualizer is None:
             msg = "No active Visor instance. Please initialize and start the server first."
             logger.error(msg)
             raise HTTPException(status_code=503, detail=msg)
 
-        # List datasets loaded in the visualizer instance
-        update_variables = [var.model_dump() for var in variables.variables]
+        try:
+            props = UpdateVariableBinaryProps.model_validate_json(metadata)
+            payloads = [await part.read() for part in data]
+            update_variables = props.to_update_dicts(payloads)
+        except ValueError as ve:
+            msg = f"Invalid binary variable update: {ve}"
+            logger.error(msg)
+            raise HTTPException(status_code=422, detail=msg)
+
         return {"variables": self.visualizer.update_variables(dataset_id, update_variables)}
 
     @handle_exceptions
