@@ -1,0 +1,6 @@
+save\_state
+===========
+
+.. currentmodule:: ansys.visor.viewer
+
+.. automethod:: Visor.save_state
