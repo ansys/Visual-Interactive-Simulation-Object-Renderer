@@ -3,9 +3,10 @@ import type { IServerCanvas } from '../rca/ServerCanvas';
 
 /**
  * The server-rendering renderer keeps a cache the server feeds: the camera
- * from the camera state key, the widget flags from its own writes.  A
- * no-argument toggle sends the value it settled on; the camera key is the
- * echo of the client's own camera writes, so receiving it sends nothing.
+ * and the cross-section plane from their state keys, the widget flags from
+ * its own writes.  A no-argument toggle sends the value it settled on; the
+ * camera key is the echo of the client's own camera writes, so receiving it
+ * sends nothing.
  *
  * Expected values are hand-written literals.
  */
@@ -23,28 +24,31 @@ function cameraRecord(position: number[], focalPoint: number[]) {
     };
 }
 
-/** A trame state holding one camera key value whose watchers can be told of a new one. */
+/** A trame state holding one value per key whose watchers can be told of a new one. */
 class FakeState {
-    constructor(value: unknown) {
-        this.#value = value;
+    constructor(values: Record<string, unknown>) {
+        this.#values = new Map(Object.entries(values));
     }
 
     watch(keys: string[], fn: (...values: unknown[]) => void): () => void {
-        this.#watchers.push(fn);
-        fn(this.#value);
+        const key = keys[0];
+        this.#watchers.push({ key, fn });
+        fn(this.#values.get(key));
         return () => {};
     }
 
-    /** Write the camera key and notify its watchers, as a server push does. */
-    push(value: unknown): void {
-        this.#value = value;
-        for (const fn of this.#watchers) {
-            fn(value);
+    /** Write one key and notify that key's watchers, as a server push does. */
+    push(key: string, value: unknown): void {
+        this.#values.set(key, value);
+        for (const watcher of this.#watchers) {
+            if (watcher.key === key) {
+                watcher.fn(value);
+            }
         }
     }
 
-    #value: unknown;
-    readonly #watchers: ((...values: unknown[]) => void)[] = [];
+    readonly #values: Map<string, unknown>;
+    readonly #watchers: { key: string; fn: (...values: unknown[]) => void }[] = [];
 }
 
 function stubCanvas(): IServerCanvas {
@@ -57,7 +61,7 @@ function stubCanvas(): IServerCanvas {
     };
 }
 
-function makeRenderer(initial: unknown) {
+function makeRenderer(initial: Record<string, unknown>) {
     const state = new FakeState(initial);
     const sender = jest.fn(async (_name: string, _payload: unknown) => undefined);
     const renderer = new ServerRenderer(stubCanvas(), state as ServerStateSource, sender);
@@ -66,7 +70,7 @@ function makeRenderer(initial: unknown) {
 
 describe('ServerRenderer toggles', () => {
     test('a no-argument bounding-box toggle sends the value it settled on', async () => {
-        const { renderer, sender } = makeRenderer(undefined);
+        const { renderer, sender } = makeRenderer({});
 
         await renderer.setBoundingBoxVisibilityAsync();
 
@@ -76,7 +80,7 @@ describe('ServerRenderer toggles', () => {
     });
 
     test('a no-argument bounding-box toggle flips the cached flag', async () => {
-        const { renderer } = makeRenderer(undefined);
+        const { renderer } = makeRenderer({});
 
         await renderer.setBoundingBoxVisibilityAsync();
 
@@ -86,9 +90,11 @@ describe('ServerRenderer toggles', () => {
 
 describe('ServerRenderer camera cache', () => {
     test('a camera record replaces the cached camera', async () => {
-        const { renderer, state } = makeRenderer(cameraRecord([0, 0, 9], [0, 0, 0]));
+        const { renderer, state } = makeRenderer({
+            server_camera_state: cameraRecord([0, 0, 9], [0, 0, 0]),
+        });
 
-        state.push(cameraRecord([1, 2, 3], [4, 6, 3]));
+        state.push('server_camera_state', cameraRecord([1, 2, 3], [4, 6, 3]));
 
         const camera = await renderer.getCameraStateAsync();
         expect(camera.position).toEqual([1, 2, 3]);
@@ -96,28 +102,54 @@ describe('ServerRenderer camera cache', () => {
     });
 
     test('a camera record sends nothing', async () => {
-        const { state, sender } = makeRenderer(cameraRecord([0, 0, 9], [0, 0, 0]));
+        const { state, sender } = makeRenderer({
+            server_camera_state: cameraRecord([0, 0, 9], [0, 0, 0]),
+        });
 
-        state.push(cameraRecord([1, 2, 3], [4, 6, 3]));
+        state.push('server_camera_state', cameraRecord([1, 2, 3], [4, 6, 3]));
 
         expect(sender).not.toHaveBeenCalled();
     });
 
     test('None after a record leaves the cached camera', async () => {
-        const { renderer, state } = makeRenderer(cameraRecord([1, 2, 3], [4, 6, 3]));
+        const { renderer, state } = makeRenderer({
+            server_camera_state: cameraRecord([1, 2, 3], [4, 6, 3]),
+        });
 
-        state.push(null);
+        state.push('server_camera_state', null);
 
         const camera = await renderer.getCameraStateAsync();
         expect(camera.position).toEqual([1, 2, 3]);
     });
 
     test('the camera read rejects before any record arrives', async () => {
-        const { renderer } = makeRenderer(undefined);
+        const { renderer } = makeRenderer({});
 
         await expect(renderer.getCameraStateAsync()).rejects.toMatchObject({
             name: 'CameraStateUnavailableError',
         });
+    });
+});
+
+describe('ServerRenderer cross-section cache', () => {
+    test('a cross-section record fills the plane reads', async () => {
+        const { renderer, state } = makeRenderer({});
+
+        state.push('server_cross_section_state', { origin: [1, 2, 3], normal: [0, 0, 1] });
+
+        expect(await renderer.getCrossSectionOriginAsync()).toEqual([1, 2, 3]);
+        expect(await renderer.getCrossSectionNormalAsync()).toEqual([0, 0, 1]);
+    });
+
+    test('None after a cross-section record leaves the cached plane', async () => {
+        const { renderer, state } = makeRenderer({
+            server_cross_section_state: { origin: [1, 2, 3], normal: [0, 0, 1] },
+        });
+
+        state.push('server_cross_section_state', null);
+
+        expect(await renderer.getCrossSectionOriginAsync()).toEqual([1, 2, 3]);
+        expect(await renderer.getCrossSectionNormalAsync()).toEqual([0, 0, 1]);
     });
 });
 
@@ -150,7 +182,7 @@ describe('ServerRenderer canvas resize', () => {
                 return () => {};
             },
         };
-        const state = new FakeState(cameraRecord([0, 0, 9], [0, 0, 0]));
+        const state = new FakeState({ server_camera_state: cameraRecord([0, 0, 9], [0, 0, 0]) });
         const renderer = new ServerRenderer(canvas, state as ServerStateSource, jest.fn());
         const listener = jest.fn();
         renderer.addCameraChangedListener(listener);

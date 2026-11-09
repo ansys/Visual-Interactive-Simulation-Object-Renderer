@@ -2,7 +2,7 @@
 Unit tests for ServerRenderer.
 
 Every test builds a real ServerRenderer (an off-screen VTK window that is
-never rendered) with a recording frame requester and a recording camera
+never rendered) with a recording frame requester and a recording record
 publisher.  Expected values are hand-written literals.
 """
 
@@ -33,14 +33,18 @@ class _RecordingFrameRequester:
         self.count += 1
 
 
-class _RecordingCameraPublisher:
-    """Records every published camera record."""
+class _RecordingViewRecordPublisher:
+    """Records every published camera and plane record."""
 
     def __init__(self) -> None:
         self.cameras: list = []
+        self.planes: list = []
 
     def publish_camera(self, camera_state) -> None:
         self.cameras.append(camera_state)
+
+    def publish_cross_section(self, cross_section_state) -> None:
+        self.planes.append(cross_section_state)
 
 
 def _unit_sphere():
@@ -62,8 +66,8 @@ def requester() -> _RecordingFrameRequester:
 
 
 @pytest.fixture
-def publisher() -> _RecordingCameraPublisher:
-    return _RecordingCameraPublisher()
+def publisher() -> _RecordingViewRecordPublisher:
+    return _RecordingViewRecordPublisher()
 
 
 @pytest.fixture
@@ -160,6 +164,25 @@ def test_sync_camera_publishes_record(renderer, publisher):
         "viewAngle": 25.0,
         "parallelScale": 3.0,
     }
+
+
+# ---------------------------------------------------------------------------
+# Plane writes publish the plane record
+# ---------------------------------------------------------------------------
+
+
+def test_sync_cross_section_plane_publishes_record(renderer, publisher):
+    renderer.sync_cross_section_plane([0.0, 0.0, 0.5], [0.0, 1.0, 0.0])
+    assert publisher.planes[-1].model_dump(by_alias=True) == {
+        "origin": [0.0, 0.0, 0.5],
+        "normal": [0.0, 1.0, 0.0],
+    }
+
+
+def test_update_bounds_publishes_seeded_plane(requester, publisher):
+    r = ServerRenderer((0.2, 0.4, 0.6), requester, publisher)
+    r.update_bounds(PART_BOUNDS)
+    assert publisher.planes[-1] is r.get_cross_section_plane()
 
 
 # ---------------------------------------------------------------------------
