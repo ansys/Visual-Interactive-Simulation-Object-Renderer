@@ -419,8 +419,19 @@ class VisorCliClient:
         }
 
     def update_variables(self, dataset_id: int, variables: List[Dict[str, Any]]) -> None:
-        """Send variable updates as one multipart request with float32 binary parts."""
+        """Send variable updates as one multipart request with float32 binary parts.
+        Note this is not actually exposed via the CLI, but is provided for completeness.
+        """
         resp = self._client.update_variables(dataset_id, variables)
         print(resp.json())
         print(f'Updated {len(variables)} variables for dataset {dataset_id}. Status code: {resp.status_code}')
 
+
+class VisorSafClient:
+    """Client for controlling a single Visor viewer instance via the command-line interface.
+
+    This class could be used to implement the VisorSafClient in the VISOR repo, using
+    the shared _VisorClient to send requests to the Visor server.
+
+    Stub as this is shown as an illustration only.
+    """
