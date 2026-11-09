@@ -137,7 +137,7 @@ export class VisorFrontend {
         this.getSelectionMode = () => selectionMode;
         this.setSelectionMode = (mode: SelectionMode) => {
             selectionMode = mode;
-            // Clear the client-side highlight overlay whenever mode changes
+            // Clear the geometry highlight whenever mode changes
             renderer.clearGeometryHighlight();
             for (const cb of selectionModeChangedListeners.values()) cb(mode);
         };
@@ -155,7 +155,7 @@ export class VisorFrontend {
             const mode = selectionMode;
             if (mode === 'part') return null;
             const result = await renderer.pickGeometryAsync(normX, normY, mode);
-            // Draw client-side highlight overlay (no server sync needed)
+            // Highlight the picked feature; the renderer decides where it is drawn
             renderer.setGeometryHighlightAsync(result).catch(() => {});
             for (const cb of geometryPickedListeners.values()) cb(result);
             return result;

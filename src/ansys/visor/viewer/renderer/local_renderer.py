@@ -23,17 +23,22 @@ from ansys.visor.viewer.config import settings
 from ansys.visor.viewer.core.perf_timer import PerfTimer
 from ansys.visor.viewer.core.visor_colors import VisorColors
 from ansys.visor.viewer.core.visor_logging import VisorDefaultLogger
+from ansys.visor.viewer.models.runtime.picking.geometry_pick import NoGeometryPick
 from ansys.visor.viewer.models.runtime.vtk.renderer_annotation import (
     WasmNodeHandles,
     WasmRendererAnnotation,
     WasmWidgetHandles,
 )
 from ansys.visor.viewer.renderer.pipeline_renderer import VtkPipelineRenderer
+from ansys.visor.viewer.vtk.picking.cell_feature_finder import CellFeatureFinder
 from ansys.visor.viewer.vtk.widgets.visor_bounding_box import VisorBoundingBox
 from ansys.visor.viewer.vtk.widgets.visor_cross_section import VisorCrossSectionWidget
 from ansys.visor.viewer.vtk.widgets.visor_orientation import VisorOrientationWidget
 
 logger = VisorDefaultLogger(__name__)
+
+DATA_ONLY_UPDATE_OPTION: str = "dataOnly"
+"""``LocalView.update`` option the client reads to update its objects without rebuilding its frontend."""
 
 
 class VisorLocalRenderer(VtkPipelineRenderer):
@@ -190,6 +195,14 @@ class VisorLocalRenderer(VtkPipelineRenderer):
             self._object_manager.GetId(self._cross_section_widget.plane_representation)
         )
 
+    def _present_geometry_highlight(self) -> None:
+        """Push the whole render window as data only; see :meth:`push_without_rebuild`."""
+        self.push_without_rebuild()
+
+    def _initial_highlight_pixel_scale(self) -> float:
+        """1.0: the client draws its own overlay here, so the actor's sizes are not shown."""
+        return 1.0
+
     # ------------------------------------------------------------------
     # IRenderer: widget visibility
     #
@@ -239,17 +252,15 @@ class VisorLocalRenderer(VtkPipelineRenderer):
         dict
             Backend-neutral pick result. Always contains ``"found": bool``.
             When ``found`` is ``True``, contains ``"mode"`` and mode-specific
-            fields (``position`` / ``pointA``+``pointB``+``length`` /
+            fields (``position`` / ``pointA``+``pointB``+``edgeLength`` /
             ``points``+``area``).
         """
-        import math
-
         actor_wasm_id = int(actor_wasm_id)
         cell_id = int(cell_id)
-        pick_pos = [float(world_pos[0]), float(world_pos[1]), float(world_pos[2])]
+        pick_pos = (float(world_pos[0]), float(world_pos[1]), float(world_pos[2]))
 
         if actor_wasm_id < 0 or cell_id < 0:
-            return {"found": False}
+            return NoGeometryPick().model_dump(by_alias=True)
 
         # Locate the actor by iterating the renderer's actors and matching
         # WASM IDs (avoids depending on a GetObjectAtId reverse-lookup API).
@@ -264,79 +275,13 @@ class VisorLocalRenderer(VtkPipelineRenderer):
             a = actors.GetNextActor()
 
         if actor is None:
-            return {"found": False}
+            return NoGeometryPick().model_dump(by_alias=True)
 
-        dataset = actor.GetMapper().GetInputDataObject(0, 0)
-        if dataset is None or cell_id >= dataset.GetNumberOfCells():
-            return {"found": False}
-
-        cell = dataset.GetCell(cell_id)
-        if cell is None:
-            return {"found": False}
-
-        n_pts = cell.GetNumberOfPoints()
-        pts = cell.GetPoints()
-
-        if mode == "vertex":
-            best_i = 0
-            min_dist2 = float("inf")
-            for i in range(n_pts):
-                p = pts.GetPoint(i)
-                d2 = sum((pick_pos[k] - p[k]) ** 2 for k in range(3))
-                if d2 < min_dist2:
-                    min_dist2 = d2
-                    best_i = i
-            position = list(pts.GetPoint(best_i))
-            return {"found": True, "mode": "vertex", "position": position}
-
-        if mode == "edge":
-            if n_pts < 2:
-                return {"found": False}
-            best_i, best_j = 0, 1
-            min_dist2 = float("inf")
-            for i in range(n_pts):
-                j = (i + 1) % n_pts
-                p0 = pts.GetPoint(i)
-                p1 = pts.GetPoint(j)
-                seg = [p1[k] - p0[k] for k in range(3)]
-                seg_len2 = sum(s * s for s in seg)
-                if seg_len2 > 0:
-                    t = sum((pick_pos[k] - p0[k]) * seg[k] for k in range(3)) / seg_len2
-                    t = max(0.0, min(1.0, t))
-                else:
-                    t = 0.0
-                closest = [p0[k] + t * seg[k] for k in range(3)]
-                d2 = sum((pick_pos[k] - closest[k]) ** 2 for k in range(3))
-                if d2 < min_dist2:
-                    min_dist2 = d2
-                    best_i, best_j = i, j
-            pt_a = list(pts.GetPoint(best_i))
-            pt_b = list(pts.GetPoint(best_j))
-            length = math.sqrt(sum((a - b) ** 2 for a, b in zip(pt_a, pt_b)))
-            return {
-                "found": True,
-                "mode": "edge",
-                "pointA": pt_a,
-                "pointB": pt_b,
-                "length": length,
-            }
-
-        if mode == "face":
-            p0 = pts.GetPoint(0)
-            cx, cy, cz = 0.0, 0.0, 0.0
-            for i in range(1, n_pts - 1):
-                a = pts.GetPoint(i)
-                b = pts.GetPoint(i + 1)
-                ax, ay, az = a[0] - p0[0], a[1] - p0[1], a[2] - p0[2]
-                bx, by, bz = b[0] - p0[0], b[1] - p0[1], b[2] - p0[2]
-                cx += ay * bz - az * by
-                cy += az * bx - ax * bz
-                cz += ax * by - ay * bx
-            area = 0.5 * math.sqrt(cx * cx + cy * cy + cz * cz)
-            points = [list(pts.GetPoint(i)) for i in range(n_pts)]
-            return {"found": True, "mode": "face", "area": area, "points": points}
-
-        return {"found": False}
+        finder = CellFeatureFinder.from_dataset(
+            actor.GetMapper().GetInputDataObject(0, 0), cell_id, pick_pos
+        )
+        pick = finder.find(mode) if finder is not None else NoGeometryPick()
+        return pick.model_dump(by_alias=True)
 
     # ------------------------------------------------------------------
     # IRenderer: render
@@ -362,6 +307,19 @@ class VisorLocalRenderer(VtkPipelineRenderer):
     def flush_wasm_state(self) -> None:
         """Push current VTK object state to the wasm client via ``LocalView.update()`` without re-rendering."""
         self._local_view.update()
+
+    def push_without_rebuild(self) -> None:
+        """Push the whole render window to the wasm client as data only, so its frontend is not rebuilt; renders nothing.
+
+        No object is named, so the window and everything it holds is sent,
+        including an actor that has just become visible.
+
+        The window is not rendered: this runs on the trigger thread, while the
+        window's GL context is current on the thread that rendered it first
+        (the API caller's), and a context is current on one thread at a time.
+        Only serialisation is needed: the wasm client draws the pushed state.
+        """
+        self._local_view.update(**{DATA_ONLY_UPDATE_OPTION: True})
 
     @property
     def frontend_ref_name(self) -> str:

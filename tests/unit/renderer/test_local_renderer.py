@@ -31,6 +31,7 @@ from vtkmodules.vtkRenderingCore import vtkCamera, vtkRenderWindowInteractor
 
 from ansys.visor.viewer.core.visor_enums import VisorVtkVariableType
 from ansys.visor.viewer.models.common.visor_camera_state import VisorCameraState
+from ansys.visor.viewer.models.runtime.picking.geometry_pick import NoGeometryPick, VertexPick
 from ansys.visor.viewer.renderer.base import IRenderer
 from ansys.visor.viewer.renderer.local_renderer import VisorLocalRenderer
 from ansys.visor.viewer.renderer.null_renderer import NullRenderer
@@ -131,7 +132,7 @@ class _CameraDouble:
 
     Getters return the literals above, so ``_read_pipeline_camera`` produces a
     valid VisorCameraState.  Setters append to ``calls`` so
-    ``_apply_to_pipeline_camera`` can be asserted on by value *and* by order.
+    ``_write_camera_fields`` can be asserted on by value *and* by order.
     """
 
     def __init__(self):
@@ -160,7 +161,7 @@ class _CameraDouble:
     def GetParallelScale(self): # noqa: N802
         return CAMERA_DOUBLE_PARALLEL_SCALE
 
-    # -- setters, written by _apply_to_pipeline_camera --
+    # -- setters, written by _write_camera_fields --
 
     def SetPosition(self, value): # noqa: N802
         self.calls.append(("SetPosition", value))
@@ -285,6 +286,8 @@ def renderer():
     ):
         r = VisorLocalRenderer(mock_server)
 
+    # Init adds the geometry highlight's actor; tests count part actors only.
+    vtk_renderer.AddActor.reset_mock()
     return r
 
 
@@ -1202,6 +1205,32 @@ class TestRenderFlush:
         renderer._local_view.update.assert_called_once()
 
 
+class TestGeometryHighlightPush:
+    """The highlight reaches the client as one data-only push of the whole window."""
+
+    def test_set_pushes_once_with_data_only(self, renderer):
+        renderer.show_geometry_highlight(VertexPick(position=[1.0, 2.0, 3.0]))
+        renderer._local_view.update.assert_called_once_with(dataOnly=True)
+
+    def test_clear_of_a_visible_highlight_pushes_once_with_data_only(self, renderer):
+        renderer.show_geometry_highlight(VertexPick(position=[1.0, 2.0, 3.0]))
+        renderer._local_view.update.reset_mock()
+
+        renderer.show_geometry_highlight(NoGeometryPick())
+
+        renderer._local_view.update.assert_called_once_with(dataOnly=True)
+
+    def test_set_does_not_render_the_window(self, renderer):
+        """The push runs on the trigger thread, which does not own the window's GL context."""
+        renderer.show_geometry_highlight(VertexPick(position=[1.0, 2.0, 3.0]))
+        renderer._render_window.Render.assert_not_called()
+        renderer._local_view.update.assert_called_once_with(dataOnly=True)
+
+    def test_clear_of_a_hidden_highlight_pushes_nothing(self, renderer):
+        renderer.show_geometry_highlight(NoGeometryPick())
+        renderer._local_view.update.assert_not_called()
+
+
 
 class TestPickGeometry:
 
@@ -1229,7 +1258,7 @@ class TestPickGeometry:
         assert res["mode"] == "edge"
         assert tuple(res["pointA"]) == (2.0, 0.0, 0.0)
         assert tuple(res["pointB"]) == (2.0, 2.0, 0.0)
-        assert pytest.approx(res["length"]) == 2.0
+        assert pytest.approx(res["edgeLength"]) == 2.0
 
     def test_pick_face_returns_area_and_all_points(self, renderer):
         """Face mode returns the polygon area and every cell point."""

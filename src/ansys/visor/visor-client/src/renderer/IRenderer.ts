@@ -66,7 +66,7 @@ export type PickGeometryResult =
           mode: 'edge';
           pointA: readonly number[];
           pointB: readonly number[];
-          length: number;
+          edgeLength: number;
       }
     | { found: true; mode: 'face'; area: number; points: ReadonlyArray<readonly number[]> };
 
@@ -239,8 +239,8 @@ export interface IRenderer {
         normY: number,
         mode: GeometryPickMode
     ): Promise<PickGeometryResult>;
-    /** Draw the overlay for the last pick (vertex dot, edge line, face poly). */
+    /** Highlight the picked feature (vertex dot, edge line, face polygon); a not-found result clears it. */
     setGeometryHighlightAsync(result: PickGeometryResult): Promise<void>;
-    /** Remove the overlay. */
+    /** Remove the geometry highlight. */
     clearGeometryHighlight(): void;
 }

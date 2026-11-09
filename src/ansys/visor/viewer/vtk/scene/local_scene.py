@@ -4,8 +4,10 @@ from ansys.visor.viewer.core.visor_logging import VisorDefaultLogger
 from ansys.visor.viewer.vtk.scene.base import VisorSceneBase
 
 if TYPE_CHECKING:
+    from ansys.visor.viewer.models.runtime.picking.geometry_pick import GeometryPick
     from ansys.visor.viewer.models.runtime.scene.runtime_app_state import RuntimeAppState
     from ansys.visor.viewer.renderer.local_renderer import VisorLocalRenderer
+    from ansys.visor.viewer.vtk.picking.part_cell_hit import PickView
 
 logger = VisorDefaultLogger(__name__)
 
@@ -75,6 +77,11 @@ class VisorLocalScene(VisorSceneBase):
         return self._renderer.pick_geometry(
             actor_wasm_id, cell_id, mode, (world_x, world_y, world_z)
         )
+
+    def pick_geometry_in_view(self, view: "PickView", x: int, y: int, mode: str) -> "GeometryPick":
+        """Find the geometry feature under a pixel of a client's view, under the scene lock."""
+        with self._vtk_lock:
+            return self._renderer.pick_geometry_in_view(view, x, y, mode)
 
     # -------------------------------------------------------------------------
     # Wasm-specific helpers (not part of VisorSceneBase)
