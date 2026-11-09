@@ -1,5 +1,5 @@
 [build-system]
-requires = ["poetry-core>=2.0.0,<3.0.0", "setuptools>=65.0"]
+requires = ["poetry-core>=2.0.0,<3.0.0", "setuptools>=84.1.0"]
 build-backend = "poetry.core.masonry.api"
 
 # The following lines were added to enforce the poetry version needed for the project.
@@ -84,7 +84,7 @@ url = "https://wheels.vtk.org"
 priority = "supplemental"
 
 [tool.poetry.group.dev.dependencies]
-pytest = "^8.3.3"
+pytest = "^9.0.3" # CVE-2025-71176
 pytest-cov = "^3.0.0"
 pytest-mock = "^3.14.0"
 pytest-trio = "^0.8.0"
