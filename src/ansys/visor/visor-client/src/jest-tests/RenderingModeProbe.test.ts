@@ -7,8 +7,8 @@ import {
 
 /**
  * The probe reads `rendering_mode` from one trame connection, keeps that
- * connection only when the server renders, and reports anything other than
- * the two wire values as a named error.
+ * connection in both modes for the mode's scene, and reports anything other
+ * than the two wire values as a named error.
  *
  * Expected values are hand-written literals.
  */
@@ -63,14 +63,14 @@ describe('parseRenderingMode', () => {
 });
 
 describe('useRenderingMode', () => {
-    test('client mode disconnects the probe and hands on no session', async () => {
+    test('client mode keeps the probe connection', async () => {
         mockProbe.renderingMode = 'client';
 
         const { result } = renderHook(() => useRenderingMode('localhost', 8080));
         await waitFor(() => expect(result.current.mode).toBe('client'));
 
-        expect(mockProbe.trame!.disconnect).toHaveBeenCalledTimes(1);
-        expect(result.current.trame).toBeNull();
+        expect(mockProbe.trame!.disconnect).not.toHaveBeenCalled();
+        expect(result.current.trame).toBe(mockProbe.trame);
     });
 
     test('server mode keeps the probe connection', async () => {
