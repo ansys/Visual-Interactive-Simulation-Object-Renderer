@@ -13,37 +13,18 @@ or plane of its own to read.
 
 from __future__ import annotations
 
-from typing import Protocol
-
 # Registers the OpenGL2 factory overrides, so vtkRenderWindow() is a
 # concrete off-screen-capable window rather than the abstract base.
 import vtkmodules.vtkRenderingOpenGL2  # noqa: F401
 from vtkmodules.vtkCommonCore import vtkObject
 from vtkmodules.vtkRenderingCore import vtkRenderWindow
 
-from ansys.visor.viewer.models.common.visor_camera_state import VisorCameraState
-from ansys.visor.viewer.models.common.visor_cross_section_state import VisorCrossSectionState
 from ansys.visor.viewer.renderer.pipeline_renderer import VtkPipelineRenderer
-
-INITIAL_WINDOW_SIZE: tuple[int, int] = (300, 300)
-"""Window size before the client reports its canvas; trame-rca's pre-resize image size."""
-
-
-class FrameRequester(Protocol):
-    """Where a ServerRenderer asks for a streamed frame."""
-
-    def request_frame(self) -> None:
-        """Ask for a streamed frame; callable from any thread."""
-
-
-class ViewRecordPublisher(Protocol):
-    """Where a ServerRenderer publishes its camera and cross-section plane records."""
-
-    def publish_camera(self, camera_state: VisorCameraState | None) -> None:
-        """Publish the camera record to clients, or None when there is none; callable from any thread."""
-
-    def publish_cross_section(self, cross_section_state: VisorCrossSectionState | None) -> None:
-        """Publish the plane record to clients, or None when there is none; callable from any thread."""
+from ansys.visor.viewer.renderer.streamed_protocols import (
+    INITIAL_WINDOW_SIZE,
+    FrameRequester,
+    ViewRecordPublisher,
+)
 
 
 class ServerRenderer(VtkPipelineRenderer):

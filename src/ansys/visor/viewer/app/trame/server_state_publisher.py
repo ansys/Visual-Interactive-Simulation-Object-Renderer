@@ -16,7 +16,7 @@ from trame_server.state import State
 from ansys.visor.viewer.app.trame.async_runner import AsyncRunner
 from ansys.visor.viewer.models.common.visor_camera_state import VisorCameraState
 from ansys.visor.viewer.models.common.visor_cross_section_state import VisorCrossSectionState
-from ansys.visor.viewer.renderer.server_renderer import ViewRecordPublisher
+from ansys.visor.viewer.renderer.streamed_protocols import ViewRecordPublisher
 
 SERVER_CAMERA_STATE_KEY: str = "server_camera_state"
 """State key carrying the server's camera record, as its camelCase fields, or None."""
