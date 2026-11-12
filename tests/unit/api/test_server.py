@@ -520,6 +520,49 @@ async def test_list_variables_success(api):
     assert result == {"parts": [{"id": 1}]}
 
 
+@pytest.mark.asyncio
+async def test_list_part_states_no_visualizer(api):
+    """Verify that listing part states requires an active visualizer."""
+    api.visualizer = None
+
+    with pytest.raises(server_mod.HTTPException) as exc:
+        await api.list_part_states(1)
+
+    assert exc.value.status_code == 503
+
+
+@pytest.mark.asyncio
+async def test_list_part_states_success(api):
+    """Verify that part state is returned with camelCase wire keys."""
+    from ansys.visor.viewer.models.runtime.dataset.runtime_dataset_state import (
+        RuntimeDatasetState,
+        RuntimePartProperties,
+    )
+
+    api.visualizer = MagicMock()
+    api.visualizer.list_part_states.return_value = RuntimeDatasetState(
+        id=7,
+        part_states={42: RuntimePartProperties.default_for(42)},
+    )
+
+    result = await api.list_part_states(7)
+
+    assert result["id"] == 7
+    assert 42 in result["partStates"]
+
+
+@pytest.mark.asyncio
+async def test_list_part_states_missing_dataset(api):
+    """Verify that an unknown dataset returns 404."""
+    api.visualizer = MagicMock()
+    api.visualizer.list_part_states.side_effect = ValueError("Dataset with id 99 not found.")
+
+    with pytest.raises(server_mod.HTTPException) as exc:
+        await api.list_part_states(99)
+
+    assert exc.value.status_code == 404
+
+
 def _binary_part(payload: bytes) -> MagicMock:
     """Return an UploadFile double whose read() yields payload."""
     part = MagicMock()

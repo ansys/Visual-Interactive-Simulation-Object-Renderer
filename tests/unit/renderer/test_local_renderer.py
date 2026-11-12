@@ -428,6 +428,41 @@ class TestNodeLifecycle:
         # Actor attached only once.
         renderer._vtk_renderer.AddActor.assert_called_once()
 
+    def test_mark_pipeline_modified_marks_vtk_objects(self, renderer):
+        """mark_pipeline_modified flags algorithm, mapper, and actor after in-place writes."""
+        mock_pipe = MagicMock(name="pipeline")
+        renderer._pipelines[12] = mock_pipe
+
+        renderer.mark_pipeline_modified(12)
+
+        mock_pipe.base_algorithm.Modified.assert_called_once()
+        mock_pipe.mapper.Modified.assert_called_once()
+        mock_pipe.actor.Modified.assert_called_once()
+
+    def test_mark_pipeline_modified_republishes_wasm_objects(self, renderer):
+        """mark_pipeline_modified re-serializes the algorithm and mapper into vtklocal."""
+        pipe = _real_pipeline()
+        renderer._pipelines[42] = pipe
+        algo_id = 8150010
+        renderer._object_manager.GetId.side_effect = lambda obj: (
+            algo_id if obj is pipe.base_algorithm
+            else MAPPER_WASM_ID if obj is pipe.mapper
+            else WRONG_OBJECT_WASM_ID
+        )
+        published: list[int] = []
+        renderer._object_manager.UpdateStateFromObject.side_effect = (
+            lambda object_id: published.append(object_id)
+        )
+
+        renderer.mark_pipeline_modified(42)
+
+        assert sorted(published) == sorted([algo_id, MAPPER_WASM_ID])
+
+    def test_mark_pipeline_modified_ignores_unknown_node_id(self, renderer):
+        """Unknown node ids are a logged no-op."""
+        renderer.mark_pipeline_modified(9999)
+        renderer._object_manager.UpdateStateFromObject.assert_not_called()
+
     # ------------------------------------------------------------------
     # deregister_node
     # ------------------------------------------------------------------

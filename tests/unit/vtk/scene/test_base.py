@@ -912,6 +912,24 @@ def test_update_variables_for_dataset_holds_the_lock(mocked_scene):
     assert mocked_scene._vtk_lock.enter_count == mocked_scene._vtk_lock.exit_count
 
 
+def test_update_variables_for_dataset_marks_part_leaves(records_scene):
+    """After metadata refresh, each part leaf is dirtied and its pipeline marked modified."""
+    registry = records_scene._dataset_registry
+    registry.datasets[DATASET_ID] = _make_part_dataset(DATASET_ID, [NODE_ID])
+    leaf = MagicMock()
+    leaf.id = NODE_ID
+    leaf.dataset = MagicMock()
+    dataset_node = records_scene._scene_graph.get_descendant_node.return_value
+    dataset_node.get_descendant_part_nodes.return_value = [leaf]
+    records_scene.render = MagicMock()
+
+    with patch.object(records_scene, "_rebuild_variable_records_from_registry"):
+        records_scene.update_variables_for_dataset(DATASET_ID, [])
+
+    leaf.dataset.Modified.assert_called_once()
+    records_scene._renderer.mark_pipeline_modified.assert_called_once_with(NODE_ID)
+
+
 def test_apply_state_holds_the_lock(mocked_scene):
     """apply_state() runs the renderer-specific step with the lock held."""
     observed = {}

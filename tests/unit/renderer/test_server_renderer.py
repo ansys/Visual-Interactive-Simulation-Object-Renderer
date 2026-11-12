@@ -141,6 +141,16 @@ def test_render_requests_a_frame(renderer, requester):
     assert requester.count == 1
 
 
+def test_mark_pipeline_modified_requests_frame(renderer, requester):
+    """In-place scalar updates must schedule a frame after marking the pipeline dirty."""
+    _register_part(renderer)
+    requester.count = 0
+
+    renderer.mark_pipeline_modified(PART_NODE_ID)
+
+    assert requester.count == 1
+
+
 def test_not_found_on_a_hidden_highlight_requests_no_frame(renderer, requester):
     renderer.show_geometry_highlight(NoGeometryPick())
     assert requester.count == 0
