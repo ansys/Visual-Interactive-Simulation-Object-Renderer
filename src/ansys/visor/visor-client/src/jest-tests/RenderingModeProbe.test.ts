@@ -7,8 +7,8 @@ import {
 
 /**
  * The probe reads `rendering_mode` from one trame connection, keeps that
- * connection in both modes for the mode's scene, and reports anything other
- * than the two wire values as a named error.
+ * connection in every mode for the mode's scene, and reports anything other
+ * than the wire values as a named error.
  *
  * Expected values are hand-written literals.
  */
@@ -45,6 +45,7 @@ describe('parseRenderingMode', () => {
     test('maps each wire value to its mode', () => {
         expect(parseRenderingMode('client')).toBe('client');
         expect(parseRenderingMode('server')).toBe('server');
+        expect(parseRenderingMode('paraview')).toBe('paraview');
     });
 
     test.each([['local'], [undefined], ['SERVER']])(

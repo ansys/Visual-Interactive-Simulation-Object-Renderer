@@ -3,7 +3,7 @@ import { Trame } from '@kitware/trame/src/trame.js';
 import { trameWebSocketUrl } from '../trameWebSocketUrl';
 
 /** The rendering_mode wire values. */
-export type RenderingMode = 'client' | 'server';
+export type RenderingMode = 'client' | 'server' | 'paraview';
 
 /** Raised when the server's rendering_mode is missing or not a known wire value. */
 export class UnknownRenderingModeError extends Error {
@@ -18,7 +18,7 @@ export class UnknownRenderingModeError extends Error {
 
 /** Map a rendering_mode state value to a mode; throws UnknownRenderingModeError for anything else. */
 export function parseRenderingMode(value: unknown): RenderingMode {
-    if (value === 'client' || value === 'server') {
+    if (value === 'client' || value === 'server' || value === 'paraview') {
         return value;
     }
     throw new UnknownRenderingModeError(value);
