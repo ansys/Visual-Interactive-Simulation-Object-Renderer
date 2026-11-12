@@ -1,5 +1,8 @@
 """Models for the Visor Viewer API."""
 
+from typing import Any
+
+import numpy as np
 from pydantic import BaseModel, Field, field_validator
 
 from ansys.visor.viewer.core.metadata import Metadata
@@ -67,12 +70,11 @@ class RemoveDatasetProps(BaseModel):
     """Input for removing a dataset from the visualizer instance."""
     dataset_id: int = Field(..., description="ID of the dataset to remove", examples=[12345])
 
-class UpdateVariableInfo(BaseModel):
-    """Input for updating a variable in the visualizer instance."""
+class UpdateVariableBinaryInfo(BaseModel):
+    """Metadata for one variable whose values travel in a separate binary part."""
     name: str = Field(..., description="Name of the variable to update", examples=["temperature"])
     type: str = Field(..., description="Type of the variable (point/cell)", examples=["point"])
     num_components: int = Field(..., description="Number of components", examples=[1])
-    data: list[float] = Field(..., description="Data array for the variable", examples=[[0.0, 1.0, 2.0, 3.0]])
     part_id: int | None = Field(
         None,
         description=(
@@ -87,9 +89,36 @@ class UpdateVariableInfo(BaseModel):
         examples=[1234567890123456],
     )
 
-class UpdateVariableProps(BaseModel):
-    """Input for updating a variable in the visualizer instance."""
-    variables: list[UpdateVariableInfo] = Field(..., description="List of variables to update")
+    def to_update_dict(self, payload: bytes) -> dict[str, Any]:
+        """Returns the update dict with payload decoded as little-endian float32, shaped (n, num_components)."""
+        bytes_per_tuple = 4 * self.num_components
+        if self.num_components <= 0 or len(payload) % bytes_per_tuple != 0:
+            raise ValueError(
+                f"Payload for variable '{self.name}' is {len(payload)} bytes, which is not a "
+                f"multiple of {bytes_per_tuple} (float32 x {self.num_components} components)."
+            )
+        data = np.frombuffer(payload, dtype="<f4").reshape(-1, self.num_components)
+        return {
+            "name": self.name,
+            "type": self.type,
+            "num_components": self.num_components,
+            "part_id": self.part_id,
+            "data": data,
+        }
+
+class UpdateVariableBinaryProps(BaseModel):
+    """Metadata for a batch of binary variable updates, in the order of the uploaded parts."""
+    variables: list[UpdateVariableBinaryInfo] = Field(
+        ..., description="Variable metadata, one entry per binary part, in part order"
+    )
+
+    def to_update_dicts(self, payloads: list[bytes]) -> list[dict[str, Any]]:
+        """Pairs each metadata entry with its payload by position; raises ValueError on count mismatch."""
+        if len(payloads) != len(self.variables):
+            raise ValueError(
+                f"Received {len(payloads)} binary parts for {len(self.variables)} variables."
+            )
+        return [info.to_update_dict(payload) for info, payload in zip(self.variables, payloads)]
 
 class SaveStateProps(BaseModel):
     """Input for saving the current state of the visualizer instance."""

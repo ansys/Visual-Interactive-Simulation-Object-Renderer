@@ -15,16 +15,20 @@ from trame_server.state import State
 
 from ansys.visor.viewer.app.trame.async_runner import AsyncRunner
 from ansys.visor.viewer.models.common.visor_camera_state import VisorCameraState
-from ansys.visor.viewer.renderer.server_renderer import CameraPublisher
+from ansys.visor.viewer.models.common.visor_cross_section_state import VisorCrossSectionState
+from ansys.visor.viewer.renderer.server_renderer import ViewRecordPublisher
 
 SERVER_CAMERA_STATE_KEY: str = "server_camera_state"
 """State key carrying the server's camera record, as its camelCase fields, or None."""
+
+SERVER_CROSS_SECTION_STATE_KEY: str = "server_cross_section_state"
+"""State key carrying the server's cross-section plane record, as ``origin`` and ``normal``, or None."""
 
 SCENE_VERSION_KEY: str = "scene_version"
 """State key counting scene changes; absent until the first change, then 1, 2, ..."""
 
 
-class ServerStatePublisher(CameraPublisher):
+class ServerStatePublisher(ViewRecordPublisher):
     """Writes server-originated state keys from any thread onto the trame event loop."""
 
     _async_runner: AsyncRunner
@@ -43,6 +47,15 @@ class ServerStatePublisher(CameraPublisher):
         """
         camera_record = None if camera_state is None else camera_state.model_dump(by_alias=True)
         self._async_runner.call_soon(lambda: self._write(SERVER_CAMERA_STATE_KEY, camera_record))
+
+    def publish_cross_section(self, cross_section_state: VisorCrossSectionState | None) -> None:
+        """Dump the record by alias on the calling thread, or None, then write server_cross_section_state on the loop thread."""
+        cross_section_record = (
+            None if cross_section_state is None else cross_section_state.model_dump(by_alias=True)
+        )
+        self._async_runner.call_soon(
+            lambda: self._write(SERVER_CROSS_SECTION_STATE_KEY, cross_section_record)
+        )
 
     def bump_scene_version(self) -> None:
         """Increment scene_version on the loop thread: read, add one, write and flush in one callback; callable from any thread.

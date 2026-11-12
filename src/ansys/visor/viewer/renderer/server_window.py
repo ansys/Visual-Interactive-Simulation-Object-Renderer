@@ -55,6 +55,7 @@ class VisorRcaWindow:
     _reschedule: Callable[[], None]
     _pending_size: tuple[int, int] | None
     _last_size: tuple[int, int]
+    _pixel_scale_source: Callable[[], float] | None
     _pending_events: list[dict]
     _last_frame: tuple[NDArray, int, int] | None
 
@@ -72,8 +73,21 @@ class VisorRcaWindow:
         self._reschedule = reschedule
         self._pending_size = None
         self._last_size = INITIAL_WINDOW_SIZE
+        self._pixel_scale_source = None
         self._pending_events = []
         self._last_frame = None
+
+    def bind_pixel_scale(self, source: Callable[[], float]) -> None:
+        """Bind, once, the read of the client's device pixels per CSS pixel; a second bind raises."""
+        if self._pixel_scale_source is not None:
+            raise RuntimeError("the pixel scale source is already bound")
+        self._pixel_scale_source = source
+
+    def _read_pixel_scale(self) -> float:
+        """The bound source's current value; raises when nothing is bound."""
+        if self._pixel_scale_source is None:
+            raise RuntimeError("the pixel scale is read before bind_pixel_scale")
+        return self._pixel_scale_source()
 
     @property
     def img_cols_rows(self) -> tuple[NDArray, int, int]:
@@ -105,6 +119,7 @@ class VisorRcaWindow:
         """Apply the last size, forward queued events in order, then record a gesture end once if any forwarded event ends one; caller holds the lock."""
         if self._pending_size is not None:
             self._renderer.set_viewport_size(*self._pending_size)
+            self._renderer.set_pixel_scale(self._read_pixel_scale())
             self._pending_size = None
         events, self._pending_events = self._pending_events, []
         for event in events:

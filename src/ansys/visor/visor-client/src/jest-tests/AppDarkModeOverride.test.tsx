@@ -26,7 +26,8 @@ jest.mock('../components/UiScaffold.tsx', () => ({
 }));
 
 jest.mock('../hooks/useRenderingMode', () => ({
-    useRenderingMode: () => ({ mode: 'client', trame: null, error: null }),
+    // The scene connection is mocked, so the session is only handed on.
+    useRenderingMode: () => ({ mode: 'client', trame: {}, error: null }),
 }));
 
 /** A minimal v4 scene-details payload whose delivered theme is light. */
@@ -81,6 +82,7 @@ function mockMakeWasmView() {
 function mockMakeRenderer() {
     return {
         domElement: document.createElement('div'),
+        clearGeometryHighlight: () => {},
         addCameraSettledListener: () => () => {},
         addViewerClickedListener: () => () => {},
         resizeAsync: async () => undefined,

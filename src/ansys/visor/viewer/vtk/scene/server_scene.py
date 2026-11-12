@@ -22,8 +22,9 @@ from ansys.visor.viewer.vtk.scene.base import VisorSceneBase
 
 if TYPE_CHECKING:
     from ansys.visor.viewer.app.trame.server_loop_bridge import ServerLoopBridge
+    from ansys.visor.viewer.models.runtime.picking.geometry_pick import GeometryPick
     from ansys.visor.viewer.models.runtime.scene.runtime_app_state import RuntimeAppState
-    from ansys.visor.viewer.renderer.server_renderer import CameraPublisher
+    from ansys.visor.viewer.renderer.server_renderer import ViewRecordPublisher
 
 BACKGROUND_RGB: dict[bool, tuple[float, float, float]] = {
     False: (247 / 255, 247 / 255, 247 / 255),
@@ -47,10 +48,10 @@ class VisorServerScene(VisorSceneBase):
         server: Server,
         dark_mode: bool,
         bridge: ServerLoopBridge,
-        camera_publisher: CameraPublisher,
+        view_record_publisher: ViewRecordPublisher,
     ) -> None:
         """Build the ServerRenderer and the RCA window over this scene's lock."""
-        renderer = ServerRenderer(BACKGROUND_RGB[dark_mode], bridge, camera_publisher)
+        renderer = ServerRenderer(BACKGROUND_RGB[dark_mode], bridge, view_record_publisher)
         super().__init__(server, dark_mode, renderer=renderer)
         self._rca_window = VisorRcaWindow(
             VtkRemoteControlledArea(renderer.render_window),
@@ -68,6 +69,11 @@ class VisorServerScene(VisorSceneBase):
         """Return the node under a render-window pixel, under the scene lock."""
         with self._vtk_lock:
             return self._renderer.pick_part_at(x, y)
+
+    def pick_geometry_at(self, x: int, y: int, mode: str) -> GeometryPick:
+        """Find the geometry feature under a render-window pixel, under the scene lock."""
+        with self._vtk_lock:
+            return self._renderer.pick_geometry_at(x, y, mode)
 
     def set_dark_mode(self, dark_mode: bool) -> None:
         """Set the theme on the UI record and re-colour the background, under the scene lock; requests one frame."""

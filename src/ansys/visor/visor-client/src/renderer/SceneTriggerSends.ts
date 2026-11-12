@@ -1,4 +1,9 @@
-import type { ColorVariableDescriptor, NodeId, TrameTriggerSender } from './IRenderer';
+import type {
+    ColorVariableDescriptor,
+    NodeId,
+    PickGeometryResult,
+    TrameTriggerSender,
+} from './IRenderer';
 
 /** The VISOR scene-mutation triggers: each method builds one payload and sends it; a failed send is logged, never thrown; a null sender sends nothing. */
 export class SceneTriggerSends {
@@ -151,5 +156,10 @@ export class SceneTriggerSends {
         normal: readonly number[]
     ): Promise<void> {
         await this.#sendWidgetTriggerAsync('sync_cross_section_plane', { origin, normal });
+    }
+
+    /** Send the pick whose feature the server should highlight; a not-found pick clears it. */
+    async sendGeometryHighlightAsync(pick: PickGeometryResult): Promise<void> {
+        await this.#sendWidgetTriggerAsync('set_geometry_highlight', { pick });
     }
 }

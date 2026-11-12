@@ -55,6 +55,7 @@ def test_app_receives_the_scene_members(wiring):
     assert kwargs["scene_mutation_api"] is scene
     assert kwargs["rca_window"] is scene.rca_window
     assert kwargs["pick_part_at"] is scene.pick_part_at
+    assert kwargs["pick_geometry_at"] is scene.pick_geometry_at
     assert kwargs["set_dark_mode"] is scene.set_dark_mode
 
 
@@ -63,7 +64,7 @@ def test_scene_publishes_camera_into_the_viewer_state(wiring):
     _app_cls, scene_cls, _bridge_cls, mgr, publishers, _viewer = wiring
 
     assert [args for args, _ in publishers] == [(mgr.async_runner, mgr.server.state)]
-    assert scene_cls.call_args.kwargs["camera_publisher"] is publishers[0][1]
+    assert scene_cls.call_args.kwargs["view_record_publisher"] is publishers[0][1]
 
 
 def test_scene_change_bumps_the_one_publisher(wiring):

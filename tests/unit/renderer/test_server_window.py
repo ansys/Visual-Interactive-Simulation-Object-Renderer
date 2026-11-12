@@ -113,7 +113,9 @@ def reschedule() -> _RecordingReschedule:
 
 @pytest.fixture
 def window(capture, renderer, lock, reschedule) -> VisorRcaWindow:
-    return VisorRcaWindow(capture, renderer, lock, reschedule)
+    bound = VisorRcaWindow(capture, renderer, lock, reschedule)
+    bound.bind_pixel_scale(lambda: 1.0)
+    return bound
 
 
 def test_held_lock_does_not_capture(window, capture, lock):
@@ -176,6 +178,31 @@ def test_resize_coalesces_to_last_size(window, renderer, lock):
         window.img_cols_rows
     assert spy.call_args_list == [call(80, 60)]
     assert renderer.render_window.GetSize() == (80, 60)
+
+
+def test_resize_applies_the_bound_pixel_scale(capture, renderer, lock, reschedule):
+    scale = {"value": 2.0}
+    bound = VisorRcaWindow(capture, renderer, lock, reschedule)
+    bound.bind_pixel_scale(lambda: scale["value"])
+    with patch.object(renderer, "set_pixel_scale") as spy:
+        bound.process_resize_event(64, 48)
+        bound.img_cols_rows
+        scale["value"] = 3.0
+        bound.process_resize_event(64, 48)
+        bound.img_cols_rows
+    assert spy.call_args_list == [call(2.0), call(3.0)]
+
+
+def test_resize_before_the_pixel_scale_is_bound_raises(capture, renderer, lock, reschedule):
+    unbound = VisorRcaWindow(capture, renderer, lock, reschedule)
+    unbound.process_resize_event(64, 48)
+    with pytest.raises(RuntimeError):
+        unbound.img_cols_rows
+
+
+def test_pixel_scale_binds_once(window):
+    with pytest.raises(RuntimeError):
+        window.bind_pixel_scale(lambda: 2.0)
 
 
 def test_deferred_events_in_order_none_dropped(window, capture, lock):

@@ -24,7 +24,8 @@ jest.mock('../components/UiScaffold.tsx', () => ({
 }));
 
 jest.mock('../hooks/useRenderingMode', () => ({
-    useRenderingMode: () => ({ mode: 'client', trame: null, error: null }),
+    // The scene connection is mocked, so the session is only handed on.
+    useRenderingMode: () => ({ mode: 'client', trame: {}, error: null }),
 }));
 
 /** The client-mode scene connection; its scene details carry schema version 3. */
