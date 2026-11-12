@@ -10,6 +10,7 @@ CSS's 0-255 triples.
 
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -22,12 +23,14 @@ from vtkmodules.vtkRenderingCore import vtkRenderWindow, vtkRenderWindowInteract
 from ansys.visor.viewer.core.errors import UnsupportedInModeError, VisorAddDatasetError
 from ansys.visor.viewer.core.metadata import ExtendedMetadata
 from ansys.visor.viewer.models.runtime.picking.geometry_pick import NoGeometryPick
+from ansys.visor.viewer.vtk.io.file_to_dataset import file_to_dataset
 from ansys.visor.viewer.vtk.scene import paraview_scene
 from ansys.visor.viewer.vtk.scene.paraview_scene import VisorParaviewScene
 from tests.helpers.utils.locks import LockSpy, lock_held_by_another_thread
 
 LIGHT_CSS_RGB = (247, 247, 247)
 DARK_CSS_RGB = (54, 60, 67)
+MANY_BLOCKS_VTM = Path(__file__).parents[3] / "files" / "many_blocks" / "many_blocks.vtm"
 
 
 class _FakeSession:
@@ -42,6 +45,7 @@ class _FakeSession:
         self._interactor = interactor
         self.reported_points = point_count
         self.opened: list[str] = []
+        self.extracted: list[SimpleNamespace] = []
         self.deleted: list[object] = []
         self.backgrounds: list[tuple[float, float, float]] = []
         self.render_count = 0
@@ -51,7 +55,9 @@ class _FakeSession:
         return SimpleNamespace(path=path)
 
     def extract(self, source, selectors):
-        return SimpleNamespace(source=source, selectors=selectors)
+        extract = SimpleNamespace(source=source, selectors=selectors)
+        self.extracted.append(extract)
+        return extract
 
     def show(self, source):
         return SimpleNamespace(shows=source)
@@ -236,6 +242,19 @@ def test_in_memory_input_opens_nothing(scene, session):
     assert session.opened == []
 
 
+def test_add_multiblock_registers_one_extract_per_leaf(scene, session):
+    session.reported_points = 88
+    scene.add_dataset(file_to_dataset(str(MANY_BLOCKS_VTM)), _metadata("mb", file_path="/shared/many_blocks.vtm"))
+    assert (len(session.extracted), [e.selectors for e in session.extracted[:3]]) == (
+        66,
+        [
+            ["/Root/GroupA/GroupAA/Block0"],
+            ["/Root/GroupA/GroupAA/GroupAAA/Block0"],
+            ["/Root/GroupA/GroupAA/GroupAAA/Block1"],
+        ],
+    )
+
+
 # ---------------------------------------------------------------------------
 # remove_dataset and clear
 # ---------------------------------------------------------------------------
@@ -258,6 +277,15 @@ def test_remove_dataset_unregisters_the_dataset(scene):
     dataset_id = scene.add_dataset(_triangle_points(), _metadata("a", file_path="/shared/a.vtp"))
     scene.remove_dataset(dataset_id)
     assert list(scene.datasets) == []
+
+
+def test_remove_multiblock_dataset_deletes_extracts_then_source(scene, session):
+    session.reported_points = 88
+    dataset_id = scene.add_dataset(
+        file_to_dataset(str(MANY_BLOCKS_VTM)), _metadata("mb", file_path="/shared/many_blocks.vtm")
+    )
+    scene.remove_dataset(dataset_id)
+    assert [getattr(d, "path", "extract") for d in session.deleted] == ["extract"] * 66 + ["/shared/many_blocks.vtm"]
 
 
 def test_remove_dataset_holds_lock_when_closing(scene):
