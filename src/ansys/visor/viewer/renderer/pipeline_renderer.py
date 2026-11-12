@@ -144,6 +144,15 @@ class VtkPipelineRenderer(IRenderer):
         for node_id in list(self._pipelines.keys()):
             self.deregister_node(node_id)
 
+    def mark_pipeline_modified(self, node_id: int) -> None:
+        """See :meth:`IRenderer.mark_pipeline_modified`."""
+        pipe = self._pipelines.get(node_id)
+        if pipe is None:
+            return
+        pipe.base_algorithm.Modified()
+        pipe.mapper.Modified()
+        pipe.actor.Modified()
+
     # ------------------------------------------------------------------
     # IRenderer: per-part visual mutations
     # ------------------------------------------------------------------

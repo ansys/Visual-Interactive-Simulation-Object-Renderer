@@ -196,6 +196,11 @@ class ServerRenderer(VtkPipelineRenderer):
         """Request a frame showing the written object."""
         self._frame_requester.request_frame()
 
+    def mark_pipeline_modified(self, node_id: int) -> None:
+        """See :meth:`IRenderer.mark_pipeline_modified`."""
+        super().mark_pipeline_modified(node_id)
+        self._publish_part_mapper(node_id)
+
     def _publish_part_mapper(self, node_id: int) -> None:
         """Request a frame showing the written mapper."""
         self._frame_requester.request_frame()

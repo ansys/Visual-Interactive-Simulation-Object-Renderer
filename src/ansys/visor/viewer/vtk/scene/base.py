@@ -21,7 +21,10 @@ from ansys.visor.viewer.models.common.visor_variable_record import (
 )
 from ansys.visor.viewer.models.common.visor_variable_state import VisorVariableState
 from ansys.visor.viewer.models.persist.persisted_viewer_state import PersistedViewerStateV1
-from ansys.visor.viewer.models.runtime.dataset.runtime_dataset_state import RuntimePartProperties
+from ansys.visor.viewer.models.runtime.dataset.runtime_dataset_state import (
+    RuntimeDatasetState,
+    RuntimePartProperties,
+)
 from ansys.visor.viewer.models.runtime.picking.geometry_pick import GeometryPick
 from ansys.visor.viewer.models.runtime.scene.runtime_app_state import RuntimeAppState
 from ansys.visor.viewer.models.runtime.scene.runtime_scene_state import RuntimeSceneState
@@ -554,6 +557,19 @@ class VisorSceneBase(ABC):
     def list_variables_for_dataset(self, dataset_id: int) -> List[VisorPartVariables]:
         return self._dataset_registry.list_variables(dataset_id)
 
+    def list_part_states_for_dataset(self, dataset_id: int) -> RuntimeDatasetState:
+        """Return runtime part states for a dataset (visibility, color variable, etc.)."""
+        with self._vtk_lock:
+            dataset = self._dataset_registry.datasets.get(dataset_id)
+            if dataset is None:
+                msg = f"Dataset with id {dataset_id} not found."
+                logger.error(msg)
+                raise ValueError(msg)
+            return RuntimeDatasetState(
+                id=dataset_id,
+                part_states=dict(dataset.state.part_states),
+            )
+
     def update_variables_for_dataset(self, dataset_id: int, variables: List[VisorVariableUpdate]) -> None:
         """Update the variables for the dataset in the scene graph.
 
@@ -573,6 +589,10 @@ class VisorSceneBase(ABC):
             dataset_node = self._scene_graph.get_descendant_node(dataset_id)
             with timer.phase("update_descendant_parts"):
                 dataset_node.refresh_descendant_variable_metadata(include_self=True)
+                for leaf in dataset_node.get_descendant_part_nodes(include_self=True):
+                    if leaf.dataset is not None:
+                        leaf.dataset.Modified()
+                    self._renderer.mark_pipeline_modified(leaf.id)
 
             # After the reload and the metadata refresh: a width change changes the id.
             self._rebuild_variable_records_from_registry()

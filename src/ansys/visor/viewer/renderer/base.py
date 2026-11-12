@@ -115,6 +115,13 @@ class IRenderer(ABC):
         registered node id. Idempotent; safe on an empty registry.
         """
 
+    def mark_pipeline_modified(self, node_id: int) -> None:
+        """Mark a part pipeline dirty after in-place VTK array writes.
+
+        Backends that serve vtklocal/wasm caches override this so the client
+        sees updated scalars without re-wiring the pipeline.  Default: no-op.
+        """
+
     # ------------------------------------------------------------------------
     # Per-part visual mutations
     # ------------------------------------------------------------------------

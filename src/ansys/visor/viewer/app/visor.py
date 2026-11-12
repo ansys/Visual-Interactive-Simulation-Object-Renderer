@@ -205,6 +205,14 @@ class Visor:
         """
         raise NotImplementedError
 
+    def list_part_states(self, dataset_id: int) -> Any:
+        """
+        Return runtime part states for a dataset.
+
+        Includes per-part visibility, opacity, and the variable used for coloring.
+        """
+        raise NotImplementedError
+
     def update_variables(self, dataset_id: int, variables: List[Dict[str, Any]]) -> None:
         """
         Update variables for a dataset.

@@ -102,6 +102,19 @@ class VisorLocalRenderer(VtkPipelineRenderer):
     # VtkPipelineRenderer: publish hooks
     # ------------------------------------------------------------------
 
+    def mark_pipeline_modified(self, node_id: int) -> None:
+        """See :meth:`IRenderer.mark_pipeline_modified`.
+
+        Marks VTK modification times and re-serializes the pipeline objects
+        into the wasm store so in-place scalar writes reach the browser.
+        """
+        super().mark_pipeline_modified(node_id)
+        pipe = self._pipelines.get(node_id)
+        if pipe is None:
+            return
+        self._publish_object(pipe.base_algorithm)
+        self._publish_object(pipe.mapper)
+
     def _publish_part_mapper(self, node_id: int) -> None:
         """Make the state served to the client current for one part's mapper.
 
