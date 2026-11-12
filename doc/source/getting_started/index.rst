@@ -58,6 +58,16 @@ Getting started
 
     Override default VISOR settings using a project-level YAML file.
 
+  .. grid-item-card:: :material-outlined:`dns;2em`
+    :link-type: doc
+    :link: /getting_started/paraview_mode
+
+    .. raw:: html
+
+      <span style="font-size: 1.5em; color:#5a2a82;">PARAVIEW mode setup</span>
+
+    Set up the environments and the pvserver that PARAVIEW rendering mode uses.
+
 
 .. toctree::
    :hidden:
@@ -68,6 +78,7 @@ Getting started
    quick_start
    known_limitations
    configure_visor
+   paraview_mode
 
 
 

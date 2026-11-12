@@ -31,14 +31,14 @@ The values of ``--visor-viewer-background`` in the client's
 
 
 class FrameRequester(Protocol):
-    """Where a ServerRenderer asks for a streamed frame."""
+    """Where a streamed renderer asks for a streamed frame."""
 
     def request_frame(self) -> None:
         """Ask for a streamed frame; callable from any thread."""
 
 
 class ViewRecordPublisher(Protocol):
-    """Where a ServerRenderer publishes its camera and cross-section plane records."""
+    """Where a streamed renderer publishes its camera and cross-section plane records."""
 
     def publish_camera(self, camera_state: VisorCameraState | None) -> None:
         """Publish the camera record to clients, or None when there is none; callable from any thread."""
