@@ -9,8 +9,9 @@ renders on the calling thread: every write ends in a frame request, and only
 the capture renders.  Each camera write also hands the record to a
 :class:`ViewRecordPublisher`.
 
-Composite input is not supported yet: :meth:`ParaviewRenderer.open_source`
-raises for it, so every part is the opened source itself.
+A composite dataset is opened once; each of its leaves is shown as a block
+extract addressed by the leaf's selector.  A non-composite dataset is shown
+as the opened source itself.
 """
 
 from __future__ import annotations
@@ -18,14 +19,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from ansys.visor.viewer.core.errors import UnsupportedInModeError, VisorAddDatasetError
+from vtkmodules.vtkCommonDataModel import vtkCompositeDataSet, vtkDataAssembly, vtkDataAssemblyUtilities
+
+from ansys.visor.viewer.core.errors import VisorAddDatasetError
 from ansys.visor.viewer.core.visor_enums import VisorVtkVariableType
 from ansys.visor.viewer.core.visor_helpers import is_composite_dataset
 from ansys.visor.viewer.core.visor_logging import VisorDefaultLogger
 from ansys.visor.viewer.renderer.base import IRenderer
 
 if TYPE_CHECKING:
-    from vtkmodules.vtkCommonDataModel import vtkDataObject
+    from vtkmodules.vtkCommonDataModel import vtkDataObject, vtkDataObjectTree
     from vtkmodules.vtkRenderingCore import vtkRenderWindow
 
     from ansys.visor.viewer.core.visor_types import VisorDatasetType
@@ -61,6 +64,81 @@ class _Part:
     dataset: vtkDataObject
 
 
+@dataclass(frozen=True)
+class _Leaf:
+    """A leaf of one opened source and the selector that extracts it; None shows the source itself."""
+
+    source_key: str
+    dataset: vtkDataObject
+    selector: str | None
+
+
+@dataclass(frozen=True)
+class BlockLeaf:
+    """One non-empty leaf of a local composite dataset, its block name and the pvserver selectors that address it."""
+
+    dataset: vtkDataObject
+    name: str
+    selectors: tuple[str, ...]
+
+
+class CompositeBlocks:
+    """The non-empty leaves of a local composite dataset, in traversal order, with their pvserver block selectors."""
+
+    def __init__(self, leaves: list[BlockLeaf]) -> None:
+        """Hold leaves in the order given."""
+        self._leaves = tuple(leaves)
+
+    @classmethod
+    def from_composite(cls, root: vtkDataObjectTree) -> CompositeBlocks:
+        """Walk root's non-empty leaves and give each the selectors its flat index maps to.
+
+        A leaf whose name repeats a sibling's can map to no selector, or to
+        the selector of that sibling; :meth:`check_unique` refuses both.
+        """
+        hierarchy = vtkDataAssembly()
+        mapped = vtkDataAssemblyUtilities.GenerateHierarchy(root, hierarchy)
+        leaves: list[BlockLeaf] = []
+        iterator = root.NewIterator()
+        iterator.SkipEmptyNodesOn()
+        iterator.InitTraversal()
+        while not iterator.IsDoneWithTraversal():
+            name = ""
+            if iterator.HasCurrentMetaData():
+                name = iterator.GetCurrentMetaData().Get(vtkCompositeDataSet.NAME()) or ""
+            selectors: tuple[str, ...] = ()
+            if mapped:
+                selectors = tuple(
+                    vtkDataAssemblyUtilities.GetSelectorsForCompositeIds([iterator.GetCurrentFlatIndex()], hierarchy)
+                )
+            leaves.append(BlockLeaf(iterator.GetCurrentDataObject(), name, selectors))
+            iterator.GoToNextItem()
+        return cls(leaves)
+
+    @property
+    def leaves(self) -> tuple[BlockLeaf, ...]:
+        """The leaves in traversal order."""
+        return self._leaves
+
+    def check_unique(self) -> None:
+        """Raise VisorAddDatasetError unless every leaf has exactly one selector and no two leaves share one."""
+        owners: dict[str, BlockLeaf] = {}
+        for leaf in self._leaves:
+            if len(leaf.selectors) != 1:
+                raise VisorAddDatasetError(
+                    f"Block {leaf.name!r} maps to {len(leaf.selectors)} pvserver selectors, not one; "
+                    "sibling blocks may share its name"
+                )
+            selector = leaf.selectors[0]
+            owner = owners.get(selector)
+            if owner is not None:
+                raise VisorAddDatasetError(
+                    f"Blocks {owner.name!r} and {leaf.name!r} share pvserver selector {selector!r}; "
+                    "either would show both"
+                )
+            owners[selector] = leaf
+
+
 class ParaviewRenderer(IRenderer):
     """IRenderer over a ParaView render view; per-part representations of block extracts."""
 
@@ -77,9 +155,9 @@ class ParaviewRenderer(IRenderer):
         self._frame_requester = frame_requester
         self._view_record_publisher = view_record_publisher
         self._sources: dict[str, PvSource] = {}
-        # id() of each local leaf dataset -> (dataset key, the leaf).  The leaf
-        # is held so its id cannot be reused while the entry exists.
-        self._leaf_index: dict[int, tuple[str, vtkDataObject]] = {}
+        # id() of each local leaf dataset -> its entry.  The entry holds the
+        # leaf so its id cannot be reused while the entry exists.
+        self._leaf_index: dict[int, _Leaf] = {}
         self._parts: dict[int, _Part] = {}
         self._bounds: list[float] | None = None
         self._actor_count = 0
@@ -91,14 +169,21 @@ class ParaviewRenderer(IRenderer):
     # ------------------------------------------------------------------
 
     def open_source(self, dataset_key: str, server_path: str, local_root: VisorDatasetType) -> None:
-        """Open server_path on pvserver and index local_root's leaves; raise UnsupportedInModeError for composite input.
+        """Index local_root's leaves to block selectors, refusing duplicates, then open server_path on pvserver.
 
         A non-composite root is its own single leaf, shown with no extract.
+        Raises :class:`VisorAddDatasetError`, having opened nothing, when a
+        leaf of a composite root has no single selector or shares one.
         """
         if is_composite_dataset(local_root):
-            raise UnsupportedInModeError("composite dataset is not supported in PARAVIEW mode")
+            blocks = CompositeBlocks.from_composite(local_root)
+            blocks.check_unique()
+            entries = [_Leaf(dataset_key, leaf.dataset, leaf.selectors[0]) for leaf in blocks.leaves]
+        else:
+            entries = [_Leaf(dataset_key, local_root, None)]
         self._sources[dataset_key] = self._session.open(server_path)
-        self._leaf_index[id(local_root)] = (dataset_key, local_root)
+        for entry in entries:
+            self._leaf_index[id(entry.dataset)] = entry
 
     def close_source(self, dataset_key: str) -> None:
         """Delete the source and every extract of it on pvserver."""
@@ -110,7 +195,7 @@ class ParaviewRenderer(IRenderer):
             part = self._parts.pop(node_id)
             if part.is_extract:
                 self._session.delete(part.shown)
-        self._leaf_index = {k: v for k, v in self._leaf_index.items() if v[0] != dataset_key}
+        self._leaf_index = {k: v for k, v in self._leaf_index.items() if v.source_key != dataset_key}
         self._session.delete(source)
 
     # ------------------------------------------------------------------
@@ -126,28 +211,33 @@ class ParaviewRenderer(IRenderer):
     # ------------------------------------------------------------------
 
     def register_node(self, node: VisorSceneGraphPartNode, dataset: vtkDataObject) -> None:
-        """Show the node's proxy and check its point count; idempotent.
+        """Show the leaf's block extract, or the source for non-composite input, and check its point count; idempotent.
 
         Raises :class:`VisorAddDatasetError` when no opened source holds
         *dataset*, or when pvserver's point count differs from the local
-        dataset's: either means the part would show the wrong geometry.
+        dataset's: either means the part would show the wrong geometry.  An
+        extract that fails the count is deleted before the raise.  The count
+        is read after ``show``, which is what updates the proxy.
         """
         if node.id in self._parts:
             return
         entry = self._leaf_index.get(id(dataset))
         if entry is None:
             raise VisorAddDatasetError(f"No pvserver source holds part {node.name!r}")
-        dataset_key = entry[0]
-        shown = self._sources[dataset_key]
+        source = self._sources[entry.source_key]
+        is_extract = entry.selector is not None
+        shown = self._session.extract(source, [entry.selector]) if is_extract else source
         rep = self._session.show(shown)
         local_points = dataset.GetNumberOfPoints()
         server_points = self._session.point_count(shown)
         if server_points != local_points:
+            if is_extract:
+                self._session.delete(shown)
             raise VisorAddDatasetError(
                 f"Part {node.name!r}: pvserver reports {server_points} points, "
                 f"the local dataset has {local_points}"
             )
-        self._parts[node.id] = _Part(dataset_key, shown, False, rep, dataset)
+        self._parts[node.id] = _Part(entry.source_key, shown, is_extract, rep, dataset)
 
     def deregister_node(self, node_id: int) -> None:
         """Delete the node's extract, or hide the source it shows; silent if unknown."""

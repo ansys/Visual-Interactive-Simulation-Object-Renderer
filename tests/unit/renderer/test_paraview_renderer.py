@@ -13,11 +13,11 @@ from types import SimpleNamespace
 
 import pytest
 from vtkmodules.vtkCommonCore import vtkDoubleArray, vtkPoints
-from vtkmodules.vtkCommonDataModel import vtkMultiBlockDataSet, vtkPolyData
+from vtkmodules.vtkCommonDataModel import vtkCompositeDataSet, vtkMultiBlockDataSet, vtkPolyData
 
-from ansys.visor.viewer.core.errors import UnsupportedInModeError, VisorAddDatasetError
+from ansys.visor.viewer.core.errors import VisorAddDatasetError
 from ansys.visor.viewer.core.visor_enums import VisorVtkVariableType
-from ansys.visor.viewer.renderer.paraview_renderer import ParaviewRenderer
+from ansys.visor.viewer.renderer.paraview_renderer import BlockLeaf, CompositeBlocks, ParaviewRenderer
 
 BACKGROUND = (0.1, 0.2, 0.3)
 
@@ -32,6 +32,8 @@ class _FakeSession:
         self.writes: list[tuple[object, str, object]] = []
         self.color_by_calls: list[tuple[object, str, str, str | None]] = []
         self.opened: list[str] = []
+        self.extracted: list[SimpleNamespace] = []
+        self.deleted: list[object] = []
         self.reps: list[SimpleNamespace] = []
 
     def open(self, path):
@@ -39,7 +41,9 @@ class _FakeSession:
         return SimpleNamespace(path=path)
 
     def extract(self, source, selectors):
-        return SimpleNamespace(source=source, selectors=selectors)
+        extract = SimpleNamespace(source=source, selectors=selectors)
+        self.extracted.append(extract)
+        return extract
 
     def show(self, source):
         rep = SimpleNamespace(shows=source)
@@ -47,7 +51,7 @@ class _FakeSession:
         return rep
 
     def delete(self, source):
-        pass
+        self.deleted.append(source)
 
     def point_count(self, source):
         return self.reported_points
@@ -129,6 +133,24 @@ def _register(renderer: ParaviewRenderer, node_id: int, key: str) -> vtkPolyData
     return dataset
 
 
+def _named(parent: vtkMultiBlockDataSet, index: int, name: str, block) -> None:
+    parent.SetBlock(index, block)
+    parent.GetMetaData(index).Set(vtkCompositeDataSet.NAME(), name)
+
+
+def _wing_and_body(second_name: str | None = None):
+    """Root with leaf ``wing`` and group ``body`` holding ``rib`` and an optional second leaf; returns root, rib."""
+    root = vtkMultiBlockDataSet()
+    body = vtkMultiBlockDataSet()
+    rib = _triangle_points()
+    _named(root, 0, "wing", _triangle_points())
+    _named(body, 0, "rib", rib)
+    if second_name is not None:
+        _named(body, 1, second_name, _triangle_points())
+    _named(root, 1, "body", body)
+    return root, rib
+
+
 def test_apply_visibility_requests_a_frame_and_never_renders():
     session = _FakeSession()
     renderer, requester = _renderer(session)
@@ -140,11 +162,48 @@ def test_apply_visibility_requests_a_frame_and_never_renders():
     assert requester.count == 1
 
 
-def test_open_source_raises_for_composite_input():
-    renderer, _ = _renderer(_FakeSession())
+def test_register_node_extracts_the_leafs_block_selector():
+    session = _FakeSession()
+    renderer, _ = _renderer(session)
+    root, rib = _wing_and_body()
+    renderer.open_source("mb", "/shared/mb.vtm", root)
 
-    with pytest.raises(UnsupportedInModeError):
-        renderer.open_source("mb", "/shared/mb.vtm", vtkMultiBlockDataSet())
+    renderer.register_node(SimpleNamespace(id=1, name="rib"), rib)
+
+    assert [(e.source.path, e.selectors) for e in session.extracted] == [("/shared/mb.vtm", ["/Root/body/rib"])]
+
+
+def test_open_source_refuses_duplicate_sibling_names_before_opening():
+    session = _FakeSession()
+    renderer, _ = _renderer(session)
+    root, _ = _wing_and_body(second_name="rib")
+
+    with pytest.raises(VisorAddDatasetError, match="rib"):
+        renderer.open_source("mb", "/shared/mb.vtm", root)
+    assert session.opened == []
+
+
+def test_check_unique_names_the_shared_selector():
+    blocks = CompositeBlocks(
+        [
+            BlockLeaf(_triangle_points(), "rib", ("/Root/body/rib",)),
+            BlockLeaf(_triangle_points(), "rib", ("/Root/body/rib",)),
+        ]
+    )
+
+    with pytest.raises(VisorAddDatasetError, match="/Root/body/rib"):
+        blocks.check_unique()
+
+
+def test_register_node_deletes_the_extract_when_point_count_differs():
+    session = _FakeSession(point_count=4)
+    renderer, _ = _renderer(session)
+    root, rib = _wing_and_body()
+    renderer.open_source("mb", "/shared/mb.vtm", root)
+
+    with pytest.raises(VisorAddDatasetError):
+        renderer.register_node(SimpleNamespace(id=1, name="rib"), rib)
+    assert [d.selectors for d in session.deleted] == [["/Root/body/rib"]]
 
 
 def test_register_node_raises_when_pvserver_point_count_differs():
