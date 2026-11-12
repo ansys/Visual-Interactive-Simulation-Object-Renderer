@@ -45,9 +45,11 @@ class RenderingMode(Enum):
     Attributes:
         CLIENT:   Client-side rendering via VTK-WASM in the browser.
         SERVER:   Server-side off-screen rendering streamed to the browser through trame-rca.
+        PARAVIEW: Rendering by a remote pvserver, streamed to the browser through trame-rca.
     """
     CLIENT   = "client"
     SERVER   = "server"
+    PARAVIEW = "paraview"
 
     @classmethod
     def from_string(cls, value: Union[str, "RenderingMode"]) -> "RenderingMode":

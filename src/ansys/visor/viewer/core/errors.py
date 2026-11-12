@@ -59,3 +59,19 @@ class VisorAddDatasetError(Exception):
         if self.metadata_path:
             details.append(f"metadata_path={self.metadata_path}")
         return base if not details else f"{base} ({', '.join(details)})"
+
+
+class PvserverConnectionError(RuntimeError):
+    """The session process could not connect to the pvserver at the given host and port."""
+
+
+class ParaviewSessionError(RuntimeError):
+    """The PARAVIEW session process failed to start, timed out, or was lost; the message names its log file."""
+
+
+class ParaviewNotConfiguredError(RuntimeError):
+    """PARAVIEW was requested but a required setting is missing; the message names the .visor key."""
+
+
+class UnsupportedInModeError(NotImplementedError):
+    """The operation is not available in the current rendering mode; the message names the operation and the mode."""
