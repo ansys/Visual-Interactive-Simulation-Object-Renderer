@@ -209,6 +209,22 @@ def test_plane_drag_release_requests_no_frame(plane_window, requester):
     assert requester.count == 0
 
 
+# ---------------------------------------------------------------------------
+# Removing a part on another thread leaves the context free for the next frame
+# ---------------------------------------------------------------------------
+
+
+def test_frame_after_deregister_on_another_thread_is_background(window, renderer):
+    """RemoveActor makes the context current on its thread; the next frame still draws."""
+    remover = threading.Thread(target=renderer.deregister_node, args=(7,))
+    remover.start()
+    remover.join()
+
+    image, _, _ = window.img_cols_rows
+
+    assert tuple(int(c) for c in image[150, 150]) == (51, 102, 153)
+
+
 def test_gesture_before_bounds_leaves_plane_seed(window, renderer):
     window.process_interaction_event(_event("MouseWheel", 150, 150, spinY=1))
     window.img_cols_rows
