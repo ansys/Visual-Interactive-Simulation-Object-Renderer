@@ -95,11 +95,16 @@ class PvSimpleSession:
     """ParaviewSession over paraview.simple; connects on construction."""
 
     def __init__(self, pvserver: PvserverAddress) -> None:
-        """Connect to pvserver, create the render view, set RemoteRenderThreshold 0; raise PvserverConnectionError naming the address.
+        """Connect to pvserver, create the render view, set RemoteRenderThreshold 0 and draw the client-side window offscreen; raise PvserverConnectionError naming the address.
 
         ``Connect`` does not raise on an unreachable server: it retries for
         its timeout and returns ``None``.  The timeout is passed explicitly so
         the failure is bounded, and ``None`` is turned into the raise.
+
+        Without ``--force-offscreen-rendering`` the client-side window is an
+        on-screen window, which the windowing system clamps to the screen, so
+        a ViewSize larger than the screen would be read back smaller and the
+        captured frame would not match the canvas.
         """
         from paraview import simple
 
@@ -113,6 +118,7 @@ class PvSimpleSession:
         self._view.RemoteRenderThreshold = REMOTE_RENDER_THRESHOLD_MB
         logger.info("RemoteRenderThreshold set to %s", self._view.RemoteRenderThreshold)
         self._render_window = self._view.GetClientSideObject().GetRenderWindow()
+        self._render_window.SetOffScreenRendering(1)
 
     def disconnect(self) -> None:
         """Disconnect from pvserver."""

@@ -20,14 +20,25 @@ from ansys.visor.viewer.core.pvserver_address import PvserverAddress
 from ansys.visor.viewer.renderer.paraview_session import PvSimpleSession
 
 
+class _FakeWindow:
+    """A client-side render window that records its offscreen flag."""
+
+    def __init__(self) -> None:
+        self.offscreen = 0
+
+    def SetOffScreenRendering(self, value: int) -> None:
+        self.offscreen = value
+
+
 class _FakeView:
     """A render view whose attributes record writes, with a client-side window."""
 
     def __init__(self) -> None:
         self.RemoteRenderThreshold = 20.0
+        self.window = _FakeWindow()
 
     def GetClientSideObject(self): # noqa: N802
-        return SimpleNamespace(GetRenderWindow=lambda: "client-window")
+        return SimpleNamespace(GetRenderWindow=lambda: self.window)
 
 
 def _install_fake_simple(monkeypatch, connection: object | None) -> types.ModuleType:
@@ -54,6 +65,15 @@ def test_init_writes_remote_render_threshold_zero_and_logs_it(monkeypatch):
     assert simple.view.RemoteRenderThreshold == 0.0
     fmt, *args = log.info.call_args.args
     assert fmt % tuple(args) == "RemoteRenderThreshold set to 0.0"
+
+
+def test_init_draws_the_client_side_window_offscreen(monkeypatch):
+    simple = _install_fake_simple(monkeypatch, connection=object())
+
+    session = PvSimpleSession(PvserverAddress(host="localhost", port=11111))
+
+    assert session.render_window is simple.view.window
+    assert simple.view.window.offscreen == 1
 
 
 def test_init_raises_naming_the_address_when_connect_returns_none(monkeypatch):
