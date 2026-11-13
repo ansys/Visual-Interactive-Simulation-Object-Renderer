@@ -109,11 +109,11 @@ def _session(monkeypatch):
     return simple, PvSimpleSession(PvserverAddress(host="localhost", port=11111))
 
 
-def test_show_draws_the_selection_as_surface(monkeypatch):
+def test_show_leaves_the_selection_representation_at_its_default(monkeypatch):
     simple, session = _session(monkeypatch)
     simple.Show = lambda source, view: SimpleNamespace()
 
-    assert session.show(object()).SelectionRepresentation == "Surface"
+    assert not hasattr(session.show(object()), "SelectionRepresentation")
 
 
 def test_block_point_count_reads_the_blocks_hierarchy_subset(monkeypatch):
