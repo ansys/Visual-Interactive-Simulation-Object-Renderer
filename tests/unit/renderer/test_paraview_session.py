@@ -45,14 +45,9 @@ def _install_fake_simple(monkeypatch, connection: object | None) -> types.Module
     """Put a fake paraview.simple in sys.modules; Connect returns connection."""
     simple = types.ModuleType("paraview.simple")
     simple.view = _FakeView()
-    simple.selection_calls = []
     simple.Connect = lambda **kwargs: connection
     simple.CreateView = lambda name: simple.view
     simple.CreateLookupTable = lambda: SimpleNamespace()
-    simple.ClearSelection = lambda source: simple.selection_calls.append(("clear", source))
-    simple.SelectBlocks = lambda BlockSelector, Source, Modifier=None: simple.selection_calls.append(
-        (BlockSelector, Source, Modifier)
-    )
     paraview = types.ModuleType("paraview")
     paraview.simple = simple
     monkeypatch.setitem(sys.modules, "paraview", paraview)
@@ -116,14 +111,67 @@ def test_new_color_map_maps_the_component_and_never_rescales(monkeypatch, compon
     assert vars(session.new_color_map(component)) == expected
 
 
-def test_set_selected_blocks_clears_then_adds_each_block(monkeypatch):
+class _FakeSelectionHelper:
+    """vtkSMSelectionHelper's two factories, recording the selection each is given."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple] = []
+
+    def NewSelectionSourceFromSelection(self, session, selection):
+        node = selection.GetNode(0)
+        selectors = [node.GetSelectionList().GetValue(i) for i in range(node.GetSelectionList().GetNumberOfValues())]
+        self.calls.append(("source", session, node.GetContentType(), node.GetFieldType(), selectors))
+        return _Unregistering(self.calls, "selection-proxy")
+
+    def NewAppendSelectionsFromSelectionSource(self, selection_proxy):
+        self.calls.append(("append", selection_proxy.name))
+        return _Unregistering(self.calls, "append-proxy")
+
+
+class _Unregistering:
+    def __init__(self, calls: list[tuple], name: str) -> None:
+        self.calls = calls
+        self.name = name
+
+    def UnRegister(self, owner) -> None:
+        self.calls.append(("unregister", self.name))
+
+
+def _selection_source(calls: list[tuple]):
+    proxy = SimpleNamespace(SetSelectionInput=lambda port, append, out: calls.append(("input", port, append, out)))
+    return SimpleNamespace(SMProxy=proxy, GetSession=lambda: "pv-session")
+
+
+def test_set_selected_blocks_writes_every_block_in_one_selection_and_never_renders(monkeypatch):
+    from vtkmodules.vtkCommonDataModel import vtkSelectionNode
+
     simple, session = _session(monkeypatch)
-    source = SimpleNamespace()
+    helper = _FakeSelectionHelper()
+    monkeypatch.setitem(sys.modules, "paraview.modules", types.ModuleType("paraview.modules"))
+    views = types.ModuleType("paraview.modules.vtkRemotingViews")
+    views.vtkSMSelectionHelper = helper
+    monkeypatch.setitem(sys.modules, "paraview.modules.vtkRemotingViews", views)
+    pv_vtk = types.ModuleType("paraview.vtk")
+    pv_vtk.vtkSelectionNode = vtkSelectionNode
+    monkeypatch.setitem(sys.modules, "paraview.vtk", pv_vtk)
+    simple.Render = lambda *args: helper.calls.append(("render",))
+    source = _selection_source(helper.calls)
 
     session.set_selected_blocks(source, ["/Root/body/rib", "/Root/wing"])
 
-    assert simple.selection_calls == [
-        ("clear", source),
-        ("/Root/body/rib", source, "ADD"),
-        ("/Root/wing", source, "ADD"),
+    assert [(c[0], c[2].name) if c[0] == "input" else c for c in helper.calls] == [
+        ("source", "pv-session", vtkSelectionNode.BLOCK_SELECTORS, vtkSelectionNode.POINT, ["/Root/body/rib", "/Root/wing"]),
+        ("append", "selection-proxy"),
+        ("input", "append-proxy"),
+        ("unregister", "append-proxy"),
+        ("unregister", "selection-proxy"),
     ]
+
+
+def test_set_selected_blocks_with_no_blocks_clears_the_selection(monkeypatch):
+    _, session = _session(monkeypatch)
+    calls: list[tuple] = []
+
+    session.set_selected_blocks(_selection_source(calls), [])
+
+    assert calls == [("input", 0, None, 0)]

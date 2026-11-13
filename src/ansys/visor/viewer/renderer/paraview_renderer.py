@@ -11,7 +11,10 @@ only the capture renders.  Each camera write also hands the record to a
 
 A non-composite dataset is one part, written through its representation's
 properties.  Each leaf of a composite dataset is one part, written through the
-representation's per-block properties under the leaf's selector.  Parts
+representation's per-block properties under the leaf's selector.  Those
+per-block lists, and the source's block selection, are written at the next
+frame, once each, however many parts changed since the last one; the capture
+calls :meth:`ParaviewRenderer.flush_writes` before it renders.  Parts
 coloured by a variable share one colour map per :class:`ColorMapKey`, and at
 most :data:`MAX_COLOR_MAPS` maps are in use at once.
 """
@@ -30,6 +33,8 @@ from ansys.visor.viewer.core.visor_logging import VisorDefaultLogger
 from ansys.visor.viewer.renderer.base import IRenderer
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from vtkmodules.vtkCommonDataModel import vtkDataObject, vtkDataObjectTree
     from vtkmodules.vtkRenderingCore import vtkRenderWindow
 
@@ -89,13 +94,16 @@ class _ColorMaps:
     """The colour maps in use across every representation, one per key, counted by the parts using them.
 
     A map is never changed once a part uses it: a part whose key changes
-    moves to the map for its new key, and a map no part uses is deleted.
+    moves to the map for its new key.  A map no part uses stops counting at
+    once and is deleted by :meth:`delete_retired`, which runs after the
+    per-block lists that named it are rewritten.
     """
 
     def __init__(self, session: ParaviewSession) -> None:
         """Hold no maps."""
         self._session = session
         self._maps: dict[ColorMapKey, _ColorMap] = {}
+        self._retired: list[PvLookupTable] = []
 
     def acquire(self, key: ColorMapKey, releasing: ColorMapKey | None) -> PvLookupTable | None:
         """The map for key, with one more user; None when a new map would exceed :data:`MAX_COLOR_MAPS`.
@@ -120,18 +128,25 @@ class _ColorMaps:
         return lut
 
     def release(self, key: ColorMapKey) -> None:
-        """Drop one user of key's map; delete the map when no part uses it."""
+        """Drop one user of key's map; a map no part uses is retired, to be deleted by delete_retired."""
         shared = self._maps[key]
         shared.users -= 1
         if shared.users == 0:
             del self._maps[key]
-            self._session.delete_color_map(shared.lut)
+            self._retired.append(shared.lut)
+
+    def delete_retired(self) -> None:
+        """Delete every retired map; the caller has rewritten every list that named one."""
+        retired, self._retired = self._retired, []
+        for lut in retired:
+            self._session.delete_color_map(lut)
 
     def release_all(self) -> None:
-        """Delete every map."""
+        """Delete every map, retired or in use."""
         for shared in self._maps.values():
             self._session.delete_color_map(shared.lut)
         self._maps.clear()
+        self.delete_retired()
 
 
 @dataclass
@@ -149,7 +164,8 @@ class BlockTable:
 
     Each list is written whole, in registration order, from the entries;
     values are strings, as ParaView stores them.  A block not in the table is
-    hidden.
+    hidden.  Changes only mark their lists stale; :meth:`flush` writes each
+    stale list, and the source's block selection, once.
     """
 
     def __init__(self, session: ParaviewSession, source: PvSource, rep: PvRepresentation) -> None:
@@ -159,39 +175,50 @@ class BlockTable:
         self._rep = rep
         self._entries: dict[str, _BlockEntry] = {}
         self._selected: set[str] = set()
+        self._stale: set[Callable[[], None]] = set()
         self._write_visible()
         session.set_property(rep, "SelectionColor", list(SELECTED_AMBIENT_RGB))
+
+    def flush(self) -> None:
+        """Write every stale list once."""
+        stale, self._stale = self._stale, set()
+        for write in (
+            self._write_visible,
+            self._write_opacities,
+            self._write_colors,
+            self._write_color_maps,
+            self._write_selected,
+        ):
+            if write in stale:
+                write()
 
     def add(self, selector: str) -> None:
         """Show the block at selector."""
         self._entries[selector] = _BlockEntry()
-        self._write_visible()
+        self._stale.add(self._write_visible)
 
     def remove(self, selector: str) -> None:
         """Hide the block at selector and drop every value written for it."""
         self._entries.pop(selector)
-        self._write_visible()
-        self._write_opacities()
-        self._write_colors()
-        self._write_color_maps()
+        self._stale.update((self._write_visible, self._write_opacities, self._write_colors, self._write_color_maps))
         if selector in self._selected:
             self._selected.discard(selector)
-            self._write_selected()
+            self._stale.add(self._write_selected)
 
     def set_visible(self, selector: str, visible: bool) -> None:
         """Show or hide the block."""
         self._entries[selector].visible = visible
-        self._write_visible()
+        self._stale.add(self._write_visible)
 
     def set_opacity(self, selector: str, opacity: float) -> None:
         """Set the block's opacity."""
         self._entries[selector].opacity = opacity
-        self._write_opacities()
+        self._stale.add(self._write_opacities)
 
     def set_diffuse(self, selector: str, rgb: list[float]) -> None:
         """Set the block's solid colour."""
         self._entries[selector].rgb = list(rgb)
-        self._write_colors()
+        self._stale.add(self._write_colors)
 
     def set_selected(self, selector: str, selected: bool) -> None:
         """Add the block to, or remove it from, the source's selection."""
@@ -199,17 +226,17 @@ class BlockTable:
             self._selected.add(selector)
         else:
             self._selected.discard(selector)
-        self._write_selected()
+        self._stale.add(self._write_selected)
 
     def color_by(self, selector: str, key: ColorMapKey, lut: PvLookupTable) -> None:
         """Colour the block by key's array through lut."""
         self._entries[selector].color = (key, lut)
-        self._write_color_maps()
+        self._stale.add(self._write_color_maps)
 
     def clear_color(self, selector: str) -> None:
         """Colour the block solid."""
         self._entries[selector].color = None
-        self._write_color_maps()
+        self._stale.add(self._write_color_maps)
 
     def _write_visible(self) -> None:
         self._session.set_property(
@@ -595,6 +622,13 @@ class ParaviewRenderer(IRenderer):
         self._sources.clear()
         self._leaf_index.clear()
         self._color_maps.release_all()
+
+    def flush_writes(self) -> None:
+        """Write every representation's stale per-block lists and selection, then delete the maps no part uses."""
+        for opened in self._sources.values():
+            if opened.blocks is not None:
+                opened.blocks.flush()
+        self._color_maps.delete_retired()
 
     # ------------------------------------------------------------------
     # IRenderer: per-part visual mutations

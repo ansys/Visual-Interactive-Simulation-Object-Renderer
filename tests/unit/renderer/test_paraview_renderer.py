@@ -195,6 +195,7 @@ def test_register_node_shows_the_leafs_block_on_one_representation():
     renderer.open_source("mb", "/shared/mb.vtm", root)
 
     renderer.register_node(SimpleNamespace(id=1, name="rib"), rib)
+    renderer.flush_writes()
 
     assert (len(session.reps), _last_write(session, "BlockSelectors")) == (1, ["/Root/body/rib"])
 
@@ -211,9 +212,11 @@ def test_block_write_lands_on_that_block_only(method, args, prop, value):
     session = _FakeSession()
     renderer, _ = _renderer(session)
     _register_wing_and_rib(renderer)
+    renderer.flush_writes()
     session.writes.clear()
 
     getattr(renderer, method)(2, *args)
+    renderer.flush_writes()
 
     assert session.writes == [(session.reps[0], prop, value)]
 
@@ -306,6 +309,7 @@ def test_block_coloring_gives_every_block_an_entry():
     _register_wing_and_rib(renderer)
 
     _color(renderer, 1)
+    renderer.flush_writes()
 
     assert (
         _last_write(session, "BlockColorArrayNames"),
@@ -337,6 +341,7 @@ def test_range_change_moves_the_part_and_deletes_its_old_map():
     _color(renderer, 1)
 
     _color(renderer, 1, max_val=6.0)
+    renderer.flush_writes()
 
     assert (_last_write(session, "LookupTable"), session.deleted_maps) == (session.maps[1], [0])
 
@@ -348,6 +353,7 @@ def test_clear_color_forgets_an_unused_map():
     _color(renderer, 1)
 
     renderer.clear_color_variable(1)
+    renderer.flush_writes()
 
     assert session.deleted_maps == [0]
 
@@ -359,6 +365,7 @@ def test_deregister_node_releases_its_map():
     _color(renderer, 2)
 
     renderer.deregister_node(2)
+    renderer.flush_writes()
 
     assert session.deleted_maps == [0]
 
@@ -403,7 +410,10 @@ def test_a_parts_own_map_does_not_count_when_it_moves_at_the_limit():
         _register(renderer, node_id, f"s{node_id}")
         _color(renderer, node_id, max_val=float(node_id))
 
-    assert (_color(renderer, 30, max_val=99.0), session.deleted_maps) == (True, [29])
+    moved = _color(renderer, 30, max_val=99.0)
+    renderer.flush_writes()
+
+    assert (moved, session.deleted_maps) == (True, [29])
 
 
 def test_apply_selected_selects_the_block():
@@ -412,6 +422,7 @@ def test_apply_selected_selects_the_block():
     _register_wing_and_rib(renderer)
 
     renderer.apply_selected(2, True, [1.0, 0.5, 0.0])
+    renderer.flush_writes()
 
     assert session.selections == [("/shared/mb.vtm", ["/Root/body/rib"])]
 
@@ -422,6 +433,7 @@ def test_deregister_node_hides_only_that_block():
     _register_wing_and_rib(renderer)
 
     renderer.deregister_node(2)
+    renderer.flush_writes()
 
     assert _last_write(session, "BlockSelectors") == ["/Root/wing"]
 
@@ -433,6 +445,7 @@ def test_close_source_deletes_the_source_and_the_maps_its_parts_used():
     _color(renderer, 1)
 
     renderer.close_source("mb")
+    renderer.flush_writes()
 
     assert ([d.path for d in session.deleted], session.deleted_maps) == (["/shared/mb.vtm"], [0])
 
@@ -455,3 +468,77 @@ def test_part_write_lands_on_that_parts_representation_only(method, args, prop, 
     getattr(renderer, method)(1, *args)
 
     assert session.writes == [(rep_a, prop, value)]
+
+
+def _register_blocks(renderer: ParaviewRenderer, count: int) -> None:
+    """Open one composite source of count leaves ``b0``.. and register leaf i as node i + 1."""
+    root = vtkMultiBlockDataSet()
+    for index in range(count):
+        _named(root, index, f"b{index}", _triangle_points())
+    renderer.open_source("mb", "/shared/mb.vtm", root)
+    for index in range(count):
+        renderer.register_node(SimpleNamespace(id=index + 1, name=f"b{index}"), root.GetBlock(index))
+
+
+def test_a_burst_of_block_changes_writes_each_list_once_at_the_flush():
+    session = _FakeSession()
+    renderer, _ = _renderer(session)
+    _register_blocks(renderer, 3)
+    renderer.flush_writes()
+    session.writes.clear()
+
+    for node_id in (1, 2, 3):
+        _color(renderer, node_id)
+        renderer.apply_opacity(node_id, 0.5)
+    held = list(session.writes)
+    renderer.flush_writes()
+
+    assert (held, [prop for _, prop, _ in session.writes]) == (
+        [],
+        ["BlockOpacities", "ColorArrayName", "BlockLookupTables", "BlockUseSeparateColorMaps", "BlockColorArrayNames"],
+    )
+
+
+def test_a_burst_of_selection_changes_makes_one_selection_write():
+    session = _FakeSession()
+    renderer, _ = _renderer(session)
+    _register_blocks(renderer, 3)
+
+    for node_id in (1, 2, 3):
+        renderer.apply_selected(node_id, True, [1.0, 1.0, 1.0])
+    renderer.apply_selected(2, False, [1.0, 1.0, 1.0])
+    renderer.flush_writes()
+
+    assert session.selections == [("/shared/mb.vtm", ["/Root/b0", "/Root/b2"])]
+
+
+def test_a_released_map_stops_counting_at_once_and_is_deleted_after_the_lists_are_written():
+    session = _FakeSession()
+    renderer, _ = _renderer(session)
+    _register_blocks(renderer, 31)
+    for node_id in range(1, 31):
+        _color(renderer, node_id, max_val=float(node_id))
+    renderer.clear_color_variable(1)
+
+    coloured = _color(renderer, 31, max_val=31.0)
+    deleted_before_flush = list(session.deleted_maps)
+    renderer.flush_writes()
+
+    assert (coloured, deleted_before_flush, session.deleted_maps, session.maps[0] in _last_write(session, "BlockLookupTables")) == (
+        True,
+        [],
+        [0],
+        False,
+    )
+
+
+def test_flush_writes_nothing_when_nothing_changed():
+    session = _FakeSession()
+    renderer, _ = _renderer(session)
+    _register_blocks(renderer, 2)
+    renderer.flush_writes()
+    session.writes.clear()
+
+    renderer.flush_writes()
+
+    assert (session.writes, session.selections) == ([], [])

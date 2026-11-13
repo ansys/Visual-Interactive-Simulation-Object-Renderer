@@ -251,8 +251,10 @@ def test_in_memory_input_opens_nothing(scene, session):
 def test_add_multiblock_shows_one_representation(scene, session):
     session.reported_points = 88
     scene.add_dataset(file_to_dataset(str(MANY_BLOCKS_VTM)), _metadata("mb", file_path="/shared/many_blocks.vtm"))
+    scene.rca_window._capture._render()
     shown_blocks = [value for name, value in session.writes if name == "BlockSelectors"][-1]
-    assert (len(session.shown), len(shown_blocks), shown_blocks[:3]) == (
+    assert (len(session.shown), session.render_count, len(shown_blocks), shown_blocks[:3]) == (
+        1,
         1,
         66,
         [
@@ -404,3 +406,16 @@ def test_rca_window_wraps_scene_lock(scene, bridge):
     with lock_held_by_another_thread(scene._vtk_lock):
         _ = scene.rca_window.img_cols_rows
     assert bridge.retry_count == 1
+
+
+def test_the_capture_writes_held_block_changes_before_it_renders(scene, session):
+    session.reported_points = 88
+    scene.add_dataset(file_to_dataset(str(MANY_BLOCKS_VTM)), _metadata("mb", file_path="/shared/many_blocks.vtm"))
+    held = [value for name, value in session.writes if name == "BlockSelectors"]
+    session.render = lambda: session.writes.append(("render", None))
+    before = len(session.writes)
+
+    scene.rca_window._capture._render()
+
+    flushed = [name for name, _ in session.writes[before:]]
+    assert (held, "BlockSelectors" in flushed, flushed[-1]) == ([[]], True, "render")
