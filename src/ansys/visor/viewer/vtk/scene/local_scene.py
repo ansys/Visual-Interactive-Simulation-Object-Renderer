@@ -1,3 +1,4 @@
+import threading
 from typing import TYPE_CHECKING
 
 from ansys.visor.viewer.core.visor_logging import VisorDefaultLogger
@@ -38,7 +39,7 @@ class VisorLocalScene(VisorSceneBase):
 
         try:
             vtk_renderer = VisorLocalRenderer(server)
-            super().__init__(server, dark_mode, renderer=vtk_renderer)
+            super().__init__(server, dark_mode, renderer=vtk_renderer, vtk_lock=threading.RLock())
             self._frontend_bridge = VisorFrontendBridge(server, self._renderer.frontend_ref_name)
         except RuntimeError as e:
             msg = f"Failed to initialize VTK pipeline: {e}"
