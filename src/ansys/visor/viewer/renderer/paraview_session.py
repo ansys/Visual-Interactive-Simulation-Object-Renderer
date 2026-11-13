@@ -202,14 +202,33 @@ class PvSimpleSession:
         self._simple.Delete(lut)
 
     def set_selected_blocks(self, source: PvSource, selectors: list[str]) -> None:
-        """Make these blocks of source its whole selection; an empty list clears it.
+        """Make these blocks of source its whole selection in one write; an empty list clears it.
 
-        ``SelectBlocks`` takes one selector per call, so each block after the
-        clear is added to the selection.
+        This is ``SelectBlocks`` with every selector in one selection source
+        and no render: ``SelectBlocks`` takes one selector per call and
+        renders the view after each.
         """
-        self._simple.ClearSelection(source)
+        if not selectors:
+            source.SMProxy.SetSelectionInput(0, None, 0)
+            return
+        from paraview.modules.vtkRemotingViews import vtkSMSelectionHelper
+        from paraview.vtk import vtkSelectionNode
+        from vtkmodules.vtkFiltersSources import vtkSelectionSource
+
+        selection = vtkSelectionSource()
+        selection.SetFieldType(vtkSelectionNode.POINT)
+        selection.SetContentType(vtkSelectionNode.BLOCK_SELECTORS)
+        selection.SetArrayName("Hierarchy")
         for selector in selectors:
-            self._simple.SelectBlocks(BlockSelector=selector, Source=source, Modifier="ADD")
+            selection.AddBlockSelector(selector)
+        selection.Update()
+        selection_proxy = vtkSMSelectionHelper.NewSelectionSourceFromSelection(
+            source.GetSession(), selection.GetOutput()
+        )
+        append = vtkSMSelectionHelper.NewAppendSelectionsFromSelectionSource(selection_proxy)
+        source.SMProxy.SetSelectionInput(0, append, 0)
+        append.UnRegister(None)
+        selection_proxy.UnRegister(None)
 
     def write_camera(self, camera: VisorCameraState) -> None:
         """Write the view camera properties; ParaView recomputes the clipping range at render."""
