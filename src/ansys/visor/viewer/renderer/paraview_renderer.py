@@ -55,8 +55,8 @@ logger = VisorDefaultLogger(__name__)
 SELECTED_AMBIENT_RGB: tuple[float, float, float] = (0 / 255, 62 / 255, 111 / 255)
 """Ambient tint of a selected part, as the VTK pipeline applies it; also the colour of a selected block."""
 
-SELECTED_BLOCK_OPACITY: float = 0.5
-"""Opacity of a selected block's tint, so its own colour, solid or mapped, shows through by half, as Ambient 0.5 and Diffuse 0.5 leave it."""
+SELECTED_BLOCK_OPACITY: float = 1.0
+"""Opacity of a selected block's wireframe outline."""
 
 MAX_COLOR_MAPS: int = 30
 """Colour maps in use at once, across every representation; more exceed the texture units of the GPU."""
@@ -172,7 +172,7 @@ class BlockTable:
     """
 
     def __init__(self, session: ParaviewSession, source: PvSource, rep: PvRepresentation) -> None:
-        """Hold no blocks, so none is shown; selected blocks are drawn under a half-opaque selection tint."""
+        """Hold no blocks, so none is shown; selected blocks are outlined in the opaque selection colour."""
         self._session = session
         self._source = source
         self._rep = rep
@@ -680,8 +680,8 @@ class ParaviewRenderer(IRenderer):
         A whole representation is tinted with AmbientColor, Ambient and
         Diffuse, as the pipeline renderer tints an actor.  ParaView has no
         per-block lighting terms, so a block is instead put in the source's
-        block selection, which ParaView draws in the selection tint; this
-        renderer owns that selection.
+        block selection, which ParaView outlines as a wireframe in the
+        selection colour; this renderer owns that selection.
         """
         part = self._part(node_id, "apply_selected")
         if part is None:

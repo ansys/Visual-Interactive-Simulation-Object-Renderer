@@ -427,12 +427,13 @@ def test_apply_selected_selects_the_block():
     assert session.selections == [("/shared/mb.vtm", ["/Root/body/rib"])]
 
 
-def test_a_composite_source_tints_its_selection_half_opaque():
+def test_a_composite_source_draws_its_selection_opaque_in_the_server_blue():
     session = _FakeSession()
     renderer, _ = _renderer(session)
     _register_wing_and_rib(renderer)
 
-    assert _last_write(session, "SelectionOpacity") == 0.5
+    assert _last_write(session, "SelectionOpacity") == 1.0
+    assert _last_write(session, "SelectionColor") == [0.0, 62 / 255, 111 / 255]
 
 
 def test_hiding_a_selected_block_drops_it_from_the_selection():
