@@ -14,10 +14,22 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
+from vtkmodules.vtkCommonCore import vtkPoints
+from vtkmodules.vtkCommonDataModel import vtkPolyData
 
 from ansys.visor.viewer.core.errors import PvserverConnectionError
 from ansys.visor.viewer.core.pvserver_address import PvserverAddress
 from ansys.visor.viewer.renderer.paraview_session import PvSimpleSession
+from ansys.visor.viewer.vtk.node_pipeline import VtkNodePipeline
+
+
+def _triangle() -> vtkPolyData:
+    points = vtkPoints()
+    for x, y in ((0.0, 0.0), (1.0, 0.0), (0.0, 1.0)):
+        points.InsertNextPoint(x, y, 0.0)
+    polydata = vtkPolyData()
+    polydata.SetPoints(points)
+    return polydata
 
 
 class _FakeWindow:
@@ -125,7 +137,42 @@ def test_block_point_count_reads_the_blocks_hierarchy_subset(monkeypatch):
 def test_new_color_map_maps_the_component_and_never_rescales(monkeypatch, component, expected):
     _, session = _session(monkeypatch)
 
-    assert vars(session.new_color_map(component)) == expected
+    lut = vars(session.new_color_map(component))
+
+    assert {name: lut[name] for name in expected} == expected
+
+
+def _sampled(colors, lo: float, hi: float) -> list[tuple[float, ...]]:
+    """colors' RGB at 101 evenly spaced values over [lo, hi]."""
+    samples = []
+    for step in range(101):
+        rgb = [0.0, 0.0, 0.0]
+        colors.GetColor(lo + (hi - lo) * step / 100, rgb)
+        samples.append(tuple(rgb))
+    return samples
+
+
+def test_new_color_map_samples_the_colors_of_the_vtk_modes_table(monkeypatch):
+    from vtkmodules.vtkRenderingCore import vtkDiscretizableColorTransferFunction
+
+    _, session = _session(monkeypatch)
+    lut = session.new_color_map(-1)
+    # ParaView rescales the normalised points onto [lo, hi], here [-3, 17].
+    paraview_map = vtkDiscretizableColorTransferFunction()
+    paraview_map.SetColorSpaceToRGB()
+    for i in range(0, len(lut.RGBPoints), 4):
+        x, red, green, blue = lut.RGBPoints[i : i + 4]
+        paraview_map.AddRGBPoint(-3.0 + 20.0 * x, red, green, blue)
+    paraview_map.SetNumberOfValues(lut.NumberOfTableValues)
+    paraview_map.SetDiscretize(lut.Discretize)
+    paraview_map.Build()
+    vtk_table = VtkNodePipeline.from_dataset(_triangle()).lookup_table
+    vtk_table.SetRange(-3.0, 17.0)
+
+    samples = _sampled(paraview_map, -3.0, 17.0)
+
+    assert (lut.ColorSpace, samples[0], samples[-1]) == ("RGB", (0.0, 0.0, 1.0), (1.0, 0.0, 0.0))
+    assert samples == _sampled(vtk_table, -3.0, 17.0)
 
 
 class _FakeSelectionHelper:

@@ -70,7 +70,7 @@ class ParaviewSession(Protocol):
         """ColorBy None."""
 
     def new_color_map(self, component: int) -> PvLookupTable:
-        """A new lookup table mapping component, ``-1`` for magnitude, that ParaView never rescales."""
+        """A new lookup table in the VTK modes' colours, mapping component, ``-1`` for magnitude, that ParaView never rescales."""
 
     def rescale_color_map(self, lut: PvLookupTable, lo: float, hi: float) -> None:
         """Rescale lut's transfer function to [lo, hi]."""
@@ -193,16 +193,43 @@ class PvSimpleSession:
         """A new lookup table mapping component, ``-1`` for magnitude, that ParaView never rescales.
 
         The table is not registered under an array name, so no other
-        representation coloured by the same array picks it up.
+        representation coloured by the same array picks it up.  Its colours
+        are those of the VTK modes' table; ParaView's default preset is not used.
         """
         lut = self._simple.CreateLookupTable()
         lut.AutomaticRescaleRangeMode = "Never"
+        self._write_visor_colors(lut)
         if component == -1:
             lut.VectorMode = "Magnitude"
         else:
             lut.VectorMode = "Component"
             lut.VectorComponent = component
         return lut
+
+    @staticmethod
+    def _write_visor_colors(lut: PvLookupTable) -> None:
+        """Make lut map as the VTK modes' table does: its colours as RGB points, discretized to its size.
+
+        Each table colour is placed at its normalised index, so the
+        discretized map samples exactly that colour and indexes values as
+        the VTK table does at every range.
+        """
+        from vtkmodules.vtkCommonCore import vtkLookupTable
+
+        from ansys.visor.viewer.vtk.node_pipeline import LOOKUP_TABLE_HUE_RANGE
+
+        table = vtkLookupTable()
+        table.SetHueRange(*LOOKUP_TABLE_HUE_RANGE)
+        table.Build()
+        count = table.GetNumberOfTableValues()
+        points: list[float] = []
+        for index in range(count):
+            red, green, blue, _ = table.GetTableValue(index)
+            points += [index / (count - 1), red, green, blue]
+        lut.ColorSpace = "RGB"
+        lut.RGBPoints = points
+        lut.NumberOfTableValues = count
+        lut.Discretize = 1
 
     def rescale_color_map(self, lut: PvLookupTable, lo: float, hi: float) -> None:
         """Rescale lut's transfer function to [lo, hi]."""
