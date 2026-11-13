@@ -159,8 +159,9 @@ def test_set_selected_blocks_writes_every_block_in_one_selection_and_never_rende
 
     session.set_selected_blocks(source, ["/Root/body/rib", "/Root/wing"])
 
+    # 8 is BLOCK_SELECTORS; 0 is CELL, which extracts a block's faces where POINT extracts only its vertices.
     assert [(c[0], c[2].name) if c[0] == "input" else c for c in helper.calls] == [
-        ("source", "pv-session", vtkSelectionNode.BLOCK_SELECTORS, vtkSelectionNode.POINT, ["/Root/body/rib", "/Root/wing"]),
+        ("source", "pv-session", 8, 0, ["/Root/body/rib", "/Root/wing"]),
         ("append", "selection-proxy"),
         ("input", "append-proxy"),
         ("unregister", "append-proxy"),

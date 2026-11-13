@@ -206,7 +206,9 @@ class PvSimpleSession:
 
         This is ``SelectBlocks`` with every selector in one selection source
         and no render: ``SelectBlocks`` takes one selector per call and
-        renders the view after each.
+        renders the view after each.  The selection is of cells:
+        ``SelectBlocks``' default of points extracts each block as vertices,
+        so only its points would be highlighted.
         """
         if not selectors:
             source.SMProxy.SetSelectionInput(0, None, 0)
@@ -216,7 +218,7 @@ class PvSimpleSession:
         from vtkmodules.vtkFiltersSources import vtkSelectionSource
 
         selection = vtkSelectionSource()
-        selection.SetFieldType(vtkSelectionNode.POINT)
+        selection.SetFieldType(vtkSelectionNode.CELL)
         selection.SetContentType(vtkSelectionNode.BLOCK_SELECTORS)
         selection.SetArrayName("Hierarchy")
         for selector in selectors:
