@@ -75,13 +75,13 @@ export type GeometryPickMode = 'vertex' | 'edge' | 'face';
 
 export interface IRenderer {
     // ---- Canvas / lifecycle -------------------------------------------------
-    /** DOM element hosting the render output (canvas + overlay). */
+    /** DOM element hosting the render output. */
     readonly domElement: HTMLDivElement;
     /** Kick a frame flush. Wasm: wasm.update() + Render(). Server: no-op. */
     renderAsync(): Promise<void>;
     /** Resize output to its container. Call after container size changes. */
     resizeAsync(): Promise<void>;
-    /** Drop listeners, wasm observers, overlay canvas, RPC sessions, etc. */
+    /** Drop listeners, wasm observers, RPC sessions, etc. */
     dispose(): void;
 
     // ---- Camera (all reads async; state may live off-thread / off-box) ------

@@ -56,6 +56,7 @@ def test_init_sets_attributes(
         get_scene_details_json=mock_get_scene_details_json,
         standalone=True,
         trame_logger=mock_logger,
+        pick_geometry_in_view=MagicMock(),
     )
     assert app.server == mock_server
     assert app._get_scene_details_json == mock_get_scene_details_json
@@ -70,6 +71,7 @@ def test_register_lifecycle_hooks_adds_handlers(
         server=mock_server,
         get_scene_details_json=mock_get_scene_details_json,
         standalone=True,
+        pick_geometry_in_view=MagicMock(),
     )
     assert mock_server.controller.add_call_count >= 5
 
@@ -82,6 +84,7 @@ def test_set_headers_sets_http_headers(
         server=mock_server,
         get_scene_details_json=mock_get_scene_details_json,
         standalone=True,
+        pick_geometry_in_view=MagicMock(),
     )
     mock_server.http_headers.set_header.assert_any_call(
         "Access-Control-Allow-Origin", "*"
@@ -103,6 +106,7 @@ def test_set_www_path_sets_www(
         server=mock_server,
         get_scene_details_json=mock_get_scene_details_json,
         standalone=True,
+        pick_geometry_in_view=MagicMock(),
     )
     assert mock_server._www == "/mock/path"
 
@@ -115,6 +119,7 @@ def test_get_visor_scene_details_json_returns_scene_details(
         server=mock_server,
         get_scene_details_json=mock_get_scene_details_json,
         standalone=True,
+        pick_geometry_in_view=MagicMock(),
     )
     result = app.get_visor_scene_details_json()
     assert result == {"scene": "details"}
@@ -134,6 +139,7 @@ def test_trame_logger_is_set_when_provided(
         get_scene_details_json=mock_get_scene_details_json,
         standalone=True,
         trame_logger=mock_logger,
+        pick_geometry_in_view=MagicMock(),
     )
     assert app._SceneTriggerApp__trame_logger == mock_logger
 
@@ -150,6 +156,7 @@ def test_trame_logger_is_none_when_not_provided(
         server=mock_server,
         get_scene_details_json=mock_get_scene_details_json,
         standalone=True,
+        pick_geometry_in_view=MagicMock(),
     )
     assert app._SceneTriggerApp__trame_logger is None
 
@@ -168,6 +175,7 @@ def test_lifecycle_logging_calls_debug(
         get_scene_details_json=mock_get_scene_details_json,
         standalone=True,
         trame_logger=mock_logger,
+        pick_geometry_in_view=MagicMock(),
     )
 
     # Trigger each lifecycle event

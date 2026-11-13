@@ -23,14 +23,12 @@ from ansys.visor.viewer.config import settings
 from ansys.visor.viewer.core.perf_timer import PerfTimer
 from ansys.visor.viewer.core.visor_colors import VisorColors
 from ansys.visor.viewer.core.visor_logging import VisorDefaultLogger
-from ansys.visor.viewer.models.runtime.picking.geometry_pick import NoGeometryPick
 from ansys.visor.viewer.models.runtime.vtk.renderer_annotation import (
     WasmNodeHandles,
     WasmRendererAnnotation,
     WasmWidgetHandles,
 )
 from ansys.visor.viewer.renderer.pipeline_renderer import VtkPipelineRenderer
-from ansys.visor.viewer.vtk.picking.cell_feature_finder import CellFeatureFinder
 from ansys.visor.viewer.vtk.widgets.visor_bounding_box import VisorBoundingBox
 from ansys.visor.viewer.vtk.widgets.visor_cross_section import VisorCrossSectionWidget
 from ansys.visor.viewer.vtk.widgets.visor_orientation import VisorOrientationWidget
@@ -200,7 +198,7 @@ class VisorLocalRenderer(VtkPipelineRenderer):
         self.push_without_rebuild()
 
     def _initial_highlight_pixel_scale(self) -> float:
-        """1.0: the client draws its own overlay here, so the actor's sizes are not shown."""
+        """1.0 until the client reports its device pixel ratio."""
         return 1.0
 
     # ------------------------------------------------------------------
@@ -216,72 +214,6 @@ class VisorLocalRenderer(VtkPipelineRenderer):
 
     def set_bounding_box_visibility(self, visible: bool) -> None:
         """No-op: the widget's enablement is driven client-side."""
-
-    # ------------------------------------------------------------------
-    # Local-only: picking
-    # ------------------------------------------------------------------
-
-    def pick_geometry(
-        self,
-        actor_wasm_id: int,
-        cell_id: int,
-        mode: str,
-        world_pos: tuple[float, float, float],
-    ) -> dict:
-        """
-        Resolve a client-initiated pick event to a sub-geometry payload.
-
-        The actor is found by matching each renderer actor's object-manager
-        id against *actor_wasm_id*; the coordinator never performs that
-        resolution.
-
-        Parameters
-        ----------
-        actor_wasm_id:
-            Client-supplied opaque actor identifier from the wasm-side picker.
-        cell_id:
-            Cell index within the picked actor's mapper dataset.
-        mode:
-            ``"vertex" | "edge" | "face"``.
-        world_pos:
-            World-space pick position from the client picker, used to select
-            the nearest vertex/edge for multi-vertex/edge cells.
-
-        Returns
-        -------
-        dict
-            Backend-neutral pick result. Always contains ``"found": bool``.
-            When ``found`` is ``True``, contains ``"mode"`` and mode-specific
-            fields (``position`` / ``pointA``+``pointB``+``edgeLength`` /
-            ``points``+``area``).
-        """
-        actor_wasm_id = int(actor_wasm_id)
-        cell_id = int(cell_id)
-        pick_pos = (float(world_pos[0]), float(world_pos[1]), float(world_pos[2]))
-
-        if actor_wasm_id < 0 or cell_id < 0:
-            return NoGeometryPick().model_dump(by_alias=True)
-
-        # Locate the actor by iterating the renderer's actors and matching
-        # WASM IDs (avoids depending on a GetObjectAtId reverse-lookup API).
-        actor = None
-        actors = self._vtk_renderer.GetActors()
-        actors.InitTraversal()
-        a = actors.GetNextActor()
-        while a is not None:
-            if self._object_manager.GetId(a) == actor_wasm_id:
-                actor = a
-                break
-            a = actors.GetNextActor()
-
-        if actor is None:
-            return NoGeometryPick().model_dump(by_alias=True)
-
-        finder = CellFeatureFinder.from_dataset(
-            actor.GetMapper().GetInputDataObject(0, 0), cell_id, pick_pos
-        )
-        pick = finder.find(mode) if finder is not None else NoGeometryPick()
-        return pick.model_dump(by_alias=True)
 
     # ------------------------------------------------------------------
     # IRenderer: render

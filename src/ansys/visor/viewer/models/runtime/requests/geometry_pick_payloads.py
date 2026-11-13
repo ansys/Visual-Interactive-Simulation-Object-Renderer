@@ -1,7 +1,10 @@
 """Models for the geometry-pick trigger payloads."""
 
-from pydantic import BaseModel
+from typing import Annotated
 
+from pydantic import BaseModel, Field
+
+from ansys.visor.viewer.models.common.visor_camera_state import VisorCameraState
 from ansys.visor.viewer.models.runtime.picking.geometry_pick import GeometryPick, GeometryPickMode
 
 
@@ -11,6 +14,17 @@ class PickGeometryAtPayload(BaseModel):
     x: int
     y: int
     mode: GeometryPickMode
+
+
+class PickGeometryInViewPayload(BaseModel):
+    """pick_geometry_in_view payload: a pixel of the client's window, origin bottom-left, the window's size, its camera record, and the mode."""
+
+    x: int
+    y: int
+    width: Annotated[int, Field(gt=0)]
+    height: Annotated[int, Field(gt=0)]
+    mode: GeometryPickMode
+    camera: VisorCameraState
 
 
 class SetGeometryHighlightPayload(BaseModel):

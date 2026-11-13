@@ -37,6 +37,16 @@ logger = VisorDefaultLogger(__name__)
 LOOKUP_TABLE_HUE_RANGE: tuple[float, float] = (0.667, 0.0)
 """Blue (low) to red (high)."""
 
+PART_POLYGON_OFFSET: tuple[float, float] = (0.0, 2.0)
+"""Relative coincident-topology polygon offset (factor, units) for every part.
+
+Applied by VTK only while the part is drawn with edges on.  Positive values push
+the part's faces away from the camera, so geometry drawn on faces without an offset
+(the geometry highlight) draws in front of the part's faces.
+
+When part edges are on, With a zero polygon offset, the highlight is drawn behind the
+face and is invisible.
+"""
 
 @dataclass
 class VtkNodePipeline:
@@ -80,6 +90,7 @@ class VtkNodePipeline:
         mapper.SetInputConnection(base_algorithm.GetOutputPort())
         lookup_table = cls._create_lookup_table()
         mapper.SetLookupTable(lookup_table)
+        mapper.SetRelativeCoincidentTopologyPolygonOffsetParameters(*PART_POLYGON_OFFSET)
 
         actor = vtkActor()
         actor.SetMapper(mapper)
