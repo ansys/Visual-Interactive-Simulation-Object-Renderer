@@ -139,6 +139,23 @@ class ServerRenderer(VtkPipelineRenderer):
         return None
 
     # ------------------------------------------------------------------
+    # IRenderer: node lifecycle
+    # ------------------------------------------------------------------
+
+    def deregister_node(self, node_id: int) -> None:
+        """See :meth:`VtkPipelineRenderer.deregister_node`; then release the GL context.
+
+        ``RemoveActor`` makes the window's context current on the calling
+        thread to free the actor's graphics resources and leaves it current.
+        A context is current on at most one thread, so it is released here for
+        the streaming thread to make it current at the next frame.
+        """
+        try:
+            super().deregister_node(node_id)
+        finally:
+            self._render_window.ReleaseCurrent()
+
+    # ------------------------------------------------------------------
     # IRenderer: widget visibility
     # ------------------------------------------------------------------
 
