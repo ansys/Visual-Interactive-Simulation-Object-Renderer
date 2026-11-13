@@ -104,11 +104,16 @@ class PvSimpleSession:
     """ParaviewSession over paraview.simple; connects on construction."""
 
     def __init__(self, pvserver: PvserverAddress) -> None:
-        """Connect to pvserver, create the render view, set RemoteRenderThreshold 0 and draw the client-side window offscreen; raise PvserverConnectionError naming the address.
+        """Connect to pvserver, create the render view, set RemoteRenderThreshold 0, stop interaction from rendering and draw the client-side window offscreen; raise PvserverConnectionError naming the address.
 
         ``Connect`` does not raise on an unreachable server: it retries for
         its timeout and returns ``None``.  The timeout is passed explicitly so
         the failure is bounded, and ``None`` is turned into the raise.
+
+        By default each event the interactor handles makes the view render on
+        pvserver, and the end of a gesture makes a still render, none of which
+        is captured.  With ``EnableRenderOnInteraction`` off, an event only
+        moves the camera, and the capture's render is the frame's one render.
 
         Without ``--force-offscreen-rendering`` the client-side window is an
         on-screen window, which the windowing system clamps to the screen, so
@@ -126,6 +131,7 @@ class PvSimpleSession:
         self._view = simple.CreateView("RenderView")
         self._view.RemoteRenderThreshold = REMOTE_RENDER_THRESHOLD_MB
         logger.info("RemoteRenderThreshold set to %s", self._view.RemoteRenderThreshold)
+        self._view.EnableRenderOnInteraction = 0
         self._render_window = self._view.GetClientSideObject().GetRenderWindow()
         self._render_window.SetOffScreenRendering(1)
 
