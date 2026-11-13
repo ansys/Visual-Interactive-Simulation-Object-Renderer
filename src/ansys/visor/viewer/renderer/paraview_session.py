@@ -52,7 +52,7 @@ class ParaviewSession(Protocol):
         """Open path on pvserver."""
 
     def show(self, source: PvSource) -> PvRepresentation:
-        """Show source in the view with scalar colouring off."""
+        """Show source in the view with scalar colouring off and its selection drawn as surface."""
 
     def delete(self, source: PvSource) -> None:
         """Hide and delete source on pvserver."""
@@ -147,9 +147,14 @@ class PvSimpleSession:
         return source
 
     def show(self, source: PvSource) -> PvRepresentation:
-        """Show source in the view with scalar colouring off."""
+        """Show source in the view with scalar colouring off and its selection drawn as surface.
+
+        ParaView draws a selection as a wireframe by default, which outlines
+        every selected cell's edges over the part.
+        """
         rep = self._simple.Show(source, self._view)
         self.clear_color(rep)
+        rep.SelectionRepresentation = "Surface"
         return rep
 
     def delete(self, source: PvSource) -> None:

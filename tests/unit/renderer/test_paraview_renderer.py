@@ -427,6 +427,31 @@ def test_apply_selected_selects_the_block():
     assert session.selections == [("/shared/mb.vtm", ["/Root/body/rib"])]
 
 
+def test_a_composite_source_tints_its_selection_half_opaque():
+    session = _FakeSession()
+    renderer, _ = _renderer(session)
+    _register_wing_and_rib(renderer)
+
+    assert _last_write(session, "SelectionOpacity") == 0.5
+
+
+def test_hiding_a_selected_block_drops_it_from_the_selection():
+    session = _FakeSession()
+    renderer, _ = _renderer(session)
+    _register_wing_and_rib(renderer)
+    renderer.apply_selected(1, True, [1.0, 1.0, 1.0])
+    renderer.apply_selected(2, True, [1.0, 1.0, 1.0])
+    renderer.flush_writes()
+
+    renderer.apply_visibility(2, False)
+    renderer.flush_writes()
+
+    assert session.selections == [
+        ("/shared/mb.vtm", ["/Root/body/rib", "/Root/wing"]),
+        ("/shared/mb.vtm", ["/Root/wing"]),
+    ]
+
+
 def test_deregister_node_hides_only_that_block():
     session = _FakeSession()
     renderer, _ = _renderer(session)
