@@ -1,14 +1,18 @@
-"""Unit tests for ``ParaviewApp``: its trigger set and the rendering mode it
-reports.
+"""Unit tests for ``ParaviewApp``: its trigger set, the rendering mode it
+reports and the stream quality it binds, and the trame-rca scheduler
+behaviour that quality relies on.
 
 Everything else is ``ServerApp``'s and is pinned in ``test_server_app.py``.
-``RemoteControlledArea`` is replaced by a double, so nothing here builds a
-real render scheduler.
+``RemoteControlledArea`` is replaced by a double, so the app tests build no
+real render scheduler; the scheduler test builds one over a counting area.
 """
 
+import asyncio
 from unittest.mock import MagicMock, patch
 
+import numpy as np
 import pytest
+from trame_rca.schedulers import RcaImageRenderScheduler
 
 from ansys.visor.viewer.app.trame.paraview_app import ParaviewApp
 from ansys.visor.viewer.core.visor_enums import RenderingMode
@@ -76,7 +80,7 @@ def area_cls():
         yield cls
 
 
-def _build(mock_server):
+def _build(mock_server, rca_window=None, bridge=None):
     return ParaviewApp(
         server=mock_server,
         get_scene_details_json=MagicMock(),
@@ -86,8 +90,8 @@ def _build(mock_server):
         pick_part_at=MagicMock(),
         pick_geometry_at=MagicMock(),
         set_dark_mode=MagicMock(),
-        rca_window=MagicMock(name="rca_window"),
-        bridge=MagicMock(name="bridge"),
+        rca_window=rca_window if rca_window is not None else MagicMock(name="rca_window"),
+        bridge=bridge if bridge is not None else MagicMock(name="bridge"),
     )
 
 
@@ -109,3 +113,62 @@ def test_paraview_app_seeds_rendering_mode_paraview(mock_server, area_cls):
 
 def test_paraview_app_reports_paraview_mode(mock_server, area_cls):
     assert _build(mock_server).rendering_mode is RenderingMode.PARAVIEW
+
+
+def test_paraview_app_streams_every_frame_at_one_quality(mock_server, area_cls):
+    """When the server is ready, the view handler is built with equal interactive and still qualities."""
+    rca_window = MagicMock(name="rca_window")
+    _build(mock_server, rca_window=rca_window)
+    area = area_cls.return_value
+
+    for handler in mock_server.controller.handlers["on_server_ready"]:
+        handler()
+
+    area.create_view_handler.assert_called_once_with(
+        rca_window,
+        encoder="jpeg",
+        target_fps=30.0,
+        interactive_quality=90,
+        still_quality=90,
+    )
+
+
+class _CountingArea:
+    """A remote-controlled area that counts its captures and returns one literal 1 x 1 frame."""
+
+    def __init__(self) -> None:
+        self.captures = 0
+
+    @property
+    def img_cols_rows(self):
+        self.captures += 1
+        return np.zeros((1, 1, 3), dtype=np.uint8), 1, 1
+
+    def process_resize_event(self, width: int, height: int) -> None:
+        pass
+
+    def process_interaction_event(self, event: dict) -> None:
+        pass
+
+
+def test_trame_rca_makes_no_still_pass_at_equal_qualities():
+    """At equal qualities one render request captures one frame, and none follows once requests stop.
+
+    trame-rca documents only that a frame "may be re-encoded at higher
+    quality shortly afterwards"; skipping that pass at equal qualities is
+    its undocumented behaviour, pinned here.  At unequal qualities the same
+    request captures twice, five frame periods (50 ms at 100 fps) apart.
+    """
+    area = _CountingArea()
+
+    async def request_one_frame_and_wait() -> None:
+        scheduler = RcaImageRenderScheduler(
+            area, target_fps=100.0, interactive_quality=90, still_quality=90, rca_encoder="jpeg"
+        )
+        scheduler.schedule_render()
+        await asyncio.sleep(0.5)
+        await scheduler.close()
+
+    asyncio.run(request_one_frame_and_wait())
+
+    assert area.captures == 1

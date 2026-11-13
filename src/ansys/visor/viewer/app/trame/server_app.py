@@ -48,6 +48,12 @@ class SetDarkThemePayload(BaseModel):
 class ServerApp(SceneTriggerApp):
     """Serves the scene triggers, part and geometry picking and the streamed view for server-side rendering."""
 
+    INTERACTIVE_QUALITY: int = 60
+    """JPEG quality of frames streamed while the scene changes."""
+
+    STILL_QUALITY: int = 90
+    """JPEG quality of the frame re-rendered once changes stop; equal to INTERACTIVE_QUALITY, none is re-rendered."""
+
     def __init__(
         self,
         server: Server,
@@ -97,8 +103,8 @@ class ServerApp(SceneTriggerApp):
             self._rca_window,
             encoder="jpeg",
             target_fps=30.0,
-            interactive_quality=60,
-            still_quality=90,
+            interactive_quality=self.INTERACTIVE_QUALITY,
+            still_quality=self.STILL_QUALITY,
         )
         self._rca_window.bind_pixel_scale(lambda: view_handler.scale_factor)
         self._bridge.bind(view_handler)

@@ -35,6 +35,7 @@ class _FakeView:
 
     def __init__(self) -> None:
         self.RemoteRenderThreshold = 20.0
+        self.EnableRenderOnInteraction = 1
         self.window = _FakeWindow()
 
     def GetClientSideObject(self): # noqa: N802
@@ -73,6 +74,15 @@ def test_init_draws_the_client_side_window_offscreen(monkeypatch):
 
     assert session.render_window is simple.view.window
     assert simple.view.window.offscreen == 1
+
+
+def test_init_turns_off_renders_on_interaction(monkeypatch):
+    """An interactor event moves the camera only; ParaView's default of 1 renders on pvserver per event."""
+    simple = _install_fake_simple(monkeypatch, connection=object())
+
+    PvSimpleSession(PvserverAddress(host="localhost", port=11111))
+
+    assert simple.view.EnableRenderOnInteraction == 0
 
 
 def test_init_raises_naming_the_address_when_connect_returns_none(monkeypatch):
