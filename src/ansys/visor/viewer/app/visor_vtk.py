@@ -358,13 +358,6 @@ class VisorVTK(Visor):
         """
         return self._scene.list_variables_for_dataset(dataset_id)
 
-    @handle_errors("list_part_states")
-    def list_part_states(self, dataset_id: int) -> "RuntimeDatasetState":
-        """Return runtime part states for a dataset, including active color variables."""
-        from ansys.visor.viewer.models.runtime.dataset.runtime_dataset_state import RuntimeDatasetState
-
-        return self._scene.list_part_states_for_dataset(dataset_id)
-
     @handle_errors("update_variables")
     @notifies_scene_change
     def update_variables(self, dataset_id: int, variables: List[Dict[str, Any]]) -> None:

@@ -156,7 +156,6 @@ class VisorAPI:
         self.app.post("/remove_dataset")(self.remove_dataset)
         self.app.get("/list_datasets")(self.list_datasets)
         self.app.get("/{dataset_id}/list_variables")(self.list_variables)
-        self.app.get("/{dataset_id}/part_states")(self.list_part_states)
         self.app.post("/{dataset_id}/update_variables")(self.update_variables)
         self.app.post("/save_state")(self.save_state)
         self.app.post("/load_state")(self.load_state)
@@ -353,23 +352,6 @@ class VisorAPI:
         # List variables for a dataset, grouped by part.
         variables = self.visualizer.list_variables(dataset_id)
         return {"parts": [part.to_dict() for part in variables]}
-
-    @handle_exceptions
-    async def list_part_states(self, dataset_id: int):
-        """Return runtime part states for a dataset, including active color variables."""
-        if self.visualizer is None:
-            msg = "No active Visor instance. Please initialize and start the server first."
-            logger.error(msg)
-            raise HTTPException(status_code=503, detail=msg)
-
-        try:
-            state = self.visualizer.list_part_states(dataset_id)
-        except ValueError as ve:
-            msg = str(ve)
-            logger.error(msg)
-            raise HTTPException(status_code=404, detail=msg)
-
-        return state.model_dump(by_alias=True)
 
     @handle_exceptions
     async def update_variables(

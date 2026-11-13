@@ -711,30 +711,6 @@ def test_update_variables_for_dataset_marks_part_pipelines_dirty(pipeline_instan
     pipeline_instance._renderer.mark_pipeline_modified.assert_called_once_with(55)
 
 
-def test_list_part_states_for_dataset_returns_runtime_state(pipeline_instance):
-    """list_part_states_for_dataset exposes registry part state for SAF clients."""
-    from ansys.visor.viewer.models.runtime.dataset.runtime_dataset_state import (
-        RuntimePartProperties,
-    )
-
-    dataset = MagicMock()
-    dataset.state.part_states = {5: RuntimePartProperties.default_for(5)}
-    pipeline_instance._dataset_registry.datasets = {9: dataset}
-
-    state = pipeline_instance.list_part_states_for_dataset(9)
-
-    assert state.id == 9
-    assert state.part_states[5].id == 5
-
-
-def test_list_part_states_for_dataset_missing_dataset_raises(pipeline_instance):
-    """Unknown dataset id is a hard error for list_part_states_for_dataset."""
-    pipeline_instance._dataset_registry.datasets = {}
-
-    with pytest.raises(ValueError, match="not found"):
-        pipeline_instance.list_part_states_for_dataset(404)
-
-
 def test_render_triggers_window_and_view(pipeline_instance):
     """Test that render() delegates to the renderer backend."""
     pipeline_instance.render()
