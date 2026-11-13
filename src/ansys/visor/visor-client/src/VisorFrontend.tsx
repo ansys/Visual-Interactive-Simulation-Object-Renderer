@@ -10,6 +10,7 @@ import { StateInput } from './state/appstate/VisorStateCommon.tsx';
 import VisorVtkSceneNode from './state/appstate/vtkInfo/VisorVtkSceneNode.tsx';
 import { IRenderer, VisorCameraState } from './renderer/IRenderer';
 import type { TrameTriggerSender } from './renderer/IRenderer';
+import { ViewerClickDispatcher } from './input/ViewerClickDispatcher';
 import { Panel_TopRight_Util } from './components/ui-panels/Panel_TopRight_Util.tsx';
 import { Panel_TopLeft_Util } from './components/ui-panels/Panel_TopLeft_Util.tsx';
 import { FullscreenWidget } from './widgets/fullscreenWidget.ts';
@@ -116,16 +117,15 @@ export class VisorFrontend {
                 callback(fps);
             });
         };
+        // One part pick at a time, for every click of this frontend, whichever
+        // renderer is behind it.
+        const viewerClicks = new ViewerClickDispatcher();
         this.addViewerClickedListener = (callback) => {
-            return renderer.addViewerClickedListener(
-                (nodeId, ctrlKey, shiftKey, _normX, _normY) => {
-                    const node =
-                        nodeId == null
-                            ? null
-                            : sceneGraph.descendantActorNodesOrSelfDictionary[nodeId];
-                    callback(node ?? null, ctrlKey, shiftKey);
-                }
-            );
+            return viewerClicks.addListener((nodeId, ctrlKey, shiftKey, _normX, _normY) => {
+                const node =
+                    nodeId == null ? null : sceneGraph.descendantActorNodesOrSelfDictionary[nodeId];
+                callback(node ?? null, ctrlKey, shiftKey);
+            });
         };
 
         // Selection mode ─────────────────────────────────────────────────────
@@ -161,25 +161,28 @@ export class VisorFrontend {
             return result;
         };
 
-        // Extended viewer click listener that also triggers geometry picking.
+        // Each click picks once, by the selection mode at the click: a part
+        // pick in part mode, a geometry pick otherwise, never both.
         // The remover is held because the `VtkScene` behind the renderer
         // survives a client rebuild: a listener left registered keeps picking
         // for a frontend that has been replaced.  `#private` because
         // `Object.freeze(this)` below makes a public field assigned after
         // construction throw.
-        this.#viewerClickedRemover = renderer.addViewerClickedListener(
-            (_nodeId, _ctrlKey, _shiftKey, normX, normY) => {
-                if (selectionMode !== 'part') {
-                    this.pickGeometryAsync(normX, normY).catch((err) =>
-                        console.error('[VISOR] geometry pick failed', err)
-                    );
-                }
+        this.#canvasClickRemover = renderer.addCanvasClickListener((click) => {
+            if (selectionMode === 'part') {
+                viewerClicks
+                    .dispatchAsync(click, () => renderer.pickPartAsync(click.normX, click.normY))
+                    .catch((err) => console.error('[VISOR] part pick failed', err));
+            } else {
+                this.pickGeometryAsync(click.normX, click.normY).catch((err) =>
+                    console.error('[VISOR] geometry pick failed', err)
+                );
             }
-        );
+        });
         this.release = () => {
-            const remover = this.#viewerClickedRemover;
+            const remover = this.#canvasClickRemover;
             // Cleared first, so a second call is a no-op.
-            this.#viewerClickedRemover = null;
+            this.#canvasClickRemover = null;
             remover?.();
         };
         this.sceneGraph = sceneGraph;
@@ -522,7 +525,7 @@ export class VisorFrontend {
     }
 
     #unit: string;
-    #viewerClickedRemover: (() => void) | null;
+    #canvasClickRemover: (() => void) | null;
     darkMode: boolean;
     /** Remove every listener this frontend registered on its renderer; a second call does nothing. */
     release: () => void;
@@ -561,6 +564,7 @@ export class VisorFrontend {
         max: number
     ) => Promise<void>;
     defaultActorColor: number[];
+    /** Called once per part-mode click with the part the server picked under it, or null; geometry-mode clicks do not call it. */
     addViewerClickedListener: (
         handler: (node: VisorSceneNodeExtended | null, ctrlKey: boolean, shiftKey: boolean) => void
     ) => () => void;

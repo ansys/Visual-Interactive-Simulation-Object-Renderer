@@ -89,7 +89,7 @@ function makeRendererDouble() {
     return {
         domElement: document.createElement('div'),
         addCameraSettledListener: jest.fn(() => jest.fn()),
-        addViewerClickedListener: jest.fn(() => jest.fn()),
+        addCanvasClickListener: jest.fn(() => jest.fn()),
         renderAsync: jest.fn(async () => undefined),
         resizeAsync: jest.fn(async () => undefined),
     };

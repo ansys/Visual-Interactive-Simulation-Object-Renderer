@@ -16,7 +16,7 @@ const mockScene = {
     serverUpdated: null as null | (() => Promise<void>),
     payloads: [] as unknown[],
     fetches: 0,
-    renderers: [] as { liveViewerClicks: Set<() => void> }[],
+    renderers: [] as { liveCanvasClicks: Set<() => void> }[],
     configs: [] as { trame?: unknown }[],
 };
 
@@ -87,19 +87,19 @@ function mockMakeWasmView() {
     };
 }
 
-/** A renderer that records the viewer-click listeners still registered on it. */
+/** A renderer that records the canvas-click listeners still registered on it. */
 function mockMakeRenderer() {
-    const record = { liveViewerClicks: new Set<() => void>() };
+    const record = { liveCanvasClicks: new Set<() => void>() };
     mockScene.renderers.push(record);
     return {
         domElement: document.createElement('div'),
         clearGeometryHighlight: () => {},
         addCameraSettledListener: () => () => {},
-        addViewerClickedListener: () => {
+        addCanvasClickListener: () => {
             const remover = () => {
-                record.liveViewerClicks.delete(remover);
+                record.liveCanvasClicks.delete(remover);
             };
-            record.liveViewerClicks.add(remover);
+            record.liveCanvasClicks.add(remover);
             return remover;
         },
         getCameraStateAsync: async () => undefined,
@@ -159,7 +159,7 @@ describe('useClientVtk rebuild', () => {
         await serverUpdateAsync();
 
         expect(mockScene.renderers.length).toBe(2);
-        expect(mockScene.renderers[0].liveViewerClicks.size).toBe(0);
+        expect(mockScene.renderers[0].liveCanvasClicks.size).toBe(0);
     });
 
     test('a mismatch on client rebuild sets schemaMismatchError and keeps the frontend', async () => {
