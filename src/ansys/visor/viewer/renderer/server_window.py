@@ -18,12 +18,13 @@ cross-section plane, once, in the same locked section, after the batch.
 
 from __future__ import annotations
 
-from typing import Callable, Protocol
+from typing import Callable
 
 import numpy as np
 from numpy.typing import NDArray
 from trame_rca.rca.protocol import RemoteControlledAreaProtocol
 
+from ansys.visor.viewer.renderer.gl_context_lock import SceneLock
 from ansys.visor.viewer.renderer.server_renderer import INITIAL_WINDOW_SIZE, ServerRenderer
 
 GESTURE_END_EVENT_TYPES: frozenset[str] = frozenset(
@@ -34,16 +35,6 @@ GESTURE_END_EVENT_TYPES: frozenset[str] = frozenset(
 trame-rca drops a release with no matching press before it reaches the window,
 so each gesture forwards one release.
 """
-
-
-class SceneLock(Protocol):
-    """The two lock operations the window uses."""
-
-    def acquire(self, blocking: bool = True) -> bool:
-        """Acquire; non-blocking returns False when held elsewhere."""
-
-    def release(self) -> None:
-        """Release one level."""
 
 
 class VisorRcaWindow:
@@ -103,7 +94,6 @@ class VisorRcaWindow:
             self._last_frame = frame
             return frame
         finally:
-            self._renderer.render_window.ReleaseCurrent()
             self._vtk_lock.release()
 
     def process_resize_event(self, width: int, height: int) -> None:

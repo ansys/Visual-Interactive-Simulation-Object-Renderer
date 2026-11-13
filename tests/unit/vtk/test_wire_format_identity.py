@@ -15,6 +15,7 @@ never on ``sceneGraph``.
 
 import json
 import re
+import threading
 from unittest.mock import MagicMock
 
 from vtkmodules.vtkCommonCore import vtkFloatArray
@@ -159,7 +160,7 @@ def _build_scene(dataset) -> _WireFormatScene:
     object_manager = _CountingObjectManager()
     renderer = _StubRenderer(pipelines, object_manager)
 
-    scene = _WireFormatScene(server=MagicMock(), renderer=renderer)
+    scene = _WireFormatScene(server=MagicMock(), renderer=renderer, vtk_lock=threading.RLock())
     scene._scene_graph = graph
 
     return scene

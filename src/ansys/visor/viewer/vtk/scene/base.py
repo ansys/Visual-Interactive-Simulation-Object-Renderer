@@ -2,7 +2,6 @@
 
 import json
 import math
-import threading
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Dict, List
@@ -29,6 +28,7 @@ from ansys.visor.viewer.models.runtime.scene.runtime_ui_state import RuntimeUISt
 from ansys.visor.viewer.models.runtime.scene.runtime_view_state import RuntimeViewState
 from ansys.visor.viewer.models.runtime.visor_scene_details import VisorSceneDetails
 from ansys.visor.viewer.renderer.base import IRenderer
+from ansys.visor.viewer.renderer.gl_context_lock import SceneLock
 from ansys.visor.viewer.vtk.datasets.visor_dataset import VisorDataset
 from ansys.visor.viewer.vtk.datasets.visor_dataset_registry import VisorDatasetRegistry
 from ansys.visor.viewer.vtk.scene.scene_graph_state_builder import SceneGraphStateBuilder
@@ -111,9 +111,11 @@ class VisorSceneBase(ABC):
             self,
             server: Server,
             dark_mode: bool = False,
-            renderer: IRenderer | None = None
+            renderer: IRenderer | None = None,
+            *,
+            vtk_lock: SceneLock,
     ):
-        """Initialize the scene coordinator around the injected *renderer*."""
+        """Initialize the scene coordinator around the injected *renderer* and scene lock *vtk_lock*."""
         logger.debug("Initializing %s", type(self).__name__)
 
         # The server's UI record, held as a model like the camera record.
@@ -172,8 +174,10 @@ class VisorSceneBase(ABC):
         # mutated from the caller's (notebook/main) thread.  Re-entrant because
         # the locked paths nest: finalize_scene -> populate_scene ->
         # update_widgets, finalize_scene -> render, and the per-part
-        # coordinator methods -> apply -> flush.
-        self._vtk_lock = threading.RLock()
+        # coordinator methods -> apply -> flush.  Injected because a scene
+        # whose window is drawn on another thread needs a lock that also
+        # releases the GL context (GlContextLock).
+        self._vtk_lock = vtk_lock
 
         self._dataset_registry = self._initialize_dataset_registry()
 

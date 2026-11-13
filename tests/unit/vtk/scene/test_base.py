@@ -16,6 +16,7 @@ Behavioural coverage of the remaining shared logic lives in
 test_local_scene.py, exercised through the concrete VisorLocalScene subclass.
 """
 import json
+import threading
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -251,7 +252,7 @@ def registry():
 @pytest.fixture
 def scene(renderer, registry, pipeline):
     """Concrete scene wired to the real renderer, pipeline and registry."""
-    s = _ConcreteScene(MagicMock(name="server"), dark_mode=False, renderer=renderer)
+    s = _ConcreteScene(MagicMock(name="server"), dark_mode=False, renderer=renderer, vtk_lock=threading.RLock())
     s._dataset_registry = registry
     s._renderer.flush_wasm_state = MagicMock(name="flush_wasm_state")
     return s
@@ -836,7 +837,7 @@ def mocked_scene(renderer):
     Lets the ten existing entry points run to completion without real VTK, so
     the assertion is purely about the lock.
     """
-    s = _ConcreteScene(MagicMock(name="server"), dark_mode=False, renderer=renderer)
+    s = _ConcreteScene(MagicMock(name="server"), dark_mode=False, renderer=renderer, vtk_lock=threading.RLock())
     s._scene_graph = MagicMock(name="scene_graph")
     s._dataset_registry = MagicMock(name="dataset_registry")
     s._dataset_registry.count = 1
@@ -986,7 +987,7 @@ def test_nested_entry_points_reacquire_the_lock(mocked_scene):
 
 def test_the_scene_lock_is_reentrant():
     """The scene's own lock can be acquired twice on one thread."""
-    scene = _ConcreteScene(MagicMock(name="server"), renderer=MagicMock(name="renderer"))
+    scene = _ConcreteScene(MagicMock(name="server"), renderer=MagicMock(name="renderer"), vtk_lock=threading.RLock())
 
     with scene._vtk_lock:
         with scene._vtk_lock:
@@ -2433,7 +2434,7 @@ def test_null_unit_and_null_toggle_resolve_to_the_defaults(scene):
 
 def test_null_theme_resolves_to_the_constructor_theme(renderer, registry):
     """A null UI field takes the value the scene was built with, not the model's."""
-    s = _ConcreteScene(MagicMock(name="server"), dark_mode=True, renderer=renderer)
+    s = _ConcreteScene(MagicMock(name="server"), dark_mode=True, renderer=renderer, vtk_lock=threading.RLock())
     s._dataset_registry = registry
     s._renderer.flush_wasm_state = MagicMock(name="flush_wasm_state")
     s.dark_mode = False
@@ -3273,7 +3274,7 @@ def _temperature_variable() -> VisorVariable:
 @pytest.fixture
 def records_scene():
     """Scene with a real registry and a MagicMock scene graph and renderer."""
-    s = _ConcreteScene(MagicMock(name="server"), dark_mode=False, renderer=MagicMock(name="renderer"))
+    s = _ConcreteScene(MagicMock(name="server"), dark_mode=False, renderer=MagicMock(name="renderer"), vtk_lock=threading.RLock())
     s._scene_graph = MagicMock(name="scene_graph")
     s._scene_graph.get_descendant_node.return_value.get_descendant_part_nodes.return_value = []
     s._dataset_registry = VisorDatasetRegistry()
@@ -3674,7 +3675,7 @@ def add_scene(renderer):
     """Scene with the real renderer, a real registry and a real scene graph, holding no dataset."""
     # A MagicMock plane would reach mapper.AddClippingPlane in register_node.
     renderer._cross_section_widget.plane = None
-    return _ConcreteScene(MagicMock(name="server"), dark_mode=False, renderer=renderer)
+    return _ConcreteScene(MagicMock(name="server"), dark_mode=False, renderer=renderer, vtk_lock=threading.RLock())
 
 
 def _add_sphere(scene, dataset, parts):
