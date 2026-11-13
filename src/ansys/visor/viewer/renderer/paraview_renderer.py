@@ -55,6 +55,9 @@ logger = VisorDefaultLogger(__name__)
 SELECTED_AMBIENT_RGB: tuple[float, float, float] = (0 / 255, 62 / 255, 111 / 255)
 """Ambient tint of a selected part, as the VTK pipeline applies it; also the colour of a selected block."""
 
+SELECTED_BLOCK_OPACITY: float = 0.5
+"""Opacity of a selected block's tint, so its own colour, solid or mapped, shows through by half, as Ambient 0.5 and Diffuse 0.5 leave it."""
+
 MAX_COLOR_MAPS: int = 30
 """Colour maps in use at once, across every representation; more exceed the texture units of the GPU."""
 
@@ -169,7 +172,7 @@ class BlockTable:
     """
 
     def __init__(self, session: ParaviewSession, source: PvSource, rep: PvRepresentation) -> None:
-        """Hold no blocks, so none is shown; selected blocks are drawn in the selection tint."""
+        """Hold no blocks, so none is shown; selected blocks are drawn under a half-opaque selection tint."""
         self._session = session
         self._source = source
         self._rep = rep
@@ -178,6 +181,7 @@ class BlockTable:
         self._stale: set[Callable[[], None]] = set()
         self._write_visible()
         session.set_property(rep, "SelectionColor", list(SELECTED_AMBIENT_RGB))
+        session.set_property(rep, "SelectionOpacity", SELECTED_BLOCK_OPACITY)
 
     def flush(self) -> None:
         """Write every stale list once."""
@@ -206,9 +210,11 @@ class BlockTable:
             self._stale.add(self._write_selected)
 
     def set_visible(self, selector: str, visible: bool) -> None:
-        """Show or hide the block."""
+        """Show or hide the block, and its selection with it."""
         self._entries[selector].visible = visible
         self._stale.add(self._write_visible)
+        if selector in self._selected:
+            self._stale.add(self._write_selected)
 
     def set_opacity(self, selector: str, opacity: float) -> None:
         """Set the block's opacity."""
@@ -292,7 +298,10 @@ class BlockTable:
         self._session.set_property(self._rep, "BlockColorArrayNames", names)
 
     def _write_selected(self) -> None:
-        self._session.set_selected_blocks(self._source, sorted(self._selected))
+        """Write the selected blocks that are visible: the selection is drawn from the source, not through BlockSelectors."""
+        self._session.set_selected_blocks(
+            self._source, sorted(s for s in self._selected if self._entries[s].visible)
+        )
 
 
 class _PartWriter(Protocol):
