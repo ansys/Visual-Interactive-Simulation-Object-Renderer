@@ -81,8 +81,8 @@ class NullRenderer(IRenderer):
         component: int,
         min_val: float,
         max_val: float,
-    ) -> None:
-        pass
+    ) -> bool:
+        return True
 
     def clear_color_variable(self, node_id: int) -> None:
         pass

@@ -3,21 +3,23 @@ ParaviewRenderer
 ================
 :class:`IRenderer` over a ParaView render view on pvserver.
 
-Each registered part is a representation of a pvserver proxy, written
-through a :class:`ParaviewSession`.  Like :class:`ServerRenderer`, it never
-renders on the calling thread: every write ends in a frame request, and only
-the capture renders.  Each camera write also hands the record to a
+Each opened dataset is one pvserver source shown by one representation,
+written through a :class:`ParaviewSession`.  Like :class:`ServerRenderer`, it
+never renders on the calling thread: every write ends in a frame request, and
+only the capture renders.  Each camera write also hands the record to a
 :class:`ViewRecordPublisher`.
 
-A composite dataset is opened once; each of its leaves is shown as a block
-extract addressed by the leaf's selector.  A non-composite dataset is shown
-as the opened source itself.
+A non-composite dataset is one part, written through its representation's
+properties.  Each leaf of a composite dataset is one part, written through the
+representation's per-block properties under the leaf's selector.  Parts
+coloured by a variable share one colour map per :class:`ColorMapKey`, and at
+most :data:`MAX_COLOR_MAPS` maps are in use at once.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Protocol
 
 from vtkmodules.vtkCommonDataModel import vtkCompositeDataSet, vtkDataAssembly, vtkDataAssemblyUtilities
 
@@ -36,6 +38,7 @@ if TYPE_CHECKING:
     from ansys.visor.viewer.models.runtime.picking.geometry_pick import GeometryPick
     from ansys.visor.viewer.renderer.paraview_session import (
         ParaviewSession,
+        PvLookupTable,
         PvRepresentation,
         PvSource,
     )
@@ -45,28 +48,349 @@ if TYPE_CHECKING:
 logger = VisorDefaultLogger(__name__)
 
 SELECTED_AMBIENT_RGB: tuple[float, float, float] = (0 / 255, 62 / 255, 111 / 255)
-"""Ambient tint of a selected part, as the VTK pipeline applies it."""
+"""Ambient tint of a selected part, as the VTK pipeline applies it; also the colour of a selected block."""
+
+MAX_COLOR_MAPS: int = 30
+"""Colour maps in use at once, across every representation; more exceed the texture units of the GPU."""
 
 _ASSOCIATIONS: dict[VisorVtkVariableType, str] = {
     VisorVtkVariableType.POINT: "POINTS",
     VisorVtkVariableType.CELL: "CELLS",
 }
 
+# Field association codes ParaView reads in the per-block colour-array list.
+_BLOCK_ASSOCIATIONS: dict[str, str] = {"POINTS": "0", "CELLS": "1"}
+
+
+@dataclass(frozen=True)
+class ColorMapKey:
+    """Every lookup-table field Visor stores for a part; parts with equal keys share one colour map.
+
+    *association* is ``"POINTS"`` or ``"CELLS"``; *component* ``-1`` is the
+    magnitude; *min_val* and *max_val* are the map's range.
+    """
+
+    association: str
+    array_name: str
+    component: int
+    min_val: float
+    max_val: float
+
 
 @dataclass
-class _Part:
-    """One registered part: the proxy it shows, its representation and the local dataset it mirrors."""
+class _ColorMap:
+    """One shared colour map and the number of parts using it."""
 
-    source_key: str
-    shown: PvSource
-    is_extract: bool
-    rep: PvRepresentation
+    lut: PvLookupTable
+    users: int
+
+
+class _ColorMaps:
+    """The colour maps in use across every representation, one per key, counted by the parts using them.
+
+    A map is never changed once a part uses it: a part whose key changes
+    moves to the map for its new key, and a map no part uses is deleted.
+    """
+
+    def __init__(self, session: ParaviewSession) -> None:
+        """Hold no maps."""
+        self._session = session
+        self._maps: dict[ColorMapKey, _ColorMap] = {}
+
+    def acquire(self, key: ColorMapKey, releasing: ColorMapKey | None) -> PvLookupTable | None:
+        """The map for key, with one more user; None when a new map would exceed :data:`MAX_COLOR_MAPS`.
+
+        *releasing* is the key the caller releases once it has moved to the
+        returned map; a map only the caller uses does not count against the
+        limit.  A new map is created and given its range here, before any
+        part uses it.
+        """
+        shared = self._maps.get(key)
+        if shared is not None:
+            shared.users += 1
+            return shared.lut
+        in_use = len(self._maps)
+        if releasing is not None and self._maps[releasing].users == 1:
+            in_use -= 1
+        if in_use >= MAX_COLOR_MAPS:
+            return None
+        lut = self._session.new_color_map(key.component)
+        self._session.rescale_color_map(lut, key.min_val, key.max_val)
+        self._maps[key] = _ColorMap(lut, 1)
+        return lut
+
+    def release(self, key: ColorMapKey) -> None:
+        """Drop one user of key's map; delete the map when no part uses it."""
+        shared = self._maps[key]
+        shared.users -= 1
+        if shared.users == 0:
+            del self._maps[key]
+            self._session.delete_color_map(shared.lut)
+
+    def release_all(self) -> None:
+        """Delete every map."""
+        for shared in self._maps.values():
+            self._session.delete_color_map(shared.lut)
+        self._maps.clear()
+
+
+@dataclass
+class _BlockEntry:
+    """What one block shows; None leaves the representation's value in force."""
+
+    visible: bool = True
+    opacity: float | None = None
+    rgb: list[float] | None = None
+    color: tuple[ColorMapKey, PvLookupTable] | None = None
+
+
+class BlockTable:
+    """The registered blocks of one composite representation, written as its per-block property lists.
+
+    Each list is written whole, in registration order, from the entries;
+    values are strings, as ParaView stores them.  A block not in the table is
+    hidden.
+    """
+
+    def __init__(self, session: ParaviewSession, source: PvSource, rep: PvRepresentation) -> None:
+        """Hold no blocks, so none is shown; selected blocks are drawn in the selection tint."""
+        self._session = session
+        self._source = source
+        self._rep = rep
+        self._entries: dict[str, _BlockEntry] = {}
+        self._selected: set[str] = set()
+        self._write_visible()
+        session.set_property(rep, "SelectionColor", list(SELECTED_AMBIENT_RGB))
+
+    def add(self, selector: str) -> None:
+        """Show the block at selector."""
+        self._entries[selector] = _BlockEntry()
+        self._write_visible()
+
+    def remove(self, selector: str) -> None:
+        """Hide the block at selector and drop every value written for it."""
+        self._entries.pop(selector)
+        self._write_visible()
+        self._write_opacities()
+        self._write_colors()
+        self._write_color_maps()
+        if selector in self._selected:
+            self._selected.discard(selector)
+            self._write_selected()
+
+    def set_visible(self, selector: str, visible: bool) -> None:
+        """Show or hide the block."""
+        self._entries[selector].visible = visible
+        self._write_visible()
+
+    def set_opacity(self, selector: str, opacity: float) -> None:
+        """Set the block's opacity."""
+        self._entries[selector].opacity = opacity
+        self._write_opacities()
+
+    def set_diffuse(self, selector: str, rgb: list[float]) -> None:
+        """Set the block's solid colour."""
+        self._entries[selector].rgb = list(rgb)
+        self._write_colors()
+
+    def set_selected(self, selector: str, selected: bool) -> None:
+        """Add the block to, or remove it from, the source's selection."""
+        if selected:
+            self._selected.add(selector)
+        else:
+            self._selected.discard(selector)
+        self._write_selected()
+
+    def color_by(self, selector: str, key: ColorMapKey, lut: PvLookupTable) -> None:
+        """Colour the block by key's array through lut."""
+        self._entries[selector].color = (key, lut)
+        self._write_color_maps()
+
+    def clear_color(self, selector: str) -> None:
+        """Colour the block solid."""
+        self._entries[selector].color = None
+        self._write_color_maps()
+
+    def _write_visible(self) -> None:
+        self._session.set_property(
+            self._rep, "BlockSelectors", [s for s, e in self._entries.items() if e.visible]
+        )
+
+    def _write_opacities(self) -> None:
+        values: list[str] = []
+        for selector, entry in self._entries.items():
+            if entry.opacity is not None:
+                values += [selector, str(entry.opacity)]
+        self._session.set_property(self._rep, "BlockOpacities", values)
+
+    def _write_colors(self) -> None:
+        values: list[str] = []
+        for selector, entry in self._entries.items():
+            if entry.rgb is not None:
+                values += [selector, *(str(c) for c in entry.rgb)]
+        self._session.set_property(self._rep, "BlockColors", values)
+
+    def _write_color_maps(self) -> None:
+        """Write the per-block colour arrays and maps, one aligned entry per block.
+
+        ParaView colours blocks only while the representation itself names
+        an array, and a block with no entry then takes the representation's
+        colouring; so while any block is coloured, every block has an entry,
+        a solid one naming no array, and every entry has a map.  A solid
+        entry reuses the first coloured block's map, which adds no map.
+        """
+        coloured = [entry.color for entry in self._entries.values() if entry.color is not None]
+        if not coloured:
+            self._session.set_property(self._rep, "BlockColorArrayNames", [])
+            self._session.set_property(self._rep, "BlockUseSeparateColorMaps", [])
+            self._session.set_property(self._rep, "BlockLookupTables", [])
+            self._session.clear_color(self._rep)
+            return
+        first_key, first_lut = coloured[0]
+        names: list[str] = []
+        separate: list[str] = []
+        luts: list[PvLookupTable] = []
+        for selector, entry in self._entries.items():
+            if entry.color is None:
+                names += [selector, _BLOCK_ASSOCIATIONS[first_key.association], ""]
+                luts.append(first_lut)
+            else:
+                key, lut = entry.color
+                names += [selector, _BLOCK_ASSOCIATIONS[key.association], key.array_name]
+                luts.append(lut)
+            separate += [selector, "1"]
+        self._session.set_property(self._rep, "ColorArrayName", [first_key.association, first_key.array_name])
+        self._session.set_property(self._rep, "BlockLookupTables", luts)
+        self._session.set_property(self._rep, "BlockUseSeparateColorMaps", separate)
+        self._session.set_property(self._rep, "BlockColorArrayNames", names)
+
+    def _write_selected(self) -> None:
+        self._session.set_selected_blocks(self._source, sorted(self._selected))
+
+
+class _PartWriter(Protocol):
+    """Writes one part's properties; the renderer owns its colour map."""
+
     dataset: vtkDataObject
+    color_key: ColorMapKey | None
+
+    def set_visible(self, visible: bool) -> None: ...
+
+    def set_opacity(self, opacity: float) -> None: ...
+
+    def set_diffuse(self, rgb: list[float]) -> None: ...
+
+    def set_selected(self, selected: bool, diffuse_rgb: list) -> None: ...
+
+    def color_by(self, key: ColorMapKey, lut: PvLookupTable) -> None: ...
+
+    def clear_color(self) -> None: ...
+
+    def hide(self) -> None: ...
+
+
+class _WholePart:
+    """A part that is a whole representation, written through the representation's own properties."""
+
+    def __init__(self, session: ParaviewSession, rep: PvRepresentation, dataset: vtkDataObject) -> None:
+        """Write nothing; the representation is already shown."""
+        self._session = session
+        self._rep = rep
+        self.dataset = dataset
+        self.color_key: ColorMapKey | None = None
+
+    def set_visible(self, visible: bool) -> None:
+        self._session.set_property(self._rep, "Visibility", 1 if visible else 0)
+
+    def set_opacity(self, opacity: float) -> None:
+        self._session.set_property(self._rep, "Opacity", opacity)
+
+    def set_diffuse(self, rgb: list[float]) -> None:
+        self._session.set_property(self._rep, "DiffuseColor", list(rgb))
+
+    def set_selected(self, selected: bool, diffuse_rgb: list) -> None:
+        """Write AmbientColor, Ambient and Diffuse as the pipeline renderer does, and DiffuseColor."""
+        if selected:
+            self._session.set_property(self._rep, "AmbientColor", list(SELECTED_AMBIENT_RGB))
+            self._session.set_property(self._rep, "Diffuse", 0.5)
+            self._session.set_property(self._rep, "Ambient", 0.5)
+        else:
+            self._session.set_property(self._rep, "Diffuse", 1.0)
+            self._session.set_property(self._rep, "Ambient", 0.0)
+        self._session.set_property(self._rep, "DiffuseColor", list(diffuse_rgb))
+
+    def color_by(self, key: ColorMapKey, lut: PvLookupTable) -> None:
+        """Colour the representation by key's array through lut, which no ColorBy replaces."""
+        self.color_key = key
+        self._session.set_property(self._rep, "UseSeparateColorMap", 1)
+        self._session.set_property(self._rep, "LookupTable", lut)
+        self._session.set_property(self._rep, "ColorArrayName", [key.association, key.array_name])
+
+    def clear_color(self) -> None:
+        """Colour the representation solid and let go of its map."""
+        self.color_key = None
+        self._session.clear_color(self._rep)
+        self._session.set_property(self._rep, "LookupTable", None)
+
+    def hide(self) -> None:
+        """Hide the representation, solid."""
+        if self.color_key is not None:
+            self.clear_color()
+        self.set_visible(False)
+
+
+class _BlockPart:
+    """A part that is one block of a composite representation, written through its block table."""
+
+    def __init__(self, table: BlockTable, selector: str, dataset: vtkDataObject) -> None:
+        """Show the block."""
+        self._table = table
+        self._selector = selector
+        self.dataset = dataset
+        self.color_key: ColorMapKey | None = None
+        table.add(selector)
+
+    def set_visible(self, visible: bool) -> None:
+        self._table.set_visible(self._selector, visible)
+
+    def set_opacity(self, opacity: float) -> None:
+        self._table.set_opacity(self._selector, opacity)
+
+    def set_diffuse(self, rgb: list[float]) -> None:
+        self._table.set_diffuse(self._selector, rgb)
+
+    def set_selected(self, selected: bool, diffuse_rgb: list) -> None:
+        """Select the block in the source's block selection, and write its colour."""
+        self._table.set_selected(self._selector, selected)
+        self._table.set_diffuse(self._selector, diffuse_rgb)
+
+    def color_by(self, key: ColorMapKey, lut: PvLookupTable) -> None:
+        self.color_key = key
+        self._table.color_by(self._selector, key, lut)
+
+    def clear_color(self) -> None:
+        self.color_key = None
+        self._table.clear_color(self._selector)
+
+    def hide(self) -> None:
+        """Remove the block from the table, which hides it."""
+        self.color_key = None
+        self._table.remove(self._selector)
+
+
+@dataclass
+class _OpenedSource:
+    """One opened pvserver source, its one representation, and its block table when it is composite."""
+
+    source: PvSource
+    rep: PvRepresentation
+    blocks: BlockTable | None
+    node_ids: set[int] = field(default_factory=set)
 
 
 @dataclass(frozen=True)
 class _Leaf:
-    """A leaf of one opened source and the selector that extracts it; None shows the source itself."""
+    """A leaf of one opened source and the selector that addresses its block; None for the whole source."""
 
     source_key: str
     dataset: vtkDataObject
@@ -140,7 +464,7 @@ class CompositeBlocks:
 
 
 class ParaviewRenderer(IRenderer):
-    """IRenderer over a ParaView render view; per-part representations of block extracts."""
+    """IRenderer over a ParaView render view; one representation per opened dataset."""
 
     def __init__(
         self,
@@ -154,11 +478,12 @@ class ParaviewRenderer(IRenderer):
         self._session = session
         self._frame_requester = frame_requester
         self._view_record_publisher = view_record_publisher
-        self._sources: dict[str, PvSource] = {}
+        self._sources: dict[str, _OpenedSource] = {}
         # id() of each local leaf dataset -> its entry.  The entry holds the
         # leaf so its id cannot be reused while the entry exists.
         self._leaf_index: dict[int, _Leaf] = {}
-        self._parts: dict[int, _Part] = {}
+        self._parts: dict[int, _PartWriter] = {}
+        self._color_maps = _ColorMaps(session)
         self._bounds: list[float] | None = None
         self._actor_count = 0
         self._background_rgb = background_rgb
@@ -169,11 +494,15 @@ class ParaviewRenderer(IRenderer):
     # ------------------------------------------------------------------
 
     def open_source(self, dataset_key: str, server_path: str, local_root: VisorDatasetType) -> None:
-        """Index local_root's leaves to block selectors, refusing duplicates, then open server_path on pvserver.
+        """Index local_root's leaves to block selectors, open server_path, check every leaf's point count, then show it.
 
-        A non-composite root is its own single leaf, shown with no extract.
-        Raises :class:`VisorAddDatasetError`, having opened nothing, when a
-        leaf of a composite root has no single selector or shares one.
+        A non-composite root is its own single leaf, the whole source.  A
+        composite source is shown with no block visible; registering a leaf
+        shows its block.  Raises :class:`VisorAddDatasetError` having opened
+        nothing when a leaf of a composite root has no single selector or
+        shares one, and having deleted the source when pvserver's point
+        count for a leaf differs from the local leaf's: either means a part
+        would show the wrong geometry.
         """
         if is_composite_dataset(local_root):
             blocks = CompositeBlocks.from_composite(local_root)
@@ -181,22 +510,38 @@ class ParaviewRenderer(IRenderer):
             entries = [_Leaf(dataset_key, leaf.dataset, leaf.selectors[0]) for leaf in blocks.leaves]
         else:
             entries = [_Leaf(dataset_key, local_root, None)]
-        self._sources[dataset_key] = self._session.open(server_path)
+        source = self._session.open(server_path)
+        for entry in entries:
+            if entry.selector is None:
+                server_points = self._session.point_count(source)
+                where = "The dataset"
+            else:
+                server_points = self._session.block_point_count(source, entry.selector)
+                where = f"Block {entry.selector!r}"
+            local_points = entry.dataset.GetNumberOfPoints()
+            if server_points != local_points:
+                self._session.delete(source)
+                raise VisorAddDatasetError(
+                    f"{where}: pvserver reports {server_points} points, the local dataset has {local_points}"
+                )
+        rep = self._session.show(source)
+        table = BlockTable(self._session, source, rep) if entries[0].selector is not None else None
+        self._sources[dataset_key] = _OpenedSource(source, rep, table)
         for entry in entries:
             self._leaf_index[id(entry.dataset)] = entry
 
     def close_source(self, dataset_key: str) -> None:
-        """Delete the source and every extract of it on pvserver."""
-        source = self._sources.pop(dataset_key, None)
-        if source is None:
+        """Delete the source, which takes its representation, then release the maps its parts used."""
+        opened = self._sources.pop(dataset_key, None)
+        if opened is None:
             logger.debug("close_source: no source for %s; skipping.", dataset_key)
             return
-        for node_id in [nid for nid, part in self._parts.items() if part.source_key == dataset_key]:
-            part = self._parts.pop(node_id)
-            if part.is_extract:
-                self._session.delete(part.shown)
+        parts = [self._parts.pop(node_id) for node_id in opened.node_ids]
+        keys = [part.color_key for part in parts if part.color_key is not None]
         self._leaf_index = {k: v for k, v in self._leaf_index.items() if v.source_key != dataset_key}
-        self._session.delete(source)
+        self._session.delete(opened.source)
+        for key in keys:
+            self._color_maps.release(key)
 
     # ------------------------------------------------------------------
     # IRenderer: wire contract
@@ -211,61 +556,51 @@ class ParaviewRenderer(IRenderer):
     # ------------------------------------------------------------------
 
     def register_node(self, node: VisorSceneGraphPartNode, dataset: vtkDataObject) -> None:
-        """Show the leaf's block extract, or the source for non-composite input, and check its point count; idempotent.
+        """Show the leaf's block, or take the whole source for non-composite input; idempotent.
 
         Raises :class:`VisorAddDatasetError` when no opened source holds
-        *dataset*, or when pvserver's point count differs from the local
-        dataset's: either means the part would show the wrong geometry.  An
-        extract that fails the count is deleted before the raise.  The count
-        is read after ``show``, which is what updates the proxy.
+        *dataset*.
         """
         if node.id in self._parts:
             return
         entry = self._leaf_index.get(id(dataset))
         if entry is None:
             raise VisorAddDatasetError(f"No pvserver source holds part {node.name!r}")
-        source = self._sources[entry.source_key]
-        is_extract = entry.selector is not None
-        shown = self._session.extract(source, [entry.selector]) if is_extract else source
-        rep = self._session.show(shown)
-        local_points = dataset.GetNumberOfPoints()
-        server_points = self._session.point_count(shown)
-        if server_points != local_points:
-            if is_extract:
-                self._session.delete(shown)
-            raise VisorAddDatasetError(
-                f"Part {node.name!r}: pvserver reports {server_points} points, "
-                f"the local dataset has {local_points}"
-            )
-        self._parts[node.id] = _Part(entry.source_key, shown, is_extract, rep, dataset)
+        opened = self._sources[entry.source_key]
+        if entry.selector is None:
+            part: _PartWriter = _WholePart(self._session, opened.rep, dataset)
+        else:
+            part = _BlockPart(opened.blocks, entry.selector, dataset)
+        self._parts[node.id] = part
+        opened.node_ids.add(node.id)
 
     def deregister_node(self, node_id: int) -> None:
-        """Delete the node's extract, or hide the source it shows; silent if unknown."""
+        """Hide the node's block or representation and release its map; silent if unknown."""
         part = self._parts.pop(node_id, None)
         if part is None:
             logger.debug("deregister_node: no part for node %s; skipping.", node_id)
             return
-        if part.is_extract:
-            self._session.delete(part.shown)
-        else:
-            self._session.set_property(part.rep, "Visibility", 0)
+        for opened in self._sources.values():
+            opened.node_ids.discard(node_id)
+        key = part.color_key
+        part.hide()
+        if key is not None:
+            self._color_maps.release(key)
 
     def deregister_all(self) -> None:
-        """Delete every extract and source."""
-        for part in self._parts.values():
-            if part.is_extract:
-                self._session.delete(part.shown)
+        """Delete every source, then every colour map."""
         self._parts.clear()
-        for source in self._sources.values():
-            self._session.delete(source)
+        for opened in self._sources.values():
+            self._session.delete(opened.source)
         self._sources.clear()
         self._leaf_index.clear()
+        self._color_maps.release_all()
 
     # ------------------------------------------------------------------
     # IRenderer: per-part visual mutations
     # ------------------------------------------------------------------
 
-    def _part(self, node_id: int, operation: str) -> _Part | None:
+    def _part(self, node_id: int, operation: str) -> _PartWriter | None:
         """The registered part for node_id, or None after a debug log."""
         part = self._parts.get(node_id)
         if part is None:
@@ -273,43 +608,42 @@ class ParaviewRenderer(IRenderer):
         return part
 
     def apply_visibility(self, node_id: int, visible: bool) -> None:
-        """Write Visibility, then request a frame."""
+        """Show or hide the part, then request a frame."""
         part = self._part(node_id, "apply_visibility")
         if part is None:
             return
-        self._session.set_property(part.rep, "Visibility", 1 if visible else 0)
+        part.set_visible(visible)
         self._frame_requester.request_frame()
 
     def apply_opacity(self, node_id: int, opacity: float) -> None:
-        """Write Opacity, then request a frame."""
+        """Write the part's opacity, then request a frame."""
         part = self._part(node_id, "apply_opacity")
         if part is None:
             return
-        self._session.set_property(part.rep, "Opacity", opacity)
+        part.set_opacity(opacity)
         self._frame_requester.request_frame()
 
     def apply_diffuse_color(self, node_id: int, r: float, g: float, b: float) -> None:
-        """Write DiffuseColor, then request a frame."""
+        """Write the part's solid colour, then request a frame."""
         part = self._part(node_id, "apply_diffuse_color")
         if part is None:
             return
-        self._session.set_property(part.rep, "DiffuseColor", [r, g, b])
+        part.set_diffuse([r, g, b])
         self._frame_requester.request_frame()
 
     def apply_selected(self, node_id: int, selected: bool, diffuse_rgb: list) -> None:
-        """Write AmbientColor, Ambient and Diffuse as the pipeline renderer does, and DiffuseColor; then request a frame."""
+        """Show the part selected or not, writing its colour on both branches; then request a frame.
+
+        A whole representation is tinted with AmbientColor, Ambient and
+        Diffuse, as the pipeline renderer tints an actor.  ParaView has no
+        per-block lighting terms, so a block is instead put in the source's
+        block selection, which ParaView draws in the selection tint; this
+        renderer owns that selection.
+        """
         part = self._part(node_id, "apply_selected")
         if part is None:
             return
-        rep = part.rep
-        if selected:
-            self._session.set_property(rep, "AmbientColor", list(SELECTED_AMBIENT_RGB))
-            self._session.set_property(rep, "Diffuse", 0.5)
-            self._session.set_property(rep, "Ambient", 0.5)
-        else:
-            self._session.set_property(rep, "Diffuse", 1.0)
-            self._session.set_property(rep, "Ambient", 0.0)
-        self._session.set_property(rep, "DiffuseColor", list(diffuse_rgb))
+        part.set_selected(selected, diffuse_rgb)
         self._frame_requester.request_frame()
 
     def apply_color_variable(
@@ -320,41 +654,56 @@ class ParaviewRenderer(IRenderer):
         component: int,
         min_val: float,
         max_val: float,
-    ) -> None:
-        """ColorBy with a separate map, then rescale, then request a frame.
+    ) -> bool:
+        """Colour the part through the shared map for its key, then request a frame; False when refused.
 
-        Component ``-1`` is ParaView's ``"Magnitude"``; component ``n`` is
-        passed as ``str(n)``, which ParaView reads as an index when no
-        component carries that name.  An association that is not a
-        :class:`VisorVtkVariableType`, and an array the part's dataset does
-        not have, are logged no-ops, as in the pipeline renderer.
+        The part moves to the map for (association, array, component, range),
+        creating it when no part uses that key yet, and its previous map is
+        released.  Refused, writing nothing, with one WARNING, when that would
+        put more than :data:`MAX_COLOR_MAPS` maps in use.  An association that
+        is not a :class:`VisorVtkVariableType`, and an array the part's
+        dataset does not have, are logged no-ops, as in the pipeline renderer.
         """
         part = self._part(node_id, "apply_color_variable")
         if part is None:
-            return
+            return True
         association = _ASSOCIATIONS.get(array_type) if isinstance(array_type, VisorVtkVariableType) else None
         if association is None:
             logger.warning(
                 "apply_color_variable: association %r is not a VisorVtkVariableType; skipping.", array_type
             )
-            return
-        field = part.dataset.GetPointData() if association == "POINTS" else part.dataset.GetCellData()
-        if field.GetArray(array_name) is None:
+            return True
+        data = part.dataset.GetPointData() if association == "POINTS" else part.dataset.GetCellData()
+        if data.GetArray(array_name) is None:
             logger.warning(
                 "apply_color_variable: array %r not found for association %s; skipping.", array_name, array_type
             )
-            return
-        component_name = "Magnitude" if component == -1 else str(component)
-        self._session.color_by(part.rep, association, array_name, component_name)
-        self._session.rescale(part.rep, min_val, max_val)
+            return True
+        key = ColorMapKey(association, array_name, component, min_val, max_val)
+        previous = part.color_key
+        if key == previous:
+            return True
+        lut = self._color_maps.acquire(key, releasing=previous)
+        if lut is None:
+            logger.warning(
+                "colour map limit (%d) reached; part %r not coloured by %r", MAX_COLOR_MAPS, node_id, array_name
+            )
+            return False
+        part.color_by(key, lut)
+        if previous is not None:
+            self._color_maps.release(previous)
         self._frame_requester.request_frame()
+        return True
 
     def clear_color_variable(self, node_id: int) -> None:
-        """ColorBy None, then request a frame."""
+        """Colour the part solid and release its map, then request a frame; a solid part is not rewritten."""
         part = self._part(node_id, "clear_color_variable")
         if part is None:
             return
-        self._session.clear_color(part.rep)
+        previous = part.color_key
+        if previous is not None:
+            part.clear_color()
+            self._color_maps.release(previous)
         self._frame_requester.request_frame()
 
     # ------------------------------------------------------------------
@@ -397,10 +746,10 @@ class ParaviewRenderer(IRenderer):
     # ------------------------------------------------------------------
 
     def set_edges_visible(self, visible: bool) -> None:
-        """Write the edges representation on every part, then request a frame."""
+        """Write the edges representation on every opened source's representation, then request a frame."""
         representation = "Surface With Edges" if visible else "Surface"
-        for part in self._parts.values():
-            self._session.set_property(part.rep, "Representation", representation)
+        for opened in self._sources.values():
+            self._session.set_property(opened.rep, "Representation", representation)
         self._frame_requester.request_frame()
 
     def set_cross_section_visibility(self, visible: bool) -> None:

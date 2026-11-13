@@ -45,7 +45,8 @@ class _FakeSession:
         self._interactor = interactor
         self.reported_points = point_count
         self.opened: list[str] = []
-        self.extracted: list[SimpleNamespace] = []
+        self.shown: list[object] = []
+        self.writes: list[tuple[str, object]] = []
         self.deleted: list[object] = []
         self.backgrounds: list[tuple[float, float, float]] = []
         self.render_count = 0
@@ -54,12 +55,8 @@ class _FakeSession:
         self.opened.append(path)
         return SimpleNamespace(path=path)
 
-    def extract(self, source, selectors):
-        extract = SimpleNamespace(source=source, selectors=selectors)
-        self.extracted.append(extract)
-        return extract
-
     def show(self, source):
+        self.shown.append(source)
         return SimpleNamespace(shows=source)
 
     def delete(self, source):
@@ -68,16 +65,25 @@ class _FakeSession:
     def point_count(self, source):
         return self.reported_points
 
-    def set_property(self, rep, name, value):
-        pass
+    def block_point_count(self, source, selector):
+        return self.reported_points
 
-    def color_by(self, rep, association, array, component):
-        pass
+    def set_property(self, rep, name, value):
+        self.writes.append((name, value))
 
     def clear_color(self, rep):
         pass
 
-    def rescale(self, rep, lo, hi):
+    def new_color_map(self, component):
+        return SimpleNamespace(component=component)
+
+    def rescale_color_map(self, lut, lo, hi):
+        pass
+
+    def delete_color_map(self, lut):
+        pass
+
+    def set_selected_blocks(self, source, selectors):
         pass
 
     def write_camera(self, camera):
@@ -242,15 +248,17 @@ def test_in_memory_input_opens_nothing(scene, session):
     assert session.opened == []
 
 
-def test_add_multiblock_registers_one_extract_per_leaf(scene, session):
+def test_add_multiblock_shows_one_representation(scene, session):
     session.reported_points = 88
     scene.add_dataset(file_to_dataset(str(MANY_BLOCKS_VTM)), _metadata("mb", file_path="/shared/many_blocks.vtm"))
-    assert (len(session.extracted), [e.selectors for e in session.extracted[:3]]) == (
+    shown_blocks = [value for name, value in session.writes if name == "BlockSelectors"][-1]
+    assert (len(session.shown), len(shown_blocks), shown_blocks[:3]) == (
+        1,
         66,
         [
-            ["/Root/GroupA/GroupAA/Block0"],
-            ["/Root/GroupA/GroupAA/GroupAAA/Block0"],
-            ["/Root/GroupA/GroupAA/GroupAAA/Block1"],
+            "/Root/GroupA/GroupAA/Block0",
+            "/Root/GroupA/GroupAA/GroupAAA/Block0",
+            "/Root/GroupA/GroupAA/GroupAAA/Block1",
         ],
     )
 
@@ -279,13 +287,13 @@ def test_remove_dataset_unregisters_the_dataset(scene):
     assert list(scene.datasets) == []
 
 
-def test_remove_multiblock_dataset_deletes_extracts_then_source(scene, session):
+def test_remove_multiblock_dataset_deletes_only_its_source(scene, session):
     session.reported_points = 88
     dataset_id = scene.add_dataset(
         file_to_dataset(str(MANY_BLOCKS_VTM)), _metadata("mb", file_path="/shared/many_blocks.vtm")
     )
     scene.remove_dataset(dataset_id)
-    assert [getattr(d, "path", "extract") for d in session.deleted] == ["extract"] * 66 + ["/shared/many_blocks.vtm"]
+    assert [source.path for source in session.deleted] == ["/shared/many_blocks.vtm"]
 
 
 def test_remove_dataset_holds_lock_when_closing(scene):

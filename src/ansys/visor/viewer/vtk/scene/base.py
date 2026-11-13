@@ -54,9 +54,12 @@ class _ColorVariableBinding:
         """Return whether *association* and *array_name* name this binding's array."""
         return association is self.record.type and array_name == self.record.array_name
 
-    def apply_to(self, renderer: IRenderer) -> None:
-        """Configure the part's mapper at this range and re-serialize it; caller holds ``_vtk_lock``."""
-        renderer.apply_color_variable(
+    def apply_to(self, renderer: IRenderer) -> bool:
+        """Configure the part's mapper at this range and re-serialize it; False when the renderer refuses.
+
+        Caller holds ``_vtk_lock``.
+        """
+        return renderer.apply_color_variable(
             self.part_id,
             self.record.type,
             self.record.array_name,
@@ -610,9 +613,9 @@ class VisorSceneBase(ABC):
         reference that resolves is
         re-applied through :meth:`_ColorVariableBinding.apply_to`, unless the
         part participated in the same record in *previous* at the same range.
-        A reference that no longer resolves is cleared through
-        :meth:`clear_part_color_variable`, which clears the store, resets the
-        mapper and re-serializes it.
+        A reference that no longer resolves, or that the renderer refuses, is
+        cleared through :meth:`clear_part_color_variable`, which clears the
+        store, resets the mapper and re-serializes it.
         """
         references = [
             (part_id, part_state.color_variable.variable_id, part_state.color_variable.variable_component)
@@ -636,7 +639,13 @@ class VisorSceneBase(ABC):
                     and old_record.range_for(component) == (binding.min_val, binding.max_val)
             ):
                 continue
-            binding.apply_to(self._renderer)
+            if not binding.apply_to(self._renderer):
+                self.clear_part_color_variable(part_id)
+                logger.debug(
+                    "reconcile: part %s cleared; the renderer refused '%s' component %s.",
+                    part_id, variable_id, component
+                )
+                continue
             logger.debug(
                 "reconcile: part %s re-applied at '%s' component %s [%g, %g].",
                 part_id, variable_id, component, binding.min_val, binding.max_val
@@ -817,7 +826,9 @@ class VisorSceneBase(ABC):
         and *component* must name one of its slots.  *association* and
         *array_name* must name the record's array.  The range applied is the
         record's, never the caller's.  A refusal logs one WARNING and leaves
-        both the registry and the mapper untouched.
+        both the registry and the mapper untouched; a refusal by the renderer
+        restores the part's previous reference, so the registry never records
+        a variable the part is not drawn with.
         """
         with self._vtk_lock:
             binding = self._resolve_color_variable(node_id, variable_id, component)
@@ -829,10 +840,19 @@ class VisorSceneBase(ABC):
                     "(part %s); refused.", association, array_name, variable_id, node_id
                 )
                 return False
+            part_state = self._dataset_registry.get_part_state(node_id)
+            previous = part_state.color_variable if part_state is not None else None
             if not self._dataset_registry.set_part_color_variable(node_id, variable_id, component):
                 logger.debug("set_part_color_variable: no dataset owns node %s; skipping.", node_id)
                 return False
-            binding.apply_to(self._renderer)
+            if not binding.apply_to(self._renderer):
+                if previous is None:
+                    self._dataset_registry.clear_part_color_variable(node_id)
+                else:
+                    self._dataset_registry.set_part_color_variable(
+                        node_id, previous.variable_id, previous.variable_component
+                    )
+                return False
             return True
 
     def set_variable_range(
@@ -846,7 +866,8 @@ class VisorSceneBase(ABC):
         ``[-1, num_components)``, a non-finite value, or ``min > max``.  The
         entry is replaced by copy-on-write and ``variables`` is rebound, so
         the unlocked reader never sees the live dict change.  Each applied
-        mapper is re-serialized inside the lock.  Nothing is pushed: the
+        mapper is re-serialized inside the lock; a part whose re-colouring the
+        renderer refuses has its reference cleared.  Nothing is pushed: the
         client applied the range before it sent.
         """
         with self._vtk_lock:
@@ -893,8 +914,8 @@ class VisorSceneBase(ABC):
                 ):
                     continue
                 binding = self._resolve_color_variable(part_id, variable_id, component)
-                if binding is not None:
-                    binding.apply_to(self._renderer)
+                if binding is not None and not binding.apply_to(self._renderer):
+                    self.clear_part_color_variable(part_id)
             return True
 
     def _resolve_color_variable(
@@ -1162,8 +1183,9 @@ class VisorSceneBase(ABC):
 
         No reference clears the mapper.  A reference resolves against the
         held records, which must already be current when this runs.  A
-        refused reference is a logged no-op; the mapper is re-serialized
-        after an applied or cleared one.
+        refused reference is a logged no-op; a reference the renderer refuses
+        is cleared from the store.  The mapper is re-serialized after an
+        applied or cleared one.
         """
         reference = part_state.color_variable
         if reference is None:
@@ -1175,7 +1197,8 @@ class VisorSceneBase(ABC):
         )
         if binding is None:
             return
-        binding.apply_to(self._renderer)
+        if not binding.apply_to(self._renderer):
+            self.clear_part_color_variable(part_id)
 
     # ------------------------------------------------------------------
     # Internal helpers
