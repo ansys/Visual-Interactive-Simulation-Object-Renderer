@@ -31,6 +31,9 @@ PvSource = Any
 PvRepresentation = Any
 """A ParaView representation proxy in the session's view; opaque outside the session."""
 
+PvLookupTable = Any
+"""A ParaView lookup-table proxy on pvserver; opaque outside the session."""
+
 PVSERVER_CONNECT_TIMEOUT_S: int = 10
 """Seconds ``Connect`` retries before giving up on an unreachable pvserver."""
 
@@ -48,9 +51,6 @@ class ParaviewSession(Protocol):
     def open(self, path: str) -> PvSource:
         """Open path on pvserver."""
 
-    def extract(self, source: PvSource, selectors: list[str]) -> PvSource:
-        """ExtractBlock with these selectors."""
-
     def show(self, source: PvSource) -> PvRepresentation:
         """Show source in the view with scalar colouring off."""
 
@@ -60,17 +60,26 @@ class ParaviewSession(Protocol):
     def point_count(self, source: PvSource) -> int:
         """Number of points pvserver reports for source."""
 
+    def block_point_count(self, source: PvSource, selector: str) -> int:
+        """Number of points pvserver reports for the block of source at selector."""
+
     def set_property(self, rep: PvRepresentation, name: str, value: object) -> None:
         """Write one representation property."""
-
-    def color_by(self, rep: PvRepresentation, association: str, array: str, component: str | None) -> None:
-        """ColorBy with a separate colour map for this rep."""
 
     def clear_color(self, rep: PvRepresentation) -> None:
         """ColorBy None."""
 
-    def rescale(self, rep: PvRepresentation, lo: float, hi: float) -> None:
-        """Rescale this rep's transfer function."""
+    def new_color_map(self, component: int) -> PvLookupTable:
+        """A new lookup table mapping component, ``-1`` for magnitude, that ParaView never rescales."""
+
+    def rescale_color_map(self, lut: PvLookupTable, lo: float, hi: float) -> None:
+        """Rescale lut's transfer function to [lo, hi]."""
+
+    def delete_color_map(self, lut: PvLookupTable) -> None:
+        """Delete lut on pvserver."""
+
+    def set_selected_blocks(self, source: PvSource, selectors: list[str]) -> None:
+        """Make these blocks of source its whole selection; an empty list clears it."""
 
     def write_camera(self, camera: VisorCameraState) -> None:
         """Write the view camera properties."""
@@ -137,10 +146,6 @@ class PvSimpleSession:
         source.UpdatePipeline()
         return source
 
-    def extract(self, source: PvSource, selectors: list[str]) -> PvSource:
-        """ExtractBlock with these selectors."""
-        return self._simple.ExtractBlock(Input=source, Selectors=selectors)
-
     def show(self, source: PvSource) -> PvRepresentation:
         """Show source in the view with scalar colouring off."""
         rep = self._simple.Show(source, self._view)
@@ -156,20 +161,13 @@ class PvSimpleSession:
         """Number of points pvserver reports for source."""
         return source.GetDataInformation().GetNumberOfPoints()
 
+    def block_point_count(self, source: PvSource, selector: str) -> int:
+        """Number of points pvserver reports for the block of source at selector, read from its hierarchy."""
+        return source.SMProxy.GetSubsetDataInformation(0, selector, "Hierarchy").GetNumberOfPoints()
+
     def set_property(self, rep: PvRepresentation, name: str, value: object) -> None:
         """Write one representation property."""
         setattr(rep, name, value)
-
-    def color_by(self, rep: PvRepresentation, association: str, array: str, component: str | None) -> None:
-        """ColorBy with a separate colour map for this rep.
-
-        ``ColorBy`` writes ``UseSeparateColorMap`` from its ``separate``
-        argument, so passing ``separate=True`` here is what keeps two parts
-        coloured by the same array name on two maps; a property write before
-        the call would be overwritten.
-        """
-        value = (association, array) if component is None else (association, array, component)
-        self._simple.ColorBy(rep, value, separate=True)
 
     def clear_color(self, rep: PvRepresentation) -> None:
         """ColorBy None, by clearing the colour array name.
@@ -180,11 +178,38 @@ class PvSimpleSession:
         """
         rep.ColorArrayName = ["POINTS", ""]
 
-    def rescale(self, rep: PvRepresentation, lo: float, hi: float) -> None:
-        """Rescale this rep's transfer function and stop ParaView rescaling it on data changes."""
-        lut = rep.LookupTable
+    def new_color_map(self, component: int) -> PvLookupTable:
+        """A new lookup table mapping component, ``-1`` for magnitude, that ParaView never rescales.
+
+        The table is not registered under an array name, so no other
+        representation coloured by the same array picks it up.
+        """
+        lut = self._simple.CreateLookupTable()
         lut.AutomaticRescaleRangeMode = "Never"
+        if component == -1:
+            lut.VectorMode = "Magnitude"
+        else:
+            lut.VectorMode = "Component"
+            lut.VectorComponent = component
+        return lut
+
+    def rescale_color_map(self, lut: PvLookupTable, lo: float, hi: float) -> None:
+        """Rescale lut's transfer function to [lo, hi]."""
         lut.RescaleTransferFunction(lo, hi)
+
+    def delete_color_map(self, lut: PvLookupTable) -> None:
+        """Delete lut on pvserver."""
+        self._simple.Delete(lut)
+
+    def set_selected_blocks(self, source: PvSource, selectors: list[str]) -> None:
+        """Make these blocks of source its whole selection; an empty list clears it.
+
+        ``SelectBlocks`` takes one selector per call, so each block after the
+        clear is added to the selection.
+        """
+        self._simple.ClearSelection(source)
+        for selector in selectors:
+            self._simple.SelectBlocks(BlockSelector=selector, Source=source, Modifier="ADD")
 
     def write_camera(self, camera: VisorCameraState) -> None:
         """Write the view camera properties; ParaView recomputes the clipping range at render."""

@@ -45,10 +45,14 @@ def _install_fake_simple(monkeypatch, connection: object | None) -> types.Module
     """Put a fake paraview.simple in sys.modules; Connect returns connection."""
     simple = types.ModuleType("paraview.simple")
     simple.view = _FakeView()
-    simple.color_by_calls = []
+    simple.selection_calls = []
     simple.Connect = lambda **kwargs: connection
     simple.CreateView = lambda name: simple.view
-    simple.ColorBy = lambda rep, value, separate=False: simple.color_by_calls.append((rep, value, separate))
+    simple.CreateLookupTable = lambda: SimpleNamespace()
+    simple.ClearSelection = lambda source: simple.selection_calls.append(("clear", source))
+    simple.SelectBlocks = lambda BlockSelector, Source, Modifier=None: simple.selection_calls.append(
+        (BlockSelector, Source, Modifier)
+    )
     paraview = types.ModuleType("paraview")
     paraview.simple = simple
     monkeypatch.setitem(sys.modules, "paraview", paraview)
@@ -83,11 +87,43 @@ def test_init_raises_naming_the_address_when_connect_returns_none(monkeypatch):
         PvSimpleSession(PvserverAddress(host="localhost", port=11111))
 
 
-def test_color_by_requests_a_separate_color_map(monkeypatch):
+def _session(monkeypatch):
     simple = _install_fake_simple(monkeypatch, connection=object())
-    session = PvSimpleSession(PvserverAddress(host="localhost", port=11111))
-    rep = SimpleNamespace()
+    return simple, PvSimpleSession(PvserverAddress(host="localhost", port=11111))
 
-    session.color_by(rep, "POINTS", "velocity", "Magnitude")
 
-    assert simple.color_by_calls == [(rep, ("POINTS", "velocity", "Magnitude"), True)]
+def test_block_point_count_reads_the_blocks_hierarchy_subset(monkeypatch):
+    _, session = _session(monkeypatch)
+    calls = []
+
+    def subset(port, selector, assembly):
+        calls.append((port, selector, assembly))
+        return SimpleNamespace(GetNumberOfPoints=lambda: 88)
+
+    source = SimpleNamespace(SMProxy=SimpleNamespace(GetSubsetDataInformation=subset))
+
+    assert (session.block_point_count(source, "/Root/body/rib"), calls) == (88, [(0, "/Root/body/rib", "Hierarchy")])
+
+
+@pytest.mark.parametrize(
+    ("component", "expected"),
+    [(-1, {"AutomaticRescaleRangeMode": "Never", "VectorMode": "Magnitude"}),
+     (1, {"AutomaticRescaleRangeMode": "Never", "VectorMode": "Component", "VectorComponent": 1})],
+)
+def test_new_color_map_maps_the_component_and_never_rescales(monkeypatch, component, expected):
+    _, session = _session(monkeypatch)
+
+    assert vars(session.new_color_map(component)) == expected
+
+
+def test_set_selected_blocks_clears_then_adds_each_block(monkeypatch):
+    simple, session = _session(monkeypatch)
+    source = SimpleNamespace()
+
+    session.set_selected_blocks(source, ["/Root/body/rib", "/Root/wing"])
+
+    assert simple.selection_calls == [
+        ("clear", source),
+        ("/Root/body/rib", source, "ADD"),
+        ("/Root/wing", source, "ADD"),
+    ]

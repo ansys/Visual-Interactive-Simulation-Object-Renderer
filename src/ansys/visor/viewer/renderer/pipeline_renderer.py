@@ -216,7 +216,9 @@ class VtkPipelineRenderer(IRenderer):
         """See :meth:`IRenderer.apply_selected`.
 
         Resolves the pipeline and delegates to
-        :meth:`VtkNodePipeline.set_selected`.  *diffuse_rgb* is passed
+        :meth:`VtkNodePipeline.set_selected`, which writes ``AmbientColor``
+        (the selection tint), ``Ambient`` and ``Diffuse`` as a function of
+        *selected* only, and ``DiffuseColor = diffuse_rgb`` on both branches.  *diffuse_rgb* is passed
         through as given; supplying a default when the part has no stored
         colour is the coordinator's job, not the renderer's.  An unknown
         *node_id* is a logged no-op, never a raise.
@@ -242,8 +244,8 @@ class VtkPipelineRenderer(IRenderer):
         component: int,
         min_val: float,
         max_val: float,
-    ) -> None:
-        """See :meth:`IRenderer.apply_color_variable`.
+    ) -> bool:
+        """See :meth:`IRenderer.apply_color_variable`; never refuses, so always True.
 
         Resolves the pipeline and delegates to
         :meth:`VtkNodePipeline.set_color_variable`.  *array_type* must
@@ -261,9 +263,10 @@ class VtkPipelineRenderer(IRenderer):
             logger.debug(
                 "apply_color_variable: no pipeline for node %s; skipping.", node_id
             )
-            return
+            return True
         pipe.set_color_variable(array_type, array_name, component, min_val, max_val)
         self._publish_part_mapper(node_id)
+        return True
 
     def clear_color_variable(self, node_id: int) -> None:
         """See :meth:`IRenderer.clear_color_variable`.
