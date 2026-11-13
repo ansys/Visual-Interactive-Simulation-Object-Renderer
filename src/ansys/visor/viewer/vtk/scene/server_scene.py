@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 from trame_rca.rca import VtkRemoteControlledArea
 from trame_server import Server
 
+from ansys.visor.viewer.renderer.gl_context_lock import GlContextLock
 from ansys.visor.viewer.renderer.server_renderer import ServerRenderer
 from ansys.visor.viewer.renderer.server_window import VisorRcaWindow
 from ansys.visor.viewer.vtk.scene.base import VisorSceneBase
@@ -50,9 +51,14 @@ class VisorServerScene(VisorSceneBase):
         bridge: ServerLoopBridge,
         view_record_publisher: ViewRecordPublisher,
     ) -> None:
-        """Build the ServerRenderer and the RCA window over this scene's lock."""
+        """Build the ServerRenderer, a GlContextLock over its window as the scene lock, and the RCA window over that lock."""
         renderer = ServerRenderer(BACKGROUND_RGB[dark_mode], bridge, view_record_publisher)
-        super().__init__(server, dark_mode, renderer=renderer)
+        super().__init__(
+            server,
+            dark_mode,
+            renderer=renderer,
+            vtk_lock=GlContextLock(renderer.render_window),
+        )
         self._rca_window = VisorRcaWindow(
             VtkRemoteControlledArea(renderer.render_window),
             renderer,
