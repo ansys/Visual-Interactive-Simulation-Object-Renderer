@@ -8,6 +8,7 @@ and serves a real ``SessionServer``.  No pvpython is started.
 """
 
 import asyncio
+import os
 import subprocess
 import threading
 import time
@@ -94,11 +95,12 @@ class FakePopen:
     stubborn  like ready, but survives shutdown and terminate until killed
     """
 
-    def __init__(self, command, stdin, stdout, stderr, behaviour):
+    def __init__(self, command, stdin, stdout, stderr, behaviour, options=None):
         self.args = command
         self.stdin_arg = stdin
         self.stdout_arg = stdout
         self.stderr_arg = stderr
+        self.options = options or {}
         self.behaviour = behaviour
         self.stdin = FakeStdin(self._start)
         self.pid = 4242
@@ -168,8 +170,8 @@ def spawn(monkeypatch, tmp_path):
     created = []
 
     def build(behaviour, start_timeout=10.0):
-        def fake_popen(command, stdin, stdout, stderr):
-            created.append(FakePopen(command, stdin, stdout, stderr, behaviour))
+        def fake_popen(command, stdin, stdout, stderr, **options):
+            created.append(FakePopen(command, stdin, stdout, stderr, behaviour, options))
             return created[-1]
 
         monkeypatch.setattr(session_process.subprocess, "Popen", fake_popen)
@@ -280,6 +282,32 @@ def test_end_escalates_to_kill_and_is_idempotent(spawn):
     assert created[0].terminate_calls == 1
     assert created[0].kill_calls == 1
     assert created[0].returncode == -9
+
+
+def test_pid_and_exit_code(spawn):
+    process, _created = spawn("ready")
+    assert process.pid is None
+    assert process.exit_code is None
+
+    run_bounded(lambda: process.launch(REQUEST))
+    running_code = process.exit_code
+    run_bounded(process.end)
+
+    assert process.pid == 4242
+    assert running_code is None
+    assert process.exit_code == 0
+
+
+def test_launch_spawns_child_in_its_own_process_group(spawn):
+    process, created = spawn("ready")
+
+    run_bounded(lambda: process.launch(REQUEST))
+    run_bounded(process.end)
+
+    if os.name == "nt":
+        assert created[0].options == {"creationflags": 0x00000200}
+    else:
+        assert created[0].options == {"start_new_session": True}
 
 
 def test_from_settings_names_missing_key_and_builds_log_path(tmp_path):
