@@ -9,11 +9,16 @@ authkey reaches the child as one hex line on its stdin, never in argv or the
 environment.  The child's stdout and stderr go to a log file, so no pipe can
 fill and block it.  The child is not detached: it exits when its connection
 closes, so it does not outlive this process.
+
+The child runs in its own process group, so a console Ctrl+C reaches only
+this process.  The owner of the session then ends the child over the channel,
+through the same shutdown as any other end.
 """
 
 from __future__ import annotations
 
 import importlib.util
+import os
 import secrets
 import socket
 import subprocess
@@ -45,6 +50,13 @@ WAIT_SLICE_S = 0.5
 
 END_GRACE_S = 5.0
 """Seconds end() waits after each step before escalating."""
+
+
+def own_process_group_options() -> dict:
+    """Popen options that start the child in its own process group, out of reach of a console Ctrl+C."""
+    if os.name == "nt":
+        return {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
+    return {"start_new_session": True}
 
 
 class ParaviewSessionProcess:
@@ -83,6 +95,16 @@ class ParaviewSessionProcess:
     def log_path(self) -> Path:
         """The file receiving the child's stdout and stderr."""
         return self._log_path
+
+    @property
+    def pid(self) -> int | None:
+        """The child's process id; None before launch."""
+        return None if self._process is None else self._process.pid
+
+    @property
+    def exit_code(self) -> int | None:
+        """The child's exit code; None before launch and while it runs."""
+        return None if self._process is None else self._process.poll()
 
     def launch(self, request: SessionLaunchRequest) -> SessionChannel:
         """Spawn the child, hand it the authkey on stdin, and return the channel once it reports ready.
@@ -157,6 +179,7 @@ class ParaviewSessionProcess:
                     stdin=subprocess.PIPE,
                     stdout=log,
                     stderr=subprocess.STDOUT,
+                    **own_process_group_options(),
                 )
             except OSError as exc:
                 raise ParaviewSessionError(f"Could not start pvpython at {self._pvpython}: {exc}") from exc

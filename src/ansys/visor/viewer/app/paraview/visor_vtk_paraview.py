@@ -18,13 +18,41 @@ from ansys.visor.viewer.app.trame.server_loop_bridge import ServerLoopBridge
 from ansys.visor.viewer.app.trame.server_state_publisher import ServerStatePublisher
 from ansys.visor.viewer.app.visor_vtk import VisorVTK
 from ansys.visor.viewer.core.errors import UnsupportedInModeError
+from ansys.visor.viewer.core.metadata import ExtendedMetadata, Metadata
 from ansys.visor.viewer.core.visor_enums import RenderingMode
-from ansys.visor.viewer.core.visor_logging import get_trame_logger
+from ansys.visor.viewer.core.visor_logging import VisorDefaultLogger, get_trame_logger
+from ansys.visor.viewer.core.visor_types import VisorDatasetType
+from ansys.visor.viewer.vtk.io.visor_file_io import VisorFileIO
 from ansys.visor.viewer.vtk.scene.paraview_scene import VisorParaviewScene
 
 if TYPE_CHECKING:
     from ansys.visor.viewer.core.pvserver_address import PvserverAddress
     from ansys.visor.viewer.renderer.paraview_session import ParaviewSession
+
+logger = VisorDefaultLogger(__name__)
+
+
+class ParaviewFileIO(VisorFileIO):
+    """VisorFileIO whose resolved user metadata never names a dataset snapshot.
+
+    pvserver opens a dataset's snapshot path in preference to its input file,
+    so a snapshot path in user metadata would make pvserver open that file
+    instead.  Restoring state builds its metadata without :meth:`resolve`, so
+    a restored dataset keeps its snapshot path.
+    """
+
+    def resolve(
+            self,
+            input: str | VisorDatasetType | None,
+            metadata: str | Metadata | None,
+    ) -> tuple[VisorDatasetType | None, ExtendedMetadata]:
+        """Resolve as the base does, then clear the snapshot path from the metadata's state; its parts are kept."""
+        loaded_input, extended_metadata = super().resolve(input, metadata)
+        snapshot_path = extended_metadata.state.serialized_dataset_path
+        if snapshot_path:
+            logger.warning("Ignoring state.serialized_dataset_path %r in user metadata", snapshot_path)
+            extended_metadata.state = extended_metadata.state.model_copy(update={"serialized_dataset_path": None})
+        return loaded_input, extended_metadata
 
 
 class VisorVTKParaview(VisorVTK):
@@ -45,6 +73,7 @@ class VisorVTKParaview(VisorVTK):
         """Store the pvserver address and the connected session, then build the base.
 
         Both are stored first because the base constructor builds the scene.
+        User input is resolved by :class:`ParaviewFileIO`.
         """
         self._pvserver = pvserver
         self._session = session
@@ -55,6 +84,7 @@ class VisorVTKParaview(VisorVTK):
             dark_mode=dark_mode,
             trame_log_dir=trame_log_dir,
         )
+        self._file_io = ParaviewFileIO()
 
     def _initialize_rendering(self, standalone: bool, trame_log_dir: str | None) -> None:
         """Wire the bridge, the state publisher, the ParaView scene and ParaviewApp.

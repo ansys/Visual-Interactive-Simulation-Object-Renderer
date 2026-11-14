@@ -1,10 +1,12 @@
 """Unit tests for ``VisorVTKParaview``'s wiring of the bridge, the ParaView
-scene and ``ParaviewApp``, and its refusal of variable updates.
+scene and ``ParaviewApp``, its refusal of variable updates, and the snapshot
+path it clears from user metadata but keeps on restored state.
 
 Mocking boundary: ``visor_vtk.TrameServerManager``,
 ``visor_vtk_paraview.ParaviewApp``, ``visor_vtk_paraview.VisorParaviewScene``,
 ``visor_vtk_paraview.ServerLoopBridge`` and
-``visor_vtk_paraview.ServerStatePublisher``.  Nothing here starts a trame
+``visor_vtk_paraview.ServerStatePublisher``; the file readers of the viewer's
+file IO where a dataset or state is read.  Nothing here starts a trame
 server or imports ParaView.
 """
 
@@ -14,6 +16,8 @@ import pytest
 
 from ansys.visor.viewer.app.paraview.visor_vtk_paraview import VisorVTKParaview
 from ansys.visor.viewer.core.errors import UnsupportedInModeError
+from ansys.visor.viewer.core.metadata import Metadata
+from ansys.visor.viewer.models.persist.dataset.persisted_dataset_state import PersistedDatasetState
 
 
 @pytest.fixture
@@ -94,3 +98,69 @@ def test_update_variables_raises_unsupported(wiring):
 
     with pytest.raises(UnsupportedInModeError):
         viewer.update_variables(0, [])
+
+
+def added_metadata(scene_cls):
+    """The metadata the scene received with the one dataset added to it."""
+    scene = scene_cls.return_value
+    scene.add_dataset.assert_called_once()
+    return scene.add_dataset.call_args.args[1]
+
+
+def add_with_metadata(scene_cls, viewer, metadata):
+    scene_cls.return_value.add_dataset.return_value = 1
+    with patch.object(viewer._file_io, "read_dataset", return_value=MagicMock(name="dataset")):
+        viewer.add_dataset("model.vtu", metadata)
+
+
+def test_user_metadata_snapshot_path_is_cleared(wiring):
+    """pvserver would open a snapshot path in place of the input, so user metadata loses it."""
+    _app_cls, scene_cls, *_, viewer = wiring
+    metadata = Metadata(name="m", unit="mm", state={"serialized_dataset_path": "elsewhere.vtm"})
+
+    add_with_metadata(scene_cls, viewer, metadata)
+
+    assert added_metadata(scene_cls).state.serialized_dataset_path is None
+    assert added_metadata(scene_cls).file_path == "model.vtu"
+    assert metadata.state.serialized_dataset_path == "elsewhere.vtm"
+
+
+def test_user_metadata_parts_are_kept(wiring):
+    _app_cls, scene_cls, *_, viewer = wiring
+    metadata = Metadata(
+        name="m", unit="mm", state={"serialized_dataset_path": "elsewhere.vtm", "parts": {"wing": {}}}
+    )
+
+    add_with_metadata(scene_cls, viewer, metadata)
+
+    assert list(added_metadata(scene_cls).state.parts) == ["wing"]
+
+
+def test_json_metadata_snapshot_path_is_cleared(wiring, tmp_path):
+    _app_cls, scene_cls, *_, viewer = wiring
+    metadata_file = tmp_path / "meta.json"
+    metadata_file.write_text(
+        '{"name": "m", "unit": "mm", "state": {"serialized_dataset_path": "elsewhere.vtm"}}'
+    )
+
+    add_with_metadata(scene_cls, viewer, str(metadata_file))
+
+    assert added_metadata(scene_cls).state.serialized_dataset_path is None
+    assert added_metadata(scene_cls).metadata_path == str(metadata_file)
+
+
+def test_load_state_keeps_snapshot_path(wiring, tmp_path):
+    """Restoring state builds metadata without resolving user input, so its snapshot path is kept."""
+    _app_cls, scene_cls, *_, viewer = wiring
+    snapshot = tmp_path / "ds.vtm"
+    snapshot.write_text("")
+    state = MagicMock(name="state")
+    state.scene.unit = "mm"
+    state.scene.dataset_states = {"ds": PersistedDatasetState(serialized_dataset_path=str(snapshot))}
+    scene_cls.return_value.dataset_count = 0
+
+    with patch.object(viewer._file_io, "read_state", return_value=state), \
+         patch.object(viewer._file_io, "read_snapshot", return_value=MagicMock(name="dataset")):
+        viewer.load_state(str(tmp_path))
+
+    assert added_metadata(scene_cls).state.serialized_dataset_path == str(snapshot)
