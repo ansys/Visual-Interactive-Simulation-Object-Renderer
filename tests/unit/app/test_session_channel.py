@@ -6,6 +6,7 @@ session uses.  Coroutine results run on a real ``AsyncRunner``.  Every
 blocking call runs under a thread guard so a hang fails instead of stalling.
 """
 
+import inspect
 import socket
 import struct
 import sys
@@ -24,6 +25,7 @@ from ansys.visor.viewer.app.paraview.session_channel import (
     to_plain,
 )
 from ansys.visor.viewer.app.trame.async_runner import AsyncRunner
+from ansys.visor.viewer.app.visor import Visor
 from ansys.visor.viewer.core.errors import InvalidFileError, ParaviewSessionError
 from ansys.visor.viewer.vtk.variables.visor_part_variables import VisorPartVariables
 
@@ -142,6 +144,12 @@ def test_method_outside_served_set_is_refused_without_calling_target(served):
         run_bounded(lambda: channel.call("clear"))
 
     assert target.calls == []
+
+
+def test_served_set_is_visors_public_interface_and_health():
+    public = {name for name, _ in inspect.getmembers(Visor, inspect.isfunction) if not name.startswith("_")}
+
+    assert SERVED_METHODS == public | {"_health"}
 
 
 def test_coroutine_method_runs_on_the_runner_loop(served):

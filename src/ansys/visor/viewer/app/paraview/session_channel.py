@@ -26,25 +26,24 @@ from typing import Any, Callable, Coroutine
 import numpy as np
 from pydantic import BaseModel
 
+from ansys.visor.viewer.app.visor import Visor
 from ansys.visor.viewer.core import errors
 from ansys.visor.viewer.core.pvserver_address import PvserverAddress
 from ansys.visor.viewer.core.visor_logging import VisorDefaultLogger
 
 logger = VisorDefaultLogger(__name__)
 
-SERVED_METHODS: frozenset[str] = frozenset({
-    "start",
-    "stop",
-    "update",
-    "add_dataset",
-    "remove_dataset",
-    "list_datasets",
-    "list_variables",
-    "save_state",
-    "load_state",
-    "_health",
-})
-"""The methods the session process serves on its Visor."""
+def served_methods(visor_class: type) -> frozenset[str]:
+    """The public methods declared on visor_class, plus ``_health``."""
+    declared = {
+        name for name, member in vars(visor_class).items()
+        if inspect.isfunction(member) and not name.startswith("_")
+    }
+    return frozenset(declared | {"_health"})
+
+
+SERVED_METHODS: frozenset[str] = served_methods(Visor)
+"""The methods the session process serves on its Visor: Visor's public interface and ``_health``."""
 
 _VALUE_STYLE_ERRORS: tuple[type[Exception], ...] = (
     errors.InvalidFileError,
