@@ -6,6 +6,7 @@ import {
     PickGeometryResult,
     VisorCameraState,
 } from './IRenderer';
+import type { CanvasClick } from '../rca/ServerCanvas';
 
 const NULL_CAMERA_STATE: VisorCameraState = {
     distance: 0,
@@ -84,15 +85,7 @@ export class NullRenderer implements IRenderer {
         };
     }
 
-    addViewerClickedListener(
-        _callback: (
-            nodeId: NodeId | null,
-            ctrlKey: boolean,
-            shiftKey: boolean,
-            normX: number,
-            normY: number
-        ) => void
-    ): () => void {
+    addCanvasClickListener(_callback: (click: CanvasClick) => void): () => void {
         return () => {
             // no-op unsubscribe
         };
@@ -244,6 +237,10 @@ export class NullRenderer implements IRenderer {
 
     async applyEdgeVisibilityGlobalAsync(_visible: boolean): Promise<void> {
         // no-op
+    }
+
+    async pickPartAsync(_normX: number, _normY: number): Promise<NodeId | null> {
+        return null;
     }
 
     async pickGeometryAsync(

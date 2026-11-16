@@ -16,8 +16,22 @@ import { OrthographicWidget } from '../widgets/orthographicWidget.ts';
 import { EdgesWidget } from '../widgets/edgesWidget.ts';
 import { OrientationWidget } from '../widgets/orientationWidget.ts';
 import { SceneTriggerSends } from './SceneTriggerSends';
+import { ViewportPixel } from '../input/ViewportPixel';
+import { GeometryPickReader } from './GeometryPickReader';
+import { cameraRecordOf, CameraRecord } from '../CameraSyncReporter';
+import { PartPickReader } from './PartPickReader';
+import type { CanvasClick } from '../rca/ServerCanvas';
 
 const SELECTION_TINT_RGB: Readonly<number[]> = [0 / 255, 62 / 255, 111 / 255];
+
+/** The view fields of every in-view pick: a device pixel, origin bottom-left, the window's size and its camera record. */
+type PickViewPixel = Readonly<{
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    camera: CameraRecord;
+}>;
 
 /**
  * Local-wasm implementation of {@link IRenderer}. Method bodies here are
@@ -32,19 +46,18 @@ export class WasmRenderer implements IRenderer {
         triggerSender: TrameTriggerSender | null
     ) {
         this.#vtkScene = vtkScene;
+        this.#triggerSender = triggerSender;
         this.#sends = new SceneTriggerSends(triggerSender);
 
         const wasmPlaneId = annotation.widgets.crossSectionPlaneId;
         const wasmPlaneRepId = annotation.widgets.crossSectionPlaneRepresentationId;
         const wasmPlaneWidgetId = annotation.widgets.crossSectionPlaneWidgetId;
 
-        // Both maps are built once, here, from the annotation's per-node
-        // handles. The actorIdToNodeId map is used to translate the wasm pick result
-        // to a nodeId. The nodeIdToHandles map is used to look up the handles for
-        // any nodeId when applying per-node visual state.
+        // The map is built once, here, from the annotation's per-node handles,
+        // to look up the handles for any nodeId when applying per-node
+        // visual state.
         for (const [nodeIdKey, handles] of Object.entries(annotation.nodes)) {
             const nodeId: NodeId = Number(nodeIdKey);
-            this.#actorIdToNodeId.set(handles.actorId, nodeId);
             this.#nodeIdToHandles.set(nodeId, handles);
         }
 
@@ -148,8 +161,8 @@ export class WasmRenderer implements IRenderer {
     }
 
     readonly #vtkScene: VtkScene;
+    readonly #triggerSender: TrameTriggerSender | null;
     readonly #sends: SceneTriggerSends;
-    readonly #actorIdToNodeId = new Map<number, NodeId>();
     readonly #nodeIdToHandles = new Map<NodeId, WasmNodeHandles>();
     readonly #crossSectionWidget: CrossSectionWidget;
     readonly #orthographicWidget: OrthographicWidget;
@@ -165,6 +178,9 @@ export class WasmRenderer implements IRenderer {
     }
 
     async resizeAsync(): Promise<void> {
+        // Not awaited: the resize does not wait on a round trip, and the send
+        // logs and swallows its own rejection.
+        void this.#sends.sendPixelScaleAsync(window.devicePixelRatio);
         await this.#vtkScene.resizeAsync();
         await this.#orientationWidget.fitToWindowAsync();
         this.#vtkScene.render();
@@ -249,21 +265,9 @@ export class WasmRenderer implements IRenderer {
         });
     }
 
-    addViewerClickedListener(
-        callback: (
-            nodeId: NodeId | null,
-            ctrlKey: boolean,
-            shiftKey: boolean,
-            normX: number,
-            normY: number
-        ) => void
-    ): () => void {
-        return this.#vtkScene.addViewerClickedListener(
-            async (actorWasmId, ctrlKey, shiftKey, normX, normY) => {
-                const nodeId = this.#actorIdToNodeId.get(actorWasmId) ?? null;
-                callback(nodeId, ctrlKey, shiftKey, normX, normY);
-            }
-        );
+    /** Fires on each click with its CanvasClick; picks nothing. */
+    addCanvasClickListener(callback: (click: CanvasClick) => void): () => void {
+        return this.#vtkScene.addCanvasClickListener(callback);
     }
 
     // ---- Per-part visual state -----------------------------------------------
@@ -505,19 +509,49 @@ export class WasmRenderer implements IRenderer {
     }
 
     // ---- Picking ------------------------------------------------------------
+    /** Ask the server for the part under a point of this window, seen through its camera, in render-window pixels; rejects with no trigger sender. */
+    async pickPartAsync(normX: number, normY: number): Promise<NodeId | null> {
+        const send = this.#requireTriggerSender();
+        const view = await this.#pickViewAsync(normX, normY);
+        return PartPickReader.parse(await send('pick_part_in_view', view), 'pick_part_in_view');
+    }
+
+    /** Ask the server for the feature under a point of this window, seen through its camera, in render-window pixels; rejects with no trigger sender. */
     async pickGeometryAsync(
         normX: number,
         normY: number,
         mode: GeometryPickMode
     ): Promise<PickGeometryResult> {
-        return (await this.#vtkScene.pickGeometryAsync(normX, normY, mode)) as PickGeometryResult;
+        const send = this.#requireTriggerSender();
+        const view = await this.#pickViewAsync(normX, normY);
+        return GeometryPickReader.parse(await send('pick_geometry_in_view', { ...view, mode }));
     }
 
+    /** The trigger sender; throws when this renderer was built without one. */
+    #requireTriggerSender(): TrameTriggerSender {
+        const send = this.#triggerSender;
+        if (send == null) {
+            throw new Error('no trigger sender');
+        }
+        return send;
+    }
+
+    /** The pixel, window size and camera record of a VTK-normalised point of this view. */
+    async #pickViewAsync(normX: number, normY: number): Promise<PickViewPixel> {
+        const [width, height] = await this.#vtkScene.renderWindow.GetSize();
+        const x = ViewportPixel.of(normX, width);
+        const y = ViewportPixel.of(normY, height);
+        const camera = cameraRecordOf(await this.getCameraStateAsync());
+        return { x, y, width, height, camera };
+    }
+
+    /** Ask the server to highlight the picked feature; a not-found result clears it. */
     async setGeometryHighlightAsync(result: PickGeometryResult): Promise<void> {
-        await this.#vtkScene.setGeometryHighlightAsync(result);
+        await this.#sends.sendGeometryHighlightAsync(result);
     }
 
+    /** Ask the server to clear the highlight; the send is not awaited. */
     clearGeometryHighlight(): void {
-        this.#vtkScene.clearGeometryHighlight();
+        void this.#sends.sendGeometryHighlightAsync({ found: false });
     }
 }

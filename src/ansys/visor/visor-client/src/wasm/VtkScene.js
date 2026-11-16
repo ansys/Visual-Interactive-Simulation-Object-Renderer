@@ -7,7 +7,6 @@
  */
 import CameraGestureTracker from './CameraGestureTracker.js';
 import { MouseButtonState } from '../input/MouseButtonState';
-import { ViewerClickDispatcher } from '../input/ViewerClickDispatcher';
 
 export default class VtkScene {
     /**
@@ -51,8 +50,6 @@ export default class VtkScene {
         let camera;
         /**@type{FrontendVtkObject}*/
         let interactor;
-        /**@type{FrontendVtkObject}*/
-        let picker;
         if (vtk != null) {
             throw new Error('standalone sessions not yet supported');
         } else if (remoteVtkScene == null) {
@@ -61,7 +58,6 @@ export default class VtkScene {
         const { renderer, renderWindow, canvasDiv, canvas } = remoteVtkScene;
         camera = await renderer.GetActiveCamera();
         interactor = await renderWindow.GetInteractor();
-        picker = await interactor.GetPicker();
         this.#remoteVtkScene = remoteVtkScene;
         this.canvas = canvas;
         this.canvasDiv = canvasDiv;
@@ -69,11 +65,9 @@ export default class VtkScene {
         this.renderer = renderer;
         this.renderWindow = renderWindow;
         this.interactor = interactor;
-        this.picker = picker;
         this.#setupFpsMonitor();
         this.#setupCamera();
-        this.#setupPicker();
-        this.#setupHighlightOverlay();
+        this.#setupClicks();
     }
 
     /**@type{RemoteVtkScene}*/
@@ -82,8 +76,6 @@ export default class VtkScene {
     canvas;
     /**@type{HTMLDivElement}*/
     canvasDiv;
-    /** Last WASM display coords from mouseup – used by pickGeometryAsync. */
-    #lastPickDisplayPos = null;
     /**@type{FrontendVtkObject}*/
     camera;
     /**@type{FrontendVtkObject}*/
@@ -92,8 +84,6 @@ export default class VtkScene {
     renderWindow;
     /**@type{FrontendVtkObject}*/
     interactor;
-    /**@type{FrontendVtkObject}*/
-    picker;
     /**
      * @param {number} wasmId
      * @return {FrontendVtkObject}
@@ -127,7 +117,7 @@ export default class VtkScene {
             remover();
         }
         this.#cameraChangedListeners.clear();
-        this.#viewerClicks.clear();
+        this.#canvasClickListeners.clear();
         this.#frameRenderedListeners.clear();
         this.#cameraGestureTracker?.dispose();
     };
@@ -135,7 +125,8 @@ export default class VtkScene {
     #cameraGestureTracker = null;
     /**@type{Map<Function,()=>void>}*/
     #userObserverRemovers = new Map();
-    #viewerClicks = new ViewerClickDispatcher();
+    /**@type{Map<Function,(click:import('../rca/ServerCanvas').CanvasClick)=>void>}*/
+    #canvasClickListeners = new Map();
     /**@type{Map<Function,(camera:FrontendVtkObject)=>void>}*/
     #cameraChangedListeners = new Map();
     /**@type{Map<Function,(fps:number)=>void>}*/
@@ -172,178 +163,16 @@ export default class VtkScene {
         this.#cameraGestureTracker?.noteWidgetGesture();
     };
     /**
-     * @param {(actorId:number,ctrlKey:boolean,shiftKey:boolean,normX:number,normY:number)=>void} handler
+     * Fires on each click with its CanvasClick; picks nothing.
+     *
+     * @param {(click:import('../rca/ServerCanvas').CanvasClick)=>void} handler
      * @return {()=>void}
      */
-    addViewerClickedListener = (handler) => {
-        return this.#viewerClicks.addListener(handler);
+    addCanvasClickListener = (handler) => {
+        const remover = () => this.#canvasClickListeners.delete(remover);
+        this.#canvasClickListeners.set(remover, handler);
+        return remover;
     };
-    /**
-     * Pick geometry at the last clicked position.
-     *
-     * The interactor's picker is a vtkCellPicker (set server-side), which
-     * returns the exact hit cell via GetCellId().  The actor's WASM object ID
-     * is retrieved from the actor proxy.  Both are forwarded to the server so
-     * it can look up the cell vertices directly
-     *
-     * @param {number} normX - Normalized x [0..1] (kept for API compatibility)
-     * @param {number} normY - Normalized y [0..1] bottom→top (VTK convention)
-     * @param {string} mode  - 'vertex' | 'edge' | 'face'
-     * @return {Promise<{found:boolean, mode?:string, position?:number[], pointA?:number[], pointB?:number[], edgeLength?:number, area?:number, points?:number[][]}>}
-     */
-    pickGeometryAsync = async (normX, normY, mode) => {
-        const displayPos = this.#lastPickDisplayPos;
-        if (!displayPos) return { found: false };
-        const [dx, dy] = displayPos;
-
-        // Re-pick at the exact WASM display coordinates.
-        const found = await this.picker.Pick([dx, dy, 0], this.renderer);
-        if (!found) return { found: false };
-
-        const rawPos = await this.picker.GetPickPosition();
-        const position = [rawPos[0], rawPos[1], rawPos[2]];
-
-        // For all modes (vertex, edge, face): use vtkCellPicker's exact cell ID
-        // and actor WASM ID so the server can snap to the nearest vertex / edge / face.
-        try {
-            const cellId = await this.picker.GetCellId();
-            if (cellId < 0) return { found: false };
-            const actorProxy = await this.picker.GetActor();
-            const actorWasmId = actorProxy?.id ?? null;
-            if (actorWasmId == null) return { found: false };
-            return await this.#remoteVtkScene.trameTriggerAsync(
-                'pick_geometry',
-                actorWasmId,
-                cellId,
-                mode,
-                position[0],
-                position[1],
-                position[2]
-            );
-        } catch (_) {
-            return { found: false };
-        }
-    };
-
-    // ── Client-side geometry highlight (Canvas 2D overlay) ──────────────────
-    /**@type{HTMLCanvasElement|null}*/
-    #highlightCanvas = null;
-    /**@type{any|null}*/
-    #highlightResult = null;
-
-    #setupHighlightOverlay = () => {
-        const overlay = document.createElement('canvas');
-        overlay.style.position = 'absolute';
-        overlay.style.top = '0';
-        overlay.style.left = '0';
-        overlay.style.pointerEvents = 'none';
-        this.canvasDiv.appendChild(overlay);
-        this.#highlightCanvas = overlay;
-        // Redraw when camera moves so the projected positions stay correct.
-        this.addCameraChangedListener(() => {
-            this.#drawHighlight().catch(() => {});
-        });
-    };
-
-    /**
-     * Project a world-space point to overlay canvas pixels (top-left origin).
-     * @param {number[]} worldPt  [x, y, z]
-     * @return {Promise<number[]>}  [canvasX, canvasY]
-     */
-    #projectWorldToCanvas = async (worldPt) => {
-        await this.renderer.SetWorldPoint(worldPt[0], worldPt[1], worldPt[2], 1.0);
-        await this.renderer.WorldToDisplay();
-        const dp = await this.renderer.GetDisplayPoint();
-        // dp: [x, y, z] — VTK display coords (x left→right, y bottom→top, in render-window pixels)
-        const winSize = await this.renderWindow.GetSize();
-        const normX = dp[0] / winSize[0];
-        const normY = dp[1] / winSize[1]; // 0 = bottom
-        const overlay = this.#highlightCanvas;
-        const canvasX = normX * overlay.width;
-        const canvasY = (1 - normY) * overlay.height; // flip Y for canvas2d
-        return [canvasX, canvasY];
-    };
-
-    #drawHighlight = async () => {
-        const canvas = this.#highlightCanvas;
-        if (!canvas) return;
-        // Match canvas size to its CSS display size
-        const rect = this.canvasDiv.getBoundingClientRect();
-        canvas.width = rect.width;
-        canvas.height = rect.height;
-        const ctx = canvas.getContext('2d');
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-        const result = this.#highlightResult;
-        if (!result || !result.found) return;
-
-        ctx.strokeStyle = 'rgba(255, 165, 0, 1)'; // orange
-        ctx.fillStyle = 'rgba(255, 165, 0, 0.35)';
-        ctx.lineWidth = 3;
-        ctx.lineJoin = 'round';
-        ctx.lineCap = 'round';
-
-        if (result.mode === 'vertex') {
-            // Project the exact snapped vertex world position to canvas.
-            const [cx, cy] = await this.#projectWorldToCanvas(result.position);
-            ctx.beginPath();
-            ctx.arc(cx, cy, 9, 0, 2 * Math.PI);
-            ctx.fill();
-            ctx.stroke();
-        } else if (result.mode === 'edge') {
-            const [ax, ay] = await this.#projectWorldToCanvas(result.pointA);
-            const [bx, by] = await this.#projectWorldToCanvas(result.pointB);
-            ctx.lineWidth = 4;
-            ctx.beginPath();
-            ctx.moveTo(ax, ay);
-            ctx.lineTo(bx, by);
-            ctx.stroke();
-            // endpoint dots
-            ctx.beginPath();
-            ctx.arc(ax, ay, 5, 0, 2 * Math.PI);
-            ctx.fill();
-            ctx.beginPath();
-            ctx.arc(bx, by, 5, 0, 2 * Math.PI);
-            ctx.fill();
-        } else if (result.mode === 'face' && result.points && result.points.length >= 3) {
-            const screenPts = [];
-            for (const p of result.points) {
-                screenPts.push(await this.#projectWorldToCanvas(p));
-            }
-            ctx.beginPath();
-            ctx.moveTo(screenPts[0][0], screenPts[0][1]);
-            for (let i = 1; i < screenPts.length; i++) {
-                ctx.lineTo(screenPts[i][0], screenPts[i][1]);
-            }
-            ctx.closePath();
-            ctx.fill();
-            ctx.stroke();
-        }
-    };
-
-    /**
-     * Draw a highlight overlay for a pick result returned by pickGeometryAsync.
-     * @param {any} result
-     * @return {Promise<void>}
-     */
-    setGeometryHighlightAsync = async (result) => {
-        this.#highlightResult = result;
-        await this.#drawHighlight();
-    };
-
-    /**
-     * Clear the geometry highlight overlay.
-     */
-    clearGeometryHighlight = () => {
-        this.#highlightResult = null;
-        const canvas = this.#highlightCanvas;
-        if (canvas) {
-            const ctx = canvas.getContext('2d');
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-        }
-    };
-    // ────────────────────────────────────────────────────────────────────────
-
     /**
      * @param {(fps:number)=>void} handler
      * @return {()=>void}
@@ -354,9 +183,11 @@ export default class VtkScene {
         return remover;
     };
     /**
+     * A left press and release at one point is a click; tell every
+     * canvas-click listener of it.  Nothing in the browser is picked.
      */
-    #setupPicker = () => {
-        const { renderer, interactor, picker, canvasDiv } = this;
+    #setupClicks = () => {
+        const { canvasDiv } = this;
         ///////////////////////////////////////////
         ///////////////////////////////////////////
         /**@type{number|null}*/
@@ -371,7 +202,7 @@ export default class VtkScene {
             lastMouseX = e.clientX;
             lastMouseY = e.clientY;
         });
-        canvasDiv.addEventListener('mouseup', async (e) => {
+        canvasDiv.addEventListener('mouseup', (e) => {
             try {
                 if (lastMouseX == null || lastMouseY == null) {
                     return;
@@ -390,13 +221,9 @@ export default class VtkScene {
                     ctrlKey: e.ctrlKey,
                     shiftKey: e.shiftKey,
                 };
-                await this.#viewerClicks.dispatchAsync(click, async () => {
-                    const [x, y] = await interactor.GetEventPosition();
-                    this.#lastPickDisplayPos = [x, y];
-                    const found = await picker.Pick([x, y, 0], renderer);
-                    const actor = found ? await picker.getActor() : null;
-                    return actor?.id ?? null;
-                });
+                for (const listener of this.#canvasClickListeners.values()) {
+                    listener(click);
+                }
             } finally {
                 lastMouseX = lastMouseY = null;
             }
@@ -455,7 +282,7 @@ export default class VtkScene {
                 if (effective != null) {
                     canvas.dispatchEvent(new MouseEvent('mousedown', getEventDict(e, effective)));
                     // While left drives button 0 the event goes on to the VTK
-                    // canvas (and to the picker); every other combination stops it.
+                    // canvas (and to the click listener); every other combination stops it.
                     if (effective !== 0 || !buttons.isDown(0)) {
                         e.stopPropagation();
                     }

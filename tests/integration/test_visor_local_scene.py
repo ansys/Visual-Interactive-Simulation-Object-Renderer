@@ -1,7 +1,6 @@
 # python
 # File: `tests/integration/test_visor_local_scene.py`
 import json
-import math
 import os
 from unittest.mock import PropertyMock, patch
 
@@ -190,67 +189,3 @@ def test_list_and_update_variables(pipeline_instance):
     assert part.variables[0].name == "Normal"
     assert part.variables[0].type == VisorVtkVariableType.POINT
     assert part.variables[0].num_components == num_components
-
-
-def test_pick_geometry(pipeline_instance):
-    """Test that pick_geometry works."""
-    file = get_test_file()
-    dataset = file_to_dataset(file)
-    metadata = ExtendedMetadata(name="pick_test", unit="m")
-    dataset_id = pipeline_instance.add_dataset(dataset, metadata)
-    pipeline_instance.populate_scene()
-    # ensure VTK pipeline has produced outputs
-    pipeline_instance.render()
-
-    dataset_node = pipeline_instance._scene_graph.get_descendant_node(dataset_id)
-    assert dataset_node is not None
-    actors = [
-        pipeline_instance._renderer._pipelines[part.id].actor
-        for part in dataset_node.get_descendant_part_nodes(include_self=True)
-        if part.id in pipeline_instance._renderer._pipelines
-    ]
-    assert len(actors) > 0
-    # choose an actor whose mapper input dataset contains cells
-    actor = None
-    for a in actors:
-        try:
-            ds = a.GetMapper().GetInputDataObject(0, 0)
-            if ds is not None and ds.GetNumberOfCells() > 0:
-                actor = a
-                pick_ds = ds
-                break
-        except Exception:
-            continue
-    assert actor is not None
-    actor_wasm_id = pipeline_instance._renderer._object_manager.GetId(actor)
-
-    # Test face pick for first cell
-    res_face = pipeline_instance.pick_geometry(actor_wasm_id, 0, 'face', 0.0, 0.0, 0.0)
-    assert res_face["found"] is True
-    assert res_face["mode"] == "face"
-    assert "area" in res_face and res_face["area"] > 0
-    assert len(res_face["points"]) >= 3
-
-    # Test vertex pick using the first point of cell 0
-    # Use the mapper's dataset for cell/point selection
-    cell = pick_ds.GetCell(0)
-    pts = cell.GetPoints()
-    p0 = pts.GetPoint(0)
-    res_vertex = pipeline_instance.pick_geometry(actor_wasm_id, 0, 'vertex', p0[0], p0[1], p0[2])
-    assert res_vertex["found"] is True
-    assert res_vertex["mode"] == "vertex"
-    assert tuple(res_vertex["position"]) == tuple(p0)
-
-    # Test edge pick for first edge (p0 -> p1) using midpoint
-    if cell.GetNumberOfPoints() >= 2:
-        p1 = pts.GetPoint(1)
-        mid = ((p0[0] + p1[0]) / 2.0, (p0[1] + p1[1]) / 2.0, (p0[2] + p1[2]) / 2.0)
-        res_edge = pipeline_instance.pick_geometry(actor_wasm_id, 0, 'edge', mid[0], mid[1], mid[2])
-        assert res_edge["found"] is True
-        assert res_edge["mode"] == "edge"
-        assert tuple(res_edge["pointA"]) == tuple(p0)
-        assert tuple(res_edge["pointB"]) == tuple(p1)
-        assert math.isclose(res_edge["edgeLength"], math.dist(p0, p1))
-    else:
-        pytest.skip("not enough points for edge pick test")
-

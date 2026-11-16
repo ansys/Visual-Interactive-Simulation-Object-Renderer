@@ -162,4 +162,9 @@ export class SceneTriggerSends {
     async sendGeometryHighlightAsync(pick: PickGeometryResult): Promise<void> {
         await this.#sendWidgetTriggerAsync('set_geometry_highlight', { pick });
     }
+
+    /** Send the device pixels per CSS pixel the server should draw the geometry highlight at. */
+    async sendPixelScaleAsync(scale: number): Promise<void> {
+        await this.#sendWidgetTriggerAsync('set_pixel_scale', { scale });
+    }
 }

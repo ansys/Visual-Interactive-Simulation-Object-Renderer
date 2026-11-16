@@ -1,4 +1,5 @@
 import { VtkWASMHandler } from '@kitware/vtk-wasm/remote';
+import { CanvasPixelSize } from './CanvasPixelSize';
 import { SerialUpdateQueue } from './SerialUpdateQueue';
 import TrameInterface from './TrameInterface.js';
 import VtkScene from './VtkScene.js';
@@ -46,6 +47,42 @@ export default class RemoteVtkScene {
         this.#invisibleDiv.appendChild(canvasDiv);
         return canvasDiv;
     };
+
+    /** First id the browser may allocate; the server's ids stay below it. */
+    static #BROWSER_ID_FLOOR = 2 ** 30;
+
+    /**
+     * The state that registers one vtkPoints at the floor id.
+     * @return {{Id:number, ClassName:string, SuperClassNames:string[]}}
+     */
+    static #idFloorState() {
+        return {
+            Id: this.#BROWSER_ID_FLOOR,
+            ClassName: 'vtkPoints',
+            SuperClassNames: ['vtkObject'],
+        };
+    }
+
+    /**
+     * Register one object at the floor id so every id this session allocates lands above the server's range.
+     * The browser and the server draw ids from one counter range, so an id the browser allocates itself can
+     * be handed out again by the server's next new object, and the browser then applies that object's state
+     * to the wrong object.  Registering at an explicit id raises the counter to that id and it never falls,
+     * so this has to run before any other wasm call.  Only the counter matters: the state is unregistered
+     * so later updates do not rebuild the object.
+     * @param {VtkWASMHandler|any} wasmHandler - a handler whose wasm module has loaded
+     * @return {void}
+     */
+    static #reserveBrowserIdRange(wasmHandler) {
+        const state = this.#idFloorState();
+        const registered = wasmHandler.sceneManager.updateObjectFromState(
+            wasmHandler.stateDecorator(state)
+        );
+        wasmHandler.sceneManager.unRegisterState(state.Id);
+        if (!registered) {
+            console.warn(`Could not reserve the browser id range at id ${state.Id}.`);
+        }
+    }
 
     /**
      * @param {TrameSession} trameSession
@@ -101,6 +138,7 @@ export default class RemoteVtkScene {
                 console.warn(`${prefix}: ${msg}`);
             },
         });
+        this.#reserveBrowserIdRange(wasmHandler);
         return { wasmHandler, vtkWasmPerfCounter };
     };
 
@@ -312,14 +350,25 @@ export default class RemoteVtkScene {
         return this.#wasmHandler.sceneManager.render(this.renderWindowId);
     };
     /**
+     * Size the wasm window to its container; a container with no area, as before it is placed or while it is
+     * between frontends, leaves the window at its last size.  A size equal to the one last applied is not set
+     * again: vtk-wasm's `setSize` renders, and its `update` already re-applies the last size it was given.
      * @return {Promise<void>}
      */
     resizeAsync = async () => {
         const { width, height } = this.canvasDiv.getBoundingClientRect();
-        const w = Math.floor(width * window.devicePixelRatio + 0.5);
-        const h = Math.floor(height * window.devicePixelRatio + 0.5);
-        await this.#wasmHandler.setSize(this.renderWindowId, w, h);
+        const size = CanvasPixelSize.of(width, height, window.devicePixelRatio);
+        if (size === null || size.equals(this.#appliedSize)) {
+            return;
+        }
+        await this.#wasmHandler.setSize(this.renderWindowId, size.width, size.height);
+        this.#appliedSize = size;
     };
+    /**
+     * The size last handed to vtk-wasm's `setSize`, recorded once it resolves; null until the first.
+     * @type {?CanvasPixelSize}
+     */
+    #appliedSize = null;
     /**
      * @param {number} wasmId
      * @return {FrontendVtkObject}

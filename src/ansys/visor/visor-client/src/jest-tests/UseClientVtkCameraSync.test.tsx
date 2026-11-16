@@ -124,7 +124,7 @@ function mockMakeRenderer() {
             mockScene.settledListeners.set(remover, callback);
             return remover;
         },
-        addViewerClickedListener: () => () => {},
+        addCanvasClickListener: () => () => {},
         getCameraStateAsync: async () => mockCameraSnapshot(),
         resizeAsync: async () => {
             if (index === 0 && mockScene.settleDuringFirstSeed) {

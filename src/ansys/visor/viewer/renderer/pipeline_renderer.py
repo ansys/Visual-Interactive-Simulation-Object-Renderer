@@ -504,6 +504,18 @@ class VtkPipelineRenderer(IRenderer):
         hit = self._hit_at(self._vtk_renderer, x, y)
         return hit.find_feature(mode) if hit is not None else NoGeometryPick()
 
+    def pick_part_in_view(self, view: PickView, x: int, y: int) -> int | None:
+        """Return the node id of the part under a pixel of a client's window, seen through the client's camera, or None; this window is untouched.
+
+        *x* and *y* are device pixels of the client's window, origin
+        bottom-left.  Only part actors are pickable; see :meth:`_hit_at`.
+        The window is held for the whole pick, as in
+        :meth:`pick_geometry_in_view`.
+        """
+        window = self._view_window(view)
+        hit = self._hit_at(window.GetRenderers().GetFirstRenderer(), x, y)
+        return hit.node_id if hit is not None else None
+
     def pick_geometry_in_view(self, view: PickView, x: int, y: int, mode: str) -> GeometryPick:
         """Find the feature of the part cell under a pixel of a client's window, seen through the client's camera; this window is untouched.
 
@@ -538,6 +550,14 @@ class VtkPipelineRenderer(IRenderer):
             return
         pick.highlight_with(self._geometry_highlight)
         self._present_geometry_highlight()
+
+    def set_pixel_scale(self, pixel_scale: float) -> None:
+        """Rescale the geometry highlight to this many device pixels per CSS pixel; requests no frame and pushes nothing.
+
+        Server mode's resize path, which calls this, schedules its own frame.
+        In client mode the next highlight shown carries the new size.
+        """
+        self._geometry_highlight.set_pixel_scale(pixel_scale)
 
     # ------------------------------------------------------------------
     # Internal init helpers
