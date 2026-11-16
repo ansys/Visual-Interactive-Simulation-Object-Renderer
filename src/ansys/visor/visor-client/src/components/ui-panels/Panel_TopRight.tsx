@@ -429,36 +429,38 @@ export const Panel_TopRight: FC<{
                 if (visorState.getSelectionMode() !== 'part') {
                     return;
                 }
-                const replace = !ctrlKey && !shiftKey;
-                if (replace) {
+                if (!ctrlKey && !shiftKey) {
+                    const promises: Promise<void>[] = [];
                     for (const row of treeViewUtil.rows) {
                         row.deselectRow(false);
+                        const promise = row.node.setSelectedAsync(false);
+                        promises.push(promise);
                     }
+                    await Promise.all(promises);
                 }
                 if (node != null) {
                     const row = treeViewUtil.rowUtilsMap.get(node.id)!;
-                    if (replace || !node.selected) {
-                        row.selectRow(false);
-                    } else {
+                    if (node.selected) {
                         row.deselectRow(false);
+                        await node.setSelectedAsync(false);
+                    } else {
+                        row.selectRow(false);
+                        await node.setSelectedAsync(true);
                     }
                 }
                 treeViewUtil.updateSelectedNodesArray();
-                // The parts that changed reach the server as one batch, as
-                // from the tree.
-                await visorState.sceneGraph.setSelectedPartsAsync(
-                    new Set(treeViewUtil.selectedNodes)
-                );
                 await onSelectionChangeAsync(treeViewUtil.selectedNodes);
             });
 
             // Reset part selection when switching away from 'part' mode
             visorState.addSelectionModeChangedListener(async (_mode) => {
+                const promises: Promise<void>[] = [];
                 for (const row of treeViewUtil.rows) {
                     row.deselectRow(false);
+                    promises.push(row.node.setSelectedAsync(false));
                 }
+                await Promise.all(promises);
                 treeViewUtil.updateSelectedNodesArray();
-                await visorState.sceneGraph.setSelectedPartsAsync(new Set());
                 await onSelectionChangeAsync([]);
                 await visorState.render();
             });
