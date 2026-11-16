@@ -22,8 +22,6 @@ from ansys.visor.viewer.core.visor_enums import VisorVtkVariableType
 from ansys.visor.viewer.models.common.visor_camera_state import VisorCameraState
 from ansys.visor.viewer.renderer.paraview_renderer import BlockLeaf, CompositeBlocks, ParaviewRenderer
 
-pytestmark = pytest.mark.paraview
-
 BACKGROUND = (0.1, 0.2, 0.3)
 
 

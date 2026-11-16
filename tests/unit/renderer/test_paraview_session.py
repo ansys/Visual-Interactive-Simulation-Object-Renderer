@@ -23,8 +23,6 @@ from ansys.visor.viewer.models.common.visor_camera_state import VisorCameraState
 from ansys.visor.viewer.renderer.paraview_session import PvSimpleSession
 from ansys.visor.viewer.vtk.node_pipeline import VtkNodePipeline
 
-pytestmark = pytest.mark.paraview
-
 
 def _triangle() -> vtkPolyData:
     points = vtkPoints()
