@@ -7,12 +7,7 @@ import {
 import VisorVtkDataArray from './appstate/vtkInfo/VisorVtkDataArray.tsx';
 import VisorSceneState from './appstate/VisorSceneState.tsx';
 import type { ColorVariableReference } from './appstate/VisorPartState.tsx';
-import type {
-    ColorVariableDescriptor,
-    IRenderer,
-    PartSelection,
-    PartVisibility,
-} from '../renderer/IRenderer';
+import type { ColorVariableDescriptor, IRenderer } from '../renderer/IRenderer';
 
 export type VisorSceneNodeSimple = Readonly<{
     id: number;
@@ -60,14 +55,6 @@ export type VisorSceneNodeExtended = Readonly<{
     /** Write to node and renderer; send nothing.
      * False when the node already held the value. */
     applySelectedAsync: (selected: boolean) => Promise<boolean>;
-    /**
-     * Set every part at or below this node visible when it is in `visible`
-     * and hidden otherwise; the parts whose value changed are sent in one
-     * batch, and nothing is sent when none changed.
-     */
-    setVisiblePartsAsync: (visible: ReadonlySet<VisorSceneNodeExtended>) => Promise<void>;
-    /** As setVisiblePartsAsync, for selection. */
-    setSelectedPartsAsync: (selected: ReadonlySet<VisorSceneNodeExtended>) => Promise<void>;
     /** Write to node and renderer; send nothing.
      * False when the node already held the value. */
     applyDiffuseColorRgbAsync: (r: number, g: number, b: number) => Promise<boolean>;
@@ -434,30 +421,6 @@ export const CreateVisorSceneGraph = (() => {
                     customDiffuseColor.rgbNormalized
                 );
                 return true;
-            },
-            async setVisiblePartsAsync(visible) {
-                const changed: PartVisibility[] = [];
-                for (const n of node.descendantActorNodesOrSelfArray) {
-                    const target = visible.has(n);
-                    if (await n.applyVisibilityAsync(target)) {
-                        changed.push({ nodeId: n.id, visible: target });
-                    }
-                }
-                if (changed.length > 0) {
-                    await renderer!.sendPartsVisibilityAsync(changed);
-                }
-            },
-            async setSelectedPartsAsync(selected) {
-                const changed: PartSelection[] = [];
-                for (const n of node.descendantActorNodesOrSelfArray) {
-                    const target = selected.has(n);
-                    if (await n.applySelectedAsync(target)) {
-                        changed.push({ nodeId: n.id, selected: target });
-                    }
-                }
-                if (changed.length > 0) {
-                    await renderer!.sendPartsSelectedAsync(changed);
-                }
             },
             async setOpacityAsync(opacity: number) {
                 if (node.isGroupNode) {

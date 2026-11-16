@@ -8,9 +8,8 @@ import { deliveredPart, deliveredScene } from './deliveredSceneFixture.ts';
 
 /**
  * The sends a tree interaction makes through `Panel_TopLeft`'s visibility and
- * selection listeners: the parts whose value changes are sent together in one
- * batch, a part whose value does not change is not in it, and no per-part
- * send is made.
+ * selection listeners: each part whose value changes sends once, and a part
+ * whose value does not change sends nothing.
  *
  * The scene is a root holding a group (parts 1 and 2) and part 3 outside it.
  * Each listener is fire-and-forget and ends with `visorState.render()`, so
@@ -27,10 +26,8 @@ function makeRendererDouble() {
     return {
         setVisibilityAsync: jest.fn(async () => undefined),
         sendPartVisibilityAsync: jest.fn(async () => undefined),
-        sendPartsVisibilityAsync: jest.fn(async () => undefined),
         setSelectedAsync: jest.fn(async () => undefined),
         sendPartSelectedAsync: jest.fn(async () => undefined),
-        sendPartsSelectedAsync: jest.fn(async () => undefined),
     };
 }
 
@@ -115,78 +112,38 @@ async function mountPanel(part1Overrides: Record<string, unknown> = {}) {
 }
 
 describe('tree visibility listener', () => {
-    test('hiding one part in a multi-part tree sends a batch holding only that part', async () => {
+    test('hiding one part in a multi-part tree sends its visibility once', async () => {
         const { renderer, treeViewUtil, nextRender } = await mountPanel();
         const done = nextRender();
 
         fireEvent.click(treeViewUtil.rowUtilsMap.get(PART_2_ID)!.hideButton);
         await done;
 
-        expect(renderer.sendPartsVisibilityAsync.mock.calls).toEqual([
-            [[{ nodeId: 2, visible: false }]],
-        ]);
-        expect(renderer.sendPartVisibilityAsync).not.toHaveBeenCalled();
+        expect(renderer.sendPartVisibilityAsync.mock.calls).toEqual([[2, false]]);
     });
 
-    test('hiding a group row sends one batch holding every visible part in the group and none outside it', async () => {
+    test('hiding a group row sends once per visible part in the group and none outside it', async () => {
         const { renderer, treeViewUtil, nextRender } = await mountPanel();
         const done = nextRender();
 
         fireEvent.click(treeViewUtil.rowUtilsMap.get(GROUP_ID)!.hideButton);
         await done;
 
-        expect(renderer.sendPartsVisibilityAsync.mock.calls).toEqual([
-            [
-                [
-                    { nodeId: 1, visible: false },
-                    { nodeId: 2, visible: false },
-                ],
-            ],
+        expect(renderer.sendPartVisibilityAsync.mock.calls).toEqual([
+            [1, false],
+            [2, false],
         ]);
-        expect(renderer.sendPartVisibilityAsync).not.toHaveBeenCalled();
     });
 });
 
 describe('tree selection listener', () => {
-    test('adding a part to the selection sends a batch holding only that part', async () => {
+    test('adding a part to the selection sends its selection once', async () => {
         const { renderer, treeViewUtil, nextRender } = await mountPanel({ selected: true });
         const done = nextRender();
 
         fireEvent.click(treeViewUtil.rowUtilsMap.get(PART_3_ID)!.tableElem, { ctrlKey: true });
         await done;
 
-        expect(renderer.sendPartsSelectedAsync.mock.calls).toEqual([
-            [[{ nodeId: 3, selected: true }]],
-        ]);
-        expect(renderer.sendPartSelectedAsync).not.toHaveBeenCalled();
-    });
-
-    test('selecting a group row sends one batch holding every part in the group', async () => {
-        const { renderer, treeViewUtil, nextRender } = await mountPanel();
-        const done = nextRender();
-
-        fireEvent.click(treeViewUtil.rowUtilsMap.get(GROUP_ID)!.tableElem);
-        await done;
-
-        expect(renderer.sendPartsSelectedAsync.mock.calls).toEqual([
-            [
-                [
-                    { nodeId: 1, selected: true },
-                    { nodeId: 2, selected: true },
-                ],
-            ],
-        ]);
-        expect(renderer.sendPartSelectedAsync).not.toHaveBeenCalled();
-    });
-
-    test('re-selecting the only selected part sends no batch', async () => {
-        const { renderer, treeViewUtil, nextRender } = await mountPanel({ selected: true });
-        const done = nextRender();
-
-        fireEvent.click(treeViewUtil.rowUtilsMap.get(PART_1_ID)!.tableElem);
-        await done;
-
-        expect(renderer.sendPartsSelectedAsync).not.toHaveBeenCalled();
-        expect(renderer.sendPartSelectedAsync).not.toHaveBeenCalled();
+        expect(renderer.sendPartSelectedAsync.mock.calls).toEqual([[3, true]]);
     });
 });

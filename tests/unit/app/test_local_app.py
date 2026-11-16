@@ -24,9 +24,6 @@ Coverage targets
 9.  The two logged-no-op paths stay distinct: an invalid payload logs
     ``warning`` and no ``debug``; a missing coordinator logs ``debug`` and
     no ``warning``.
-10. The two batch triggers, ``set_parts_selected`` and
-    ``set_parts_visibility``, hand the coordinator every part in one call,
-    and one invalid part rejects the whole batch.
 
 The coordinator is a single MagicMock standing in for the injected object;
 what each trigger does with the values it forwards is asserted in
@@ -298,39 +295,6 @@ def test_clear_part_color_variable_delegates_payload_values(app, api):
     app.clear_part_color_variable({"nodeId": 7})
 
     api.clear_part_color_variable.assert_called_once_with(7)
-
-
-def test_set_parts_selected_delegates_every_part_in_one_call(app, api):
-    """Each part's nodeId and selected reach the coordinator, in order, in one call."""
-    app.set_parts_selected(
-        {"parts": [{"nodeId": 7, "selected": True}, {"nodeId": 8, "selected": False}]}
-    )
-
-    api.set_parts_selected.assert_called_once()
-    parts = api.set_parts_selected.call_args.args[0]
-    assert [(p.node_id, p.selected) for p in parts] == [(7, True), (8, False)]
-
-
-def test_set_parts_visibility_delegates_every_part_in_one_call(app, api):
-    """Each part's nodeId and visible reach the coordinator, in order, in one call."""
-    app.set_parts_visibility(
-        {"parts": [{"nodeId": 7, "visible": False}, {"nodeId": 8, "visible": True}]}
-    )
-
-    api.set_parts_visibility.assert_called_once()
-    parts = api.set_parts_visibility.call_args.args[0]
-    assert [(p.node_id, p.visible) for p in parts] == [(7, False), (8, True)]
-
-
-def test_set_parts_selected_one_invalid_part_drops_the_whole_batch(app, api):
-    """A part missing ``selected`` rejects the batch: nothing is delegated, one warning."""
-    with patch("ansys.visor.viewer.app.trame.scene_trigger_app.logger") as mock_logger:
-        assert app.set_parts_selected(
-            {"parts": [{"nodeId": 7, "selected": True}, {"nodeId": 8}]}
-        ) is None
-
-    api.set_parts_selected.assert_not_called()
-    assert mock_logger.warning.call_count == 1
 
 
 # ===========================================================================

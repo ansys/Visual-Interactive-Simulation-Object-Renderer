@@ -214,60 +214,6 @@ describe('WasmRenderer per-part sends: trigger name and payload', () => {
         expect(Object.keys(payload).sort()).toEqual(['nodeId', 'selected']);
     });
 
-    test('sendPartsSelectedAsync sends set_parts_selected with every part under parts', async () => {
-        const sender = makeSender();
-        const { renderer } = await makeRenderer(sender);
-
-        await renderer.sendPartsSelectedAsync([
-            { nodeId: 7, selected: true },
-            { nodeId: 8, selected: false },
-        ]);
-
-        expect(sender.mock.calls).toEqual([
-            [
-                'set_parts_selected',
-                {
-                    parts: [
-                        { nodeId: 7, selected: true },
-                        { nodeId: 8, selected: false },
-                    ],
-                },
-            ],
-        ]);
-    });
-
-    test('sendPartsVisibilityAsync sends set_parts_visibility with every part under parts', async () => {
-        const sender = makeSender();
-        const { renderer } = await makeRenderer(sender);
-
-        await renderer.sendPartsVisibilityAsync([
-            { nodeId: 7, visible: false },
-            { nodeId: 8, visible: true },
-        ]);
-
-        expect(sender.mock.calls).toEqual([
-            [
-                'set_parts_visibility',
-                {
-                    parts: [
-                        { nodeId: 7, visible: false },
-                        { nodeId: 8, visible: true },
-                    ],
-                },
-            ],
-        ]);
-    });
-
-    test('an empty batch sends nothing', async () => {
-        const sender = makeSender();
-        const { renderer } = await makeRenderer(sender);
-
-        await renderer.sendPartsSelectedAsync([]);
-        await renderer.sendPartsVisibilityAsync([]);
-
-        expect(sender).not.toHaveBeenCalled();
-    });
-
     test('sendPartColorVariableAsync maps the descriptor onto the wire keys', async () => {
         const sender = makeSender();
         const { renderer } = await makeRenderer(sender);

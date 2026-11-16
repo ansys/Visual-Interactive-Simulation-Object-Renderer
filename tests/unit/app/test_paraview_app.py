@@ -17,7 +17,7 @@ from trame_rca.schedulers import RcaImageRenderScheduler
 from ansys.visor.viewer.app.trame.paraview_app import ParaviewApp
 from ansys.visor.viewer.core.visor_enums import RenderingMode
 
-# The exact 24 trigger names, each registered once.  Written out by hand, not
+# The exact 22 trigger names, each registered once.  Written out by hand, not
 # derived from the production trigger list.
 PARAVIEW_APP_TRIGGER_NAMES = sorted(
     [
@@ -26,8 +26,6 @@ PARAVIEW_APP_TRIGGER_NAMES = sorted(
         "set_part_opacity",
         "set_part_diffuse_color",
         "set_part_selected",
-        "set_parts_visibility",
-        "set_parts_selected",
         "set_part_color_variable",
         "clear_part_color_variable",
         "set_variable_range",
@@ -98,7 +96,7 @@ def _build(mock_server, rca_window=None, bridge=None):
 
 
 def test_paraview_app_registers_each_trigger_once(mock_server, area_cls):
-    """The registered trigger names are exactly the hand-written 24, none twice."""
+    """The registered trigger names are exactly the hand-written 22, none twice."""
     _build(mock_server)
 
     names = sorted(call.args[0] for call in mock_server.trigger.call_args_list)
