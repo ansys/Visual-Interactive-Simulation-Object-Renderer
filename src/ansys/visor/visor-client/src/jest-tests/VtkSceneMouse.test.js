@@ -2,17 +2,14 @@ import VtkScene from '../wasm/VtkScene.js';
 
 /**
  * Local mode remaps mouse buttons on their way to the VTK canvas, and stops
- * every press it remaps.  The picker listens on the same element in the bubble
- * phase, so it sees only the events the remap lets through: a left click
- * selects, a right click does not, and a release with nothing held must
- * always reach it.
+ * every press it remaps.  The click listeners hear the same element in the
+ * bubble phase, so they see only the events the remap lets through: a left
+ * click reaches them, a right click does not, and a release with nothing held
+ * must always reach them.  A click reads nothing from the wasm scene.
  *
  * The scene is built over a fake remote scene: its canvas sits inside its
- * canvas div, and its renderer, camera, interactor and picker are doubles.
- * The picker reports actor 7 for any pick through an invoked `GetActor()`.
- * Its `getActor` property read fetches and registers the actor wrapper, creating
- * a new wasm id that can clash with the server's.  `requestAnimationFrame` does
- * nothing, so the frame-rate monitor never runs.
+ * canvas div, and its renderer, camera and interactor are doubles.
+ * `requestAnimationFrame` does nothing, so the frame-rate monitor never runs.
  *
  * Expected values are hand-written literals.
  */
@@ -48,11 +45,7 @@ async function makeScene() {
         y: 0,
     });
     const camera = { observe: () => undefined };
-    const picker = {
-        Pick: async () => true,
-        GetActor: jest.fn(async () => ({ id: 7 })),
-    };
-    const interactor = { GetPicker: async () => picker, GetEventPosition: async () => [20, 70] };
+    const interactor = {};
     const remoteVtkScene = {
         renderer: { GetActiveCamera: async () => camera },
         renderWindow: { GetInteractor: async () => interactor },
@@ -60,7 +53,7 @@ async function makeScene() {
         canvas,
     };
     scene = await VtkScene.getInstanceAsync(null, remoteVtkScene);
-    return { scene, canvas, picker };
+    return { scene, canvas };
 }
 
 /** Dispatch a bubbling mouse event of type with DOM button on target at client (clientX, clientY). */
@@ -70,28 +63,30 @@ function mouse(target, type, button, clientX, clientY) {
     );
 }
 
-/** Let the picker's asynchronous release handler finish. */
+/** Let any pending work finish. */
 async function settle() {
     await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
 describe('VtkScene mouse', () => {
-    test('a left press and release at one point reaches the picker once', async () => {
+    test('a left press and release at one point reaches each click listener once', async () => {
         const { scene, canvas } = await makeScene();
         const listener = jest.fn();
-        scene.addViewerClickedListener(listener);
+        scene.addCanvasClickListener(listener);
 
         mouse(canvas, 'mousedown', 0, 20, 30);
         mouse(canvas, 'mouseup', 0, 20, 30);
         await settle();
 
-        expect(listener.mock.calls).toEqual([[7, false, false, 0.1, 0.7]]);
+        expect(listener.mock.calls).toEqual([
+            [{ normX: 0.1, normY: 0.7, ctrlKey: false, shiftKey: false }],
+        ]);
     });
 
-    test('a right press and release at one point does not reach the picker', async () => {
+    test('a right press and release at one point does not reach the click listeners', async () => {
         const { scene, canvas } = await makeScene();
         const listener = jest.fn();
-        scene.addViewerClickedListener(listener);
+        scene.addCanvasClickListener(listener);
 
         mouse(canvas, 'mousedown', 2, 20, 30);
         mouse(canvas, 'mouseup', 2, 20, 30);

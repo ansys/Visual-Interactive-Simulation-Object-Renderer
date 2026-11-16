@@ -1,3 +1,5 @@
+import type { CanvasClick } from '../rca/ServerCanvas';
+
 /** Stable integer id of an addressable scene-graph node (part or block). */
 export type NodeId = number;
 
@@ -99,21 +101,8 @@ export interface IRenderer {
     addCameraChangedListener(callback: (state: VisorCameraState) => void): () => void;
     /** Fires each frame with the current FPS. */
     addFrameRenderedListener(callback: (fps: number) => void): () => void;
-    /**
-     * Fires on left-click. `nodeId` is already resolved (actor→NodeId mapping
-     * is the renderer's private responsibility — see §3). `null` = background.
-     * `normX`/`normY` are viewport-normalised coords so the caller can drive
-     * pickGeometryAsync if needed.
-     */
-    addViewerClickedListener(
-        callback: (
-            nodeId: NodeId | null,
-            ctrlKey: boolean,
-            shiftKey: boolean,
-            normX: number,
-            normY: number
-        ) => void
-    ): () => void;
+    /** Fires on each click on the canvas, with its VTK-normalised position and modifier keys; picks nothing. */
+    addCanvasClickListener(callback: (click: CanvasClick) => void): () => void;
 
     // ---- Per-part visual state ---------------------------------------------
     //
@@ -227,7 +216,10 @@ export interface IRenderer {
     /** Whether edges are shown on every part in the scene. See contract note above. */
     areEdgesVisibleGlobally(): boolean;
 
-    // ---- Picking (geometry pick — the vertex/edge/face path) ---------------
+    // ---- Picking -------------------------------------------------------------
+    /** The node under a VTK-normalised point of this view, or null; asks the server. */
+    pickPartAsync(normX: number, normY: number): Promise<NodeId | null>;
+
     /**
      * Perform a geometry pick at the given viewport-normalised coordinates.
      * Actor→NodeId resolution and cell extraction are the renderer's job.

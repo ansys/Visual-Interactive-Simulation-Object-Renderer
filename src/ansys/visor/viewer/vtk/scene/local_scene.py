@@ -77,6 +77,11 @@ class VisorLocalScene(VisorSceneBase):
         with self._vtk_lock:
             self._renderer.set_pixel_scale(pixel_scale)
 
+    def pick_part_in_view(self, view: "PickView", x: int, y: int) -> int | None:
+        """Find the part under a pixel of a client's view, under the scene lock."""
+        with self._vtk_lock:
+            return self._renderer.pick_part_in_view(view, x, y)
+
     def pick_geometry_in_view(self, view: "PickView", x: int, y: int, mode: str) -> "GeometryPick":
         """Find the geometry feature under a pixel of a client's view, under the scene lock."""
         with self._vtk_lock:

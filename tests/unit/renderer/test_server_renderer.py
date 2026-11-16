@@ -368,6 +368,45 @@ def test_pick_geometry_in_view_uses_the_view_camera_and_size(renderer):
 
 
 @pytest.mark.parametrize(
+    ("x", "y", "expected"),
+    [(300, 200, PART_NODE_ID), (2, 2, None)],
+    ids=["hit", "miss"],
+)
+def test_pick_part_in_view_uses_the_view_camera_and_size(renderer, x, y, expected):
+    """The pipeline camera looks away from the part; the view's camera looks at it, in a window wider than this one."""
+    renderer.sync_camera(
+        VisorCameraState(
+            position=[0.0, 0.0, 9.0],
+            focal_point=[0.0, 0.0, 20.0],
+            view_up=[0.0, 1.0, 0.0],
+            clipping_range=[1.0, 20.0],
+            parallel_projection=False,
+            view_angle=30.0,
+            parallel_scale=1.0,
+        )
+    )
+    view = PickView(camera_state=_VIEW_CAMERA, width=600, height=400)
+
+    assert renderer.pick_part_in_view(view, x, y) == expected
+
+
+@pytest.mark.parametrize(
+    "hide",
+    [
+        lambda r: r.apply_visibility(PART_NODE_ID, False),
+        lambda r: r.apply_opacity(PART_NODE_ID, 0.0),
+    ],
+    ids=["hidden", "transparent"],
+)
+def test_pick_part_in_view_skips_an_unseen_part(renderer, hide):
+    """A part hidden or made fully transparent on the server is not picked through the view."""
+    hide(renderer)
+    view = PickView(camera_state=_VIEW_CAMERA, width=600, height=400)
+
+    assert renderer.pick_part_in_view(view, 300, 200) is None
+
+
+@pytest.mark.parametrize(
     ("offset", "expected"),
     [
         (2, EdgePick(point_a=[-1.0, 0.0, 0.0], point_b=[1.0, 0.0, 0.0], length=2.0)),
