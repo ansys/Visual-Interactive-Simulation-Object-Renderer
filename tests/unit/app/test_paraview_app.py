@@ -169,6 +169,9 @@ def test_trame_rca_makes_no_still_pass_at_equal_qualities():
         scheduler = RcaImageRenderScheduler(
             area, target_fps=100.0, interactive_quality=90, still_quality=90, rca_encoder="jpeg"
         )
+        # Before 3.12, the scheduler's isinstance check against the runtime-checkable
+        # RemoteControlledAreaProtocol reads img_cols_rows, which is not a capture.
+        area.captures = 0
         scheduler.schedule_render()
         await asyncio.sleep(0.5)
         await scheduler.close()
