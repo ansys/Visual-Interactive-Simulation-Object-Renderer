@@ -19,6 +19,7 @@ from vtkmodules.vtkCommonDataModel import vtkPolyData
 
 from ansys.visor.viewer.core.errors import PvserverConnectionError
 from ansys.visor.viewer.core.pvserver_address import PvserverAddress
+from ansys.visor.viewer.models.common.visor_camera_state import VisorCameraState
 from ansys.visor.viewer.renderer.paraview_session import PvSimpleSession
 from ansys.visor.viewer.vtk.node_pipeline import VtkNodePipeline
 
@@ -240,3 +241,33 @@ def test_set_selected_blocks_with_no_blocks_clears_the_selection(monkeypatch):
     session.set_selected_blocks(_selection_source(calls), [])
 
     assert calls == [("input", 0, None, 0)]
+
+
+def test_reset_camera_rotates_about_the_centre_of_the_bounds(monkeypatch):
+    """ParaView rotates about CenterOfRotation, which ResetCamera leaves at its default of the origin."""
+    simple, session = _session(monkeypatch)
+    simple.view.CenterOfRotation = [0.0, 0.0, 0.0]
+    simple.view.ResetCamera = lambda *bounds: None
+
+    session.reset_camera([0, 4, -2, 2, 10, 30])
+
+    assert simple.view.CenterOfRotation == [2.0, 0.0, 20.0]
+
+
+def test_write_camera_rotates_about_its_focal_point(monkeypatch):
+    simple, session = _session(monkeypatch)
+    simple.view.CenterOfRotation = [0.0, 0.0, 0.0]
+
+    session.write_camera(
+        VisorCameraState(
+            position=[0.0, 0.0, 50.0],
+            focal_point=[1.0, 2.0, 3.0],
+            view_up=[0.0, 1.0, 0.0],
+            clipping_range=[1.0, 100.0],
+            parallel_projection=False,
+            view_angle=30.0,
+            parallel_scale=1.0,
+        )
+    )
+
+    assert simple.view.CenterOfRotation == [1.0, 2.0, 3.0]

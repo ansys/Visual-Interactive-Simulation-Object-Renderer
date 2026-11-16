@@ -82,13 +82,16 @@ class ParaviewSession(Protocol):
         """Make these blocks of source its whole selection; an empty list clears it."""
 
     def write_camera(self, camera: VisorCameraState) -> None:
-        """Write the view camera properties."""
+        """Write the view camera properties and rotate about its focal point."""
 
     def read_camera(self) -> VisorCameraState:
         """Read the view camera properties."""
 
     def reset_camera(self, bounds: list[float]) -> None:
-        """ResetCamera to bounds."""
+        """ResetCamera to bounds and rotate about their centre."""
+
+    def set_center_of_rotation(self, point: list[float]) -> None:
+        """Make the view's interaction rotate about point."""
 
     def set_background(self, rgb: tuple[float, float, float]) -> None:
         """Set the view background, ignoring the palette."""
@@ -270,7 +273,7 @@ class PvSimpleSession:
         selection_proxy.UnRegister(None)
 
     def write_camera(self, camera: VisorCameraState) -> None:
-        """Write the view camera properties; ParaView recomputes the clipping range at render."""
+        """Write the view camera properties and rotate about its focal point; ParaView recomputes the clipping range at render."""
         view = self._view
         view.CameraPosition = list(camera.position)
         view.CameraFocalPoint = list(camera.focal_point)
@@ -278,6 +281,7 @@ class PvSimpleSession:
         view.CameraViewAngle = camera.view_angle
         view.CameraParallelScale = camera.parallel_scale
         view.CameraParallelProjection = 1 if camera.parallel_projection else 0
+        self.set_center_of_rotation(camera.focal_point)
 
     def read_camera(self) -> VisorCameraState:
         """Read the view's client-side camera, which the interactor moves.
@@ -297,13 +301,24 @@ class PvSimpleSession:
         )
 
     def reset_camera(self, bounds: list[float]) -> None:
-        """ResetCamera to bounds on the view proxy.
+        """ResetCamera to bounds on the view proxy and rotate about their centre.
 
         ``paraview.simple.ResetCamera`` renders the view; this does not, so
         rendering stays on the capture path.  The bounds are passed as six
         arguments: a single sequence matches several overloads.
+
+        ParaView's interaction rotates about the view's ``CenterOfRotation``,
+        not the camera's focal point, and resetting the camera leaves it
+        where it was.  Setting it to the centre of the bounds puts it on the
+        focal point the reset chose.
         """
-        self._view.ResetCamera(*(float(b) for b in bounds))
+        bounds = [float(b) for b in bounds]
+        self._view.ResetCamera(*bounds)
+        self.set_center_of_rotation([(bounds[i] + bounds[i + 1]) / 2.0 for i in (0, 2, 4)])
+
+    def set_center_of_rotation(self, point: list[float]) -> None:
+        """Make the view's interaction rotate about point."""
+        self._view.CenterOfRotation = list(point)
 
     def set_background(self, rgb: tuple[float, float, float]) -> None:
         """Set the view background, ignoring the palette."""
