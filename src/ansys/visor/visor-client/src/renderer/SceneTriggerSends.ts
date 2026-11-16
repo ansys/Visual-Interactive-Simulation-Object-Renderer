@@ -1,6 +1,8 @@
 import type {
     ColorVariableDescriptor,
     NodeId,
+    PartSelection,
+    PartVisibility,
     PickGeometryResult,
     TrameTriggerSender,
 } from './IRenderer';
@@ -71,6 +73,30 @@ export class SceneTriggerSends {
         }
     }
 
+    /**
+     * Send several per-part payloads to one batch trigger, under `parts`.
+     *
+     * Sibling of `#sendTriggerAsync` above; same no-sender/no-op and
+     * logged-and-swallowed-rejection rationale. An empty batch sends nothing.
+     * The error line names the trigger and the batch size.
+     */
+    async #sendBatchTriggerAsync(
+        triggerName: string,
+        parts: readonly Record<string, unknown>[]
+    ): Promise<void> {
+        if (this.#triggerSender == null || parts.length === 0) {
+            return;
+        }
+        try {
+            await this.#triggerSender(triggerName, { parts });
+        } catch (err) {
+            console.error(
+                `[VISOR] per-part batch trigger send failed: trigger='${triggerName}' parts=${parts.length}`,
+                err
+            );
+        }
+    }
+
     // ---- Per-part ---------------------------------------------------------------
     async sendPartVisibilityAsync(nodeId: NodeId, visible: boolean): Promise<void> {
         await this.#sendTriggerAsync('set_part_visibility', nodeId, {
@@ -129,6 +155,21 @@ export class SceneTriggerSends {
         await this.#sendTriggerAsync('clear_part_color_variable', nodeId, {
             nodeId,
         });
+    }
+
+    async sendPartsVisibilityAsync(parts: readonly PartVisibility[]): Promise<void> {
+        await this.#sendBatchTriggerAsync(
+            'set_parts_visibility',
+            parts.map(({ nodeId, visible }) => ({ nodeId, visible }))
+        );
+    }
+
+    async sendPartsSelectedAsync(parts: readonly PartSelection[]): Promise<void> {
+        // No colour crosses this trigger, as for the per-part selection send.
+        await this.#sendBatchTriggerAsync(
+            'set_parts_selected',
+            parts.map(({ nodeId, selected }) => ({ nodeId, selected }))
+        );
     }
 
     // ---- View-level widgets -------------------------------------------------
