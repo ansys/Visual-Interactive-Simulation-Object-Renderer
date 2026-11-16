@@ -20,7 +20,7 @@ from ansys.visor.viewer.app.trame.server_app import ServerApp
 from ansys.visor.viewer.models.runtime.picking.geometry_pick import EdgePick
 from ansys.visor.viewer.renderer.server_window import VisorRcaWindow
 
-# The exact 22 trigger names ServerApp registers: the 19 shared with every
+# The exact 24 trigger names ServerApp registers: the 21 shared with every
 # rendering mode, plus its own three.  Written out by hand, not derived from the
 # production trigger list.
 SERVER_APP_TRIGGER_NAMES = sorted(
@@ -30,6 +30,8 @@ SERVER_APP_TRIGGER_NAMES = sorted(
         "set_part_opacity",
         "set_part_diffuse_color",
         "set_part_selected",
+        "set_parts_visibility",
+        "set_parts_selected",
         "set_part_color_variable",
         "clear_part_color_variable",
         "set_variable_range",
@@ -114,7 +116,7 @@ def _build(
 
 
 def test_server_app_registers_exactly_these_triggers(mock_server, area_cls):
-    """The registered trigger names are exactly the hand-written 22, sorted."""
+    """The registered trigger names are exactly the hand-written 24, sorted."""
     _build(mock_server)
 
     names = sorted(call.args[0] for call in mock_server.trigger.call_args_list)
