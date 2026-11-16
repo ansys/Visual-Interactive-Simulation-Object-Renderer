@@ -28,6 +28,8 @@ from ansys.visor.viewer.vtk.scene import paraview_scene
 from ansys.visor.viewer.vtk.scene.paraview_scene import VisorParaviewScene
 from tests.helpers.utils.locks import LockSpy, lock_held_by_another_thread
 
+pytestmark = pytest.mark.paraview
+
 LIGHT_CSS_RGB = (247, 247, 247)
 DARK_CSS_RGB = (54, 60, 67)
 MANY_BLOCKS_VTM = Path(__file__).parents[3] / "files" / "many_blocks" / "many_blocks.vtm"

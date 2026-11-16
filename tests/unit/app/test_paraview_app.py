@@ -17,6 +17,8 @@ from trame_rca.schedulers import RcaImageRenderScheduler
 from ansys.visor.viewer.app.trame.paraview_app import ParaviewApp
 from ansys.visor.viewer.core.visor_enums import RenderingMode
 
+pytestmark = pytest.mark.paraview
+
 # The exact 24 trigger names, each registered once.  Written out by hand, not
 # derived from the production trigger list.
 PARAVIEW_APP_TRIGGER_NAMES = sorted(

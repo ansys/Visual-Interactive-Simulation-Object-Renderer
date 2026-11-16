@@ -15,6 +15,8 @@ import pytest
 from ansys.visor.viewer.app.paraview.visor_vtk_paraview import VisorVTKParaview
 from ansys.visor.viewer.core.errors import UnsupportedInModeError
 
+pytestmark = pytest.mark.paraview
+
 
 @pytest.fixture
 def wiring():
