@@ -24,23 +24,17 @@ export const Panel_TopLeft: FC<{
         const treeViewContainer = document.getElementById(treeViewContainerId) as HTMLDivElement;
         treeViewUtil.current.addSelectionChangeListener((selectedNodes) => {
             (async () => {
-                // One call per part with its target value; a part whose value
-                // is unchanged sends nothing.
-                const selected = new Set(selectedNodes);
-                for (const node of visorState.sceneGraph.descendantActorNodesOrSelfArray) {
-                    await node.setSelectedAsync(selected.has(node));
-                }
+                // Each part is applied locally in turn, and the parts that
+                // changed reach the server as one batch.
+                await visorState.sceneGraph.setSelectedPartsAsync(new Set(selectedNodes));
                 await visorState.render();
             })();
         });
         treeViewUtil.current.addVisibilityChangeListener((visibleNodes) => {
             (async () => {
-                // One call per part with its target value; a part whose value
-                // is unchanged sends nothing.
-                const visible = new Set(visibleNodes);
-                for (const node of visorState.sceneGraph.descendantActorNodesOrSelfArray) {
-                    await node.setVisibilityAsync(visible.has(node));
-                }
+                // Each part is applied locally in turn, and the parts that
+                // changed reach the server as one batch.
+                await visorState.sceneGraph.setVisiblePartsAsync(new Set(visibleNodes));
                 await visorState.render();
             })();
         });

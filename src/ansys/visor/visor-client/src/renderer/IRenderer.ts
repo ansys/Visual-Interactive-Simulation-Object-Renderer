@@ -59,6 +59,18 @@ export type ColorVariableDescriptor = Readonly<{
  */
 export type TrameTriggerSender = (triggerName: string, payload: unknown) => Promise<unknown>;
 
+/** One part's target visibility within a batched send. */
+export interface PartVisibility {
+    readonly nodeId: NodeId;
+    readonly visible: boolean;
+}
+
+/** One part's target selection state within a batched send. */
+export interface PartSelection {
+    readonly nodeId: NodeId;
+    readonly selected: boolean;
+}
+
 /** Result returned by pickGeometryAsync. Discriminated by `mode`. */
 export type PickGeometryResult =
     | { found: false }
@@ -170,6 +182,14 @@ export interface IRenderer {
     sendPartSelectedAsync(nodeId: NodeId, selected: boolean): Promise<void>;
     sendPartColorVariableAsync(nodeId: NodeId, descriptor: ColorVariableDescriptor): Promise<void>;
     sendClearPartColorVariableAsync(nodeId: NodeId): Promise<void>;
+    /**
+     * Carry several parts' visibility to the server in one trigger, so the
+     * server applies them in one critical section and presents one frame.
+     * Same contract as the per-part sends above; an empty list sends nothing.
+     */
+    sendPartsVisibilityAsync(parts: readonly PartVisibility[]): Promise<void>;
+    /** As sendPartsVisibilityAsync, for selection; carries no colour. */
+    sendPartsSelectedAsync(parts: readonly PartSelection[]): Promise<void>;
 
     // ---- View-level widgets (state is renderer-owned; see arch rule (a)) ---
     //
