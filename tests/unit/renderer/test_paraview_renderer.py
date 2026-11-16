@@ -19,6 +19,7 @@ from vtkmodules.vtkCommonDataModel import vtkCompositeDataSet, vtkMultiBlockData
 
 from ansys.visor.viewer.core.errors import VisorAddDatasetError
 from ansys.visor.viewer.core.visor_enums import VisorVtkVariableType
+from ansys.visor.viewer.models.common.visor_camera_state import VisorCameraState
 from ansys.visor.viewer.renderer.paraview_renderer import BlockLeaf, CompositeBlocks, ParaviewRenderer
 
 BACKGROUND = (0.1, 0.2, 0.3)
@@ -39,6 +40,7 @@ class _FakeSession:
         self.rescaled: list[tuple[int, float, float]] = []
         self.deleted_maps: list[int] = []
         self.selections: list[tuple[str, list[str]]] = []
+        self.centers: list[list[float]] = []
 
     def open(self, path):
         self.opened.append(path)
@@ -86,6 +88,9 @@ class _FakeSession:
 
     def reset_camera(self, bounds):
         pass
+
+    def set_center_of_rotation(self, point):
+        self.centers.append(point)
 
     def set_background(self, rgb):
         pass
@@ -568,3 +573,22 @@ def test_flush_writes_nothing_when_nothing_changed():
     renderer.flush_writes()
 
     assert (session.writes, session.selections) == ([], [])
+
+
+def test_record_pipeline_camera_rotates_about_the_focal_point_a_gesture_left():
+    """A pan moves the focal point and leaves ParaView's centre of rotation where it was."""
+    session = _FakeSession()
+    session.read_camera = lambda: VisorCameraState(
+        position=[0.0, 0.0, 50.0],
+        focal_point=[5.0, 6.0, 7.0],
+        view_up=[0.0, 1.0, 0.0],
+        clipping_range=[1.0, 100.0],
+        parallel_projection=False,
+        view_angle=30.0,
+        parallel_scale=1.0,
+    )
+    renderer, _ = _renderer(session)
+
+    renderer.record_pipeline_camera()
+
+    assert session.centers == [[5.0, 6.0, 7.0]]

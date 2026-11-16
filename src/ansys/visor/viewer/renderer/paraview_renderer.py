@@ -845,8 +845,14 @@ class ParaviewRenderer(IRenderer):
         self._session.set_background(background_rgb)
 
     def record_pipeline_camera(self) -> None:
-        """Read the view camera, record it and publish it; requests no frame."""
-        super().sync_camera(self._session.read_camera())
+        """Read the view camera, record it, rotate about its focal point and publish it; requests no frame.
+
+        A pan moves the focal point but not ParaView's centre of rotation, so
+        the centre is moved to the focal point after each gesture.
+        """
+        camera = self._session.read_camera()
+        super().sync_camera(camera)
+        self._session.set_center_of_rotation(camera.focal_point)
         self._publish_camera_record()
 
     def record_cross_section_plane(self) -> None:
