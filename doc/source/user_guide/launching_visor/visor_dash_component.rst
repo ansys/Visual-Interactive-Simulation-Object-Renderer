@@ -69,19 +69,52 @@ This example uses a VISOR instance running on ``http://localhost:8081``.
        init_endpoints(app)
 
        td = Visordash(
-           id="input",
-           value="my-value",
-           label="my-label",
+           id="visor-view",
            host="localhost",
            port=VISOR_PORT,
        )
 
-       app.layout = html.Div([td, html.Div(id="output")])
+       app.layout = html.Div([td])
 
        app.run(
            host="0.0.0.0", port=DASH_PORT, debug=False, use_reloader=False
        )  # use_reloader=False avoids double execution
 
+
+``Visordash`` properties
+========================
+
+The Dash component accepts only the keyword arguments listed below. Other names
+(for example ``label`` or ``value``) raise a ``TypeError`` at runtime.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 50
+
+   * - Property
+     - Description
+   * - ``id``
+     - Component ID used in Dash callbacks.
+   * - ``host``
+     - Hostname of the VISOR app server (WebSocket connection).
+   * - ``port``
+     - Port of the VISOR app server.
+   * - ``aspectRatio``
+     - Viewer aspect ratio. Use ``-1`` to fit the container.
+   * - ``pixelDensity``
+     - UI scale (similar to DPI). Default is ``1000``; use ``-1`` to disable.
+   * - ``darkMode``
+     - Enable or disable the dark theme.
+   * - ``basePath``
+     - URL prefix for viewer assets when deploying behind a reverse proxy
+       (for example ``/my-prefix``). Must not end with ``/``.
+   * - ``fireSnapshot``
+     - Set to ``True`` in a callback to request a parts-state snapshot from the viewer.
+   * - ``parts``
+     - Read-only output updated after a snapshot (use with ``fireSnapshot`` callbacks).
+
+For a complete Dash app that uses ``fireSnapshot`` and ``parts``, see
+``examples/python/visor_dash_example.py`` in the VISOR repository.
 
 .. note::
 
