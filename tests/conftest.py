@@ -2,12 +2,9 @@
 
 # ==================================================== [Imports] ==================================================== #
 
-import sys
 from pathlib import Path
 
 import pytest
-
-from ansys.visor.viewer.core.paraview_python import PARAVIEW_PYTHON_VERSION, PARAVIEW_VERSION
 
 # =================================================== [Variables] =================================================== #
 
@@ -23,21 +20,6 @@ def pytest_addoption(parser: pytest.Parser):
     parser.addoption("--dash-port", action="store", default="8050", help="Port where the Dash app will run.")
     # parser.addoption("--visor-port", action="store", default="8081", help="Port where the Visor will run.")
     parser.addoption("--host", action="store", default="127.0.0.1", help="Target host for servers.")
-
-
-# Tests marked ``paraview`` exercise code that only runs inside pvpython, so they
-# run only on the Python ParaView embeds.
-def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]):
-    if sys.version_info[:2] == PARAVIEW_PYTHON_VERSION:
-        return
-    required = ".".join(map(str, PARAVIEW_PYTHON_VERSION))
-    running = ".".join(map(str, sys.version_info[:2]))
-    skip = pytest.mark.skip(
-        reason=f"PARAVIEW mode requires Python {required}, the Python ParaView {PARAVIEW_VERSION} ships with; running {running}"
-    )
-    for item in items:
-        if item.get_closest_marker("paraview"):
-            item.add_marker(skip)
 
 
 # Base fixtures -----------------------------------
