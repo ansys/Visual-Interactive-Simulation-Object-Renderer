@@ -182,13 +182,13 @@ class _FakeSelectionHelper:
     def __init__(self) -> None:
         self.calls: list[tuple] = []
 
-    def NewSelectionSourceFromSelection(self, session, selection):
+    def NewSelectionSourceFromSelection(self, session, selection): # noqa: N802
         node = selection.GetNode(0)
         selectors = [node.GetSelectionList().GetValue(i) for i in range(node.GetSelectionList().GetNumberOfValues())]
         self.calls.append(("source", session, node.GetContentType(), node.GetFieldType(), selectors))
         return _Unregistering(self.calls, "selection-proxy")
 
-    def NewAppendSelectionsFromSelectionSource(self, selection_proxy):
+    def NewAppendSelectionsFromSelectionSource(self, selection_proxy): # noqa: N802
         self.calls.append(("append", selection_proxy.name))
         return _Unregistering(self.calls, "append-proxy")
 
@@ -198,7 +198,7 @@ class _Unregistering:
         self.calls = calls
         self.name = name
 
-    def UnRegister(self, owner) -> None:
+    def UnRegister(self, owner) -> None: # noqa: N802
         self.calls.append(("unregister", self.name))
 
 
