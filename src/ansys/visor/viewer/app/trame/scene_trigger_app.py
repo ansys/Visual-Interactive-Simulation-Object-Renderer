@@ -2,7 +2,7 @@ import functools
 import urllib.parse
 from abc import ABC, abstractmethod
 from logging import Logger
-from typing import List, Optional, Protocol, Sequence
+from typing import List, Optional, Protocol
 
 from pydantic import BaseModel, Field, ValidationError
 from trame.app.core import Server
@@ -15,12 +15,6 @@ from ansys.visor.viewer.models.common.visor_camera_state import VisorCameraState
 from ansys.visor.viewer.models.runtime.picking.geometry_pick import GeometryPick
 from ansys.visor.viewer.models.runtime.requests.geometry_pick_payloads import (
     SetGeometryHighlightPayload,
-)
-from ansys.visor.viewer.models.runtime.requests.part_batch_payloads import (
-    PartSelection,
-    PartVisibility,
-    SetPartsSelectedPayload,
-    SetPartsVisibilityPayload,
 )
 from ansys.visor.viewer.models.runtime.requests.sync_camera_payload import SyncCameraPayload
 from ansys.visor.viewer.models.runtime.requests.variable_range_payload import SetVariableRangePayload
@@ -60,10 +54,6 @@ class SceneMutationApi(Protocol):
     def set_part_diffuse_color(self, node_id: int, diffuse_rgb: Optional[List[float]]) -> None: ...
 
     def set_part_selected(self, node_id: int, selected: bool) -> None: ...
-
-    def set_parts_visibility(self, visibilities: Sequence[PartVisibility]) -> None: ...
-
-    def set_parts_selected(self, selections: Sequence[PartSelection]) -> None: ...
 
     def set_part_color_variable(
         self,
@@ -367,28 +357,6 @@ class SceneTriggerApp(ABC):
         if api is None:
             return
         api.set_part_selected(payload.node_id, payload.selected)
-
-    @trigger("set_parts_visibility")
-    @parse_payload(SetPartsVisibilityPayload)
-    def set_parts_visibility(self, payload) -> None:
-        """Frontend -> Backend: set whether each of several parts is visible, in one call."""
-        api = self._mutation_api("set_parts_visibility", payload)
-        if api is None:
-            return
-        api.set_parts_visibility(payload.parts)
-
-    @trigger("set_parts_selected")
-    @parse_payload(SetPartsSelectedPayload)
-    def set_parts_selected(self, payload) -> None:
-        """Frontend -> Backend: select or deselect several parts in one call.
-
-        No colour crosses this trigger: the server reads each part's stored
-        diffuse colour from its own record.
-        """
-        api = self._mutation_api("set_parts_selected", payload)
-        if api is None:
-            return
-        api.set_parts_selected(payload.parts)
 
     @trigger("set_part_color_variable")
     @parse_payload(SetPartColorVariablePayload)

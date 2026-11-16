@@ -637,8 +637,6 @@ SCENE_MUTATION_API_METHODS = [
     "set_part_opacity",
     "set_part_diffuse_color",
     "set_part_selected",
-    "set_parts_visibility",
-    "set_parts_selected",
     "set_part_color_variable",
     "clear_part_color_variable",
 ]

@@ -39,10 +39,6 @@ from ansys.visor.viewer.models.runtime.dataset.runtime_dataset_state import (
     VariableReference,
 )
 from ansys.visor.viewer.models.runtime.picking.geometry_pick import VertexPick
-from ansys.visor.viewer.models.runtime.requests.part_batch_payloads import (
-    PartSelection,
-    PartVisibility,
-)
 from ansys.visor.viewer.models.runtime.scene.runtime_app_state import RuntimeAppState
 from ansys.visor.viewer.models.runtime.scene.runtime_scene_state import RuntimeSceneState
 from ansys.visor.viewer.models.runtime.scene.runtime_ui_state import RuntimeUIState
@@ -441,124 +437,6 @@ def test_set_part_selected_flushes_under_the_lock_after_the_apply(scene, pipelin
     # assert record["depth"] >= 1
     # assert record["value"] == pytest.approx(0.5)
     assert scene._vtk_lock.enter_count == scene._vtk_lock.exit_count
-
-
-# ===========================================================================
-# set_parts_selected / set_parts_visibility -- the batched forms
-#
-# A batch is applied in one critical section, so the server presents it in
-# one frame rather than one frame per part.
-# ===========================================================================
-
-def _own_both_parts(registry):
-    """Let the registry's one dataset own NODE_ID and SECOND_NODE_ID."""
-    registry.datasets = {1: _make_part_dataset(1, [NODE_ID, SECOND_NODE_ID])}
-
-
-def test_set_parts_selected_writes_and_applies_every_part_and_skips_an_unknown_id(
-    scene, registry, pipeline, second_pipeline
-):
-    """Both known parts are selected in the record and on the actor; the unknown id is skipped."""
-    _own_both_parts(registry)
-
-    with patch("ansys.visor.viewer.vtk.scene.base.logger") as mock_logger:
-        scene.set_parts_selected(
-            [
-                PartSelection(node_id=NODE_ID, selected=True),
-                PartSelection(node_id=UNKNOWN_NODE_ID, selected=True),
-                PartSelection(node_id=SECOND_NODE_ID, selected=True),
-            ]
-        )
-
-    assert registry.get_part_state(NODE_ID).selected is True
-    assert registry.get_part_state(SECOND_NODE_ID).selected is True
-    assert registry.get_part_state(UNKNOWN_NODE_ID) is None
-    assert pipeline.actor.GetProperty().GetAmbient() == pytest.approx(0.5)
-    assert second_pipeline.actor.GetProperty().GetAmbient() == pytest.approx(0.5)
-    assert mock_logger.debug.call_count == 1
-
-
-def test_set_parts_selected_applies_the_whole_batch_in_one_lock_section(
-    scene, registry, pipeline, second_pipeline
-):
-    """The lock is entered once for the batch, and every apply runs while it is held."""
-    _own_both_parts(registry)
-    scene._vtk_lock = _LockSpy()
-    depths = []
-    real_apply = scene._renderer.apply_selected
-    scene._renderer.apply_selected = lambda node_id, selected, rgb: (
-        depths.append(scene._vtk_lock.depth), real_apply(node_id, selected, rgb)
-    )[1]
-
-    scene.set_parts_selected(
-        [
-            PartSelection(node_id=NODE_ID, selected=True),
-            PartSelection(node_id=SECOND_NODE_ID, selected=True),
-        ]
-    )
-
-    assert depths == [1, 1]
-    assert scene._vtk_lock.enter_count == 1
-    assert scene._vtk_lock.exit_count == 1
-
-
-def test_set_parts_visibility_writes_and_applies_every_part(
-    scene, registry, pipeline, second_pipeline
-):
-    """Both parts are hidden in the record and on the actor."""
-    _own_both_parts(registry)
-
-    scene.set_parts_visibility(
-        [
-            PartVisibility(node_id=NODE_ID, visible=False),
-            PartVisibility(node_id=SECOND_NODE_ID, visible=False),
-        ]
-    )
-
-    assert registry.get_part_state(NODE_ID).visible is False
-    assert registry.get_part_state(SECOND_NODE_ID).visible is False
-    assert pipeline.actor.GetVisibility() == 0
-    assert second_pipeline.actor.GetVisibility() == 0
-
-
-def test_set_parts_visibility_fans_out_once_after_every_apply(
-    scene, registry, pipeline, second_pipeline
-):
-    """The widget fan-out runs once, after the last part is applied."""
-    _own_both_parts(registry)
-    order = []
-    scene._renderer.update_bounds = lambda bounds: order.append("update_bounds")
-    scene._renderer.update_actor_count = lambda count: order.append("update_actor_count")
-    real_apply = scene._renderer.apply_visibility
-    scene._renderer.apply_visibility = lambda node_id, visible: (
-        order.append("apply_visibility"), real_apply(node_id, visible)
-    )[1]
-
-    scene.set_parts_visibility(
-        [
-            PartVisibility(node_id=NODE_ID, visible=False),
-            PartVisibility(node_id=SECOND_NODE_ID, visible=False),
-        ]
-    )
-
-    assert order == [
-        "apply_visibility",
-        "apply_visibility",
-        "update_bounds",
-        "update_actor_count",
-    ]
-
-
-def test_set_parts_visibility_with_only_unknown_ids_does_not_fan_out(scene):
-    """A batch in which no part resolves refreshes no widget."""
-    calls = []
-    scene._renderer.update_bounds = lambda bounds: calls.append("update_bounds")
-    scene._renderer.update_actor_count = lambda count: calls.append("update_actor_count")
-
-    with patch("ansys.visor.viewer.vtk.scene.base.logger"):
-        scene.set_parts_visibility([PartVisibility(node_id=UNKNOWN_NODE_ID, visible=False)])
-
-    assert calls == []
 
 
 # ===========================================================================
