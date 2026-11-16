@@ -2,7 +2,7 @@
 
 Coverage targets
 ----------------
-1.  ``LocalApp`` registers exactly these 24 trigger names: the 19 shared ones
+1.  ``LocalApp`` registers exactly these 26 trigger names: the 21 shared ones
     defined on ``SceneTriggerApp`` plus its own five local-only ones.
     Neither a missing nor a doubled registration passes this.
 2.  ``LocalApp`` seeds ``rendering_mode`` into server state as ``"client"``
@@ -16,7 +16,7 @@ Coverage targets
 6.  ``pick_part_in_view`` hands the server picker the client's pixel,
     window size and camera, and returns its node id.
 
-The coordinator and payload behaviour of the other 18 shared triggers is
+The coordinator and payload behaviour of the other 20 shared triggers is
 already pinned, trigger by trigger, in ``test_local_app.py`` and its sibling
 modules; this module does not restate that.
 """
@@ -30,7 +30,7 @@ from ansys.visor.viewer.models.common.visor_camera_state import VisorCameraState
 from ansys.visor.viewer.models.runtime.picking.geometry_pick import EdgePick
 from ansys.visor.viewer.vtk.picking.part_cell_hit import PickView
 
-# The exact 24 trigger names LocalApp registers: the 19 names shared with
+# The exact 26 trigger names LocalApp registers: the 21 names shared with
 # every rendering mode, plus LocalApp's own five local-only ones.  Written
 # out by hand, not derived from the production trigger list, so a missing or
 # a doubled registration fails this rather than following along.
@@ -41,6 +41,8 @@ LOCAL_APP_TRIGGER_NAMES = sorted(
         "set_part_opacity",
         "set_part_diffuse_color",
         "set_part_selected",
+        "set_parts_visibility",
+        "set_parts_selected",
         "set_part_color_variable",
         "clear_part_color_variable",
         "set_variable_range",
@@ -94,7 +96,7 @@ def mock_server():
 
 
 def test_local_app_registers_exactly_these_triggers(mock_server):
-    """The registered trigger names are exactly the hand-written 23, sorted.
+    """The registered trigger names are exactly the hand-written 26, sorted.
 
     A missing registration shortens the list; a doubled one (``@TrameApp()``
     on both the base and the leaf) duplicates a name in

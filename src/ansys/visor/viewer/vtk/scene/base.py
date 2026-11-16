@@ -4,7 +4,7 @@ import json
 import math
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Dict, List
+from typing import Dict, List, Sequence
 
 from trame_server import Server
 
@@ -22,6 +22,10 @@ from ansys.visor.viewer.models.common.visor_variable_state import VisorVariableS
 from ansys.visor.viewer.models.persist.persisted_viewer_state import PersistedViewerStateV1
 from ansys.visor.viewer.models.runtime.dataset.runtime_dataset_state import RuntimePartProperties
 from ansys.visor.viewer.models.runtime.picking.geometry_pick import GeometryPick
+from ansys.visor.viewer.models.runtime.requests.part_batch_payloads import (
+    PartSelection,
+    PartVisibility,
+)
 from ansys.visor.viewer.models.runtime.scene.runtime_app_state import RuntimeAppState
 from ansys.visor.viewer.models.runtime.scene.runtime_scene_state import RuntimeSceneState
 from ansys.visor.viewer.models.runtime.scene.runtime_ui_state import RuntimeUIState
@@ -748,12 +752,38 @@ class VisorSceneBase(ABC):
         bounds semantics, not a defect in this fan-out.
         """
         with self._vtk_lock:
-            if not self._dataset_registry.set_part_visibility(node_id, visible):
-                logger.debug("set_part_visibility: no dataset owns node %s; skipping.", node_id)
+            if not self._apply_part_visibility(node_id, visible):
                 return
-            self._renderer.apply_visibility(node_id, visible)
             self._update_widget_bounds()
             self._update_actor_count()
+
+    def set_parts_visibility(self, visibilities: Sequence[PartVisibility]) -> None:
+        """Set the visibility of several parts in one critical section.
+
+        Each element is applied as :meth:`set_part_visibility` applies one
+        part; an unresolvable node id is a logged skip, not a stop.  The widget
+        fan-out runs once after the loop, and only when at least one part was
+        applied.
+        """
+        with self._vtk_lock:
+            applied = False
+            for part in visibilities:
+                applied = self._apply_part_visibility(part.node_id, part.visible) or applied
+            if not applied:
+                return
+            self._update_widget_bounds()
+            self._update_actor_count()
+
+    def _apply_part_visibility(self, node_id: int, visible: bool) -> bool:
+        """Write one part's visibility record and apply it; the caller holds the lock.
+
+        Returns ``False``, after a debug log, when no dataset owns *node_id*.
+        """
+        if not self._dataset_registry.set_part_visibility(node_id, visible):
+            logger.debug("set_part_visibility: no dataset owns node %s; skipping.", node_id)
+            return False
+        self._renderer.apply_visibility(node_id, visible)
+        return True
 
     def set_part_opacity(self, node_id: int, opacity: float) -> None:
         """Set the opacity of the part identified by *node_id*."""
@@ -795,11 +825,25 @@ class VisorSceneBase(ABC):
         ``get_part_state`` cannot return ``None`` at this point.
         """
         with self._vtk_lock:
-            if not self._dataset_registry.set_part_selected(node_id, selected):
-                logger.debug("set_part_selected: no dataset owns node %s; skipping.", node_id)
-                return
-            diffuse_rgb = self._dataset_registry.get_part_state(node_id).diffuse_rgb
-            self._renderer.apply_selected(node_id, selected, diffuse_rgb)
+            self._apply_part_selected(node_id, selected)
+
+    def set_parts_selected(self, selections: Sequence[PartSelection]) -> None:
+        """Select or deselect several parts in one critical section.
+
+        Each element is applied as :meth:`set_part_selected` applies one part;
+        an unresolvable node id is a logged skip, not a stop.
+        """
+        with self._vtk_lock:
+            for part in selections:
+                self._apply_part_selected(part.node_id, part.selected)
+
+    def _apply_part_selected(self, node_id: int, selected: bool) -> None:
+        """Write one part's selection record and apply it; the caller holds the lock."""
+        if not self._dataset_registry.set_part_selected(node_id, selected):
+            logger.debug("set_part_selected: no dataset owns node %s; skipping.", node_id)
+            return
+        diffuse_rgb = self._dataset_registry.get_part_state(node_id).diffuse_rgb
+        self._renderer.apply_selected(node_id, selected, diffuse_rgb)
 
     def set_part_color_variable(
             self,
