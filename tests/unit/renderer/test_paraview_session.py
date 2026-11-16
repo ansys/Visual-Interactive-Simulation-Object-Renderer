@@ -26,7 +26,7 @@ class _FakeView:
     def __init__(self) -> None:
         self.RemoteRenderThreshold = 20.0
 
-    def GetClientSideObject(self):
+    def GetClientSideObject(self): # noqa: N802
         return SimpleNamespace(GetRenderWindow=lambda: "client-window")
 
 
