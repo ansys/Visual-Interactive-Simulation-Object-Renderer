@@ -26,7 +26,7 @@ class _FakeWindow:
     def __init__(self) -> None:
         self.offscreen = 0
 
-    def SetOffScreenRendering(self, value: int) -> None:
+    def SetOffScreenRendering(self, value: int) -> None: # noqa: N802
         self.offscreen = value
 
 
