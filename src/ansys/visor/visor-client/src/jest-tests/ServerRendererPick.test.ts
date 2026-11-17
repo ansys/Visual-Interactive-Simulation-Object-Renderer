@@ -2,10 +2,10 @@ import { ServerRenderer, type ServerStateSource } from '../renderer/ServerRender
 import type { CanvasClick, IServerCanvas } from '../rca/ServerCanvas';
 
 /**
- * A click on the server-drawn view asks the server which part lies under it,
- * in render-window device pixels measured on the last frame, origin bottom
- * left.  One click makes one pick, however many listeners there are, and each
- * listener hears its result once.  A click while a pick is running is dropped.
+ * A part pick asks the server which part lies under a point, in render-window
+ * device pixels measured on the last frame, origin bottom left.  A click on
+ * the canvas reaches every canvas-click listener once and asks the server
+ * nothing: the frontend decides what a click picks.
  *
  * The page is 300 x 200 CSS px at device pixel ratio 2, so the frame is
  * 600 x 400.  Expected values are hand-written literals.
@@ -73,48 +73,47 @@ async function settle() {
     await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
-describe('ServerRenderer pick', () => {
-    test('a click sends one pick_part_at in render-window pixels from the frame', async () => {
-        const { canvas, click } = stubCanvas();
+describe('ServerRenderer part pick', () => {
+    test('pickPartAsync sends one pick_part_at in render-window pixels from the frame and returns the node', async () => {
+        const { canvas } = stubCanvas();
         const sender = jest.fn(async (_name: string, _payload: unknown) => 7 as unknown);
         const renderer = new ServerRenderer(canvas, emptyState, sender);
-        renderer.addViewerClickedListener(jest.fn());
-        renderer.addViewerClickedListener(jest.fn());
 
-        click(CLICK);
-        await settle();
+        const nodeId = await renderer.pickPartAsync(0.5, 0.25);
 
+        expect(nodeId).toBe(7);
         expect(sender.mock.calls).toStrictEqual([['pick_part_at', { x: 300, y: 100 }]]);
     });
 
-    test('every viewer-clicked listener gets the picked node once', async () => {
+    test('a pick_part_at result that is not a node id rejects with a TypeError', async () => {
+        const { canvas } = stubCanvas();
+        const sender = jest.fn(async (_name: string, _payload: unknown) => 'seven' as unknown);
+        const renderer = new ServerRenderer(canvas, emptyState, sender);
+
+        await expect(renderer.pickPartAsync(0.5, 0.25)).rejects.toThrow(
+            new TypeError('pick_part_at result is not a node id or null: seven')
+        );
+    });
+
+    test('a click reaches every canvas-click listener once and sends nothing', async () => {
         const { canvas, click } = stubCanvas();
         const sender = jest.fn(async (_name: string, _payload: unknown) => 7 as unknown);
         const renderer = new ServerRenderer(canvas, emptyState, sender);
         const first = jest.fn();
         const second = jest.fn();
-        renderer.addViewerClickedListener(first);
-        renderer.addViewerClickedListener(second);
+        renderer.addCanvasClickListener(first);
+        renderer.addCanvasClickListener(second);
 
         click(CLICK);
         await settle();
 
-        expect(first.mock.calls).toEqual([[7, false, false, 0.5, 0.25]]);
-        expect(second.mock.calls).toEqual([[7, false, false, 0.5, 0.25]]);
-    });
-
-    test('a click while a pick is pending sends nothing', async () => {
-        const { canvas, click } = stubCanvas();
-        const sender = jest.fn(
-            (_name: string, _payload: unknown) => new Promise<unknown>(() => {})
-        );
-        new ServerRenderer(canvas, emptyState, sender);
-
-        click(CLICK);
-        click(CLICK);
-        await settle();
-
-        expect(sender).toHaveBeenCalledTimes(1);
+        expect(first.mock.calls).toEqual([
+            [{ normX: 0.5, normY: 0.25, ctrlKey: false, shiftKey: false }],
+        ]);
+        expect(second.mock.calls).toEqual([
+            [{ normX: 0.5, normY: 0.25, ctrlKey: false, shiftKey: false }],
+        ]);
+        expect(sender).not.toHaveBeenCalled();
     });
 });
 

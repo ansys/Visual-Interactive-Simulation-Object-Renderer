@@ -84,7 +84,7 @@ function mockMakeRenderer() {
         domElement: document.createElement('div'),
         clearGeometryHighlight: () => {},
         addCameraSettledListener: () => () => {},
-        addViewerClickedListener: () => () => {},
+        addCanvasClickListener: () => () => {},
         resizeAsync: async () => undefined,
     };
 }

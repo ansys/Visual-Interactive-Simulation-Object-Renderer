@@ -680,6 +680,13 @@ def test_local_app_receives_the_scene_pick_geometry_in_view(local_app_call):
     assert call.kwargs["pick_geometry_in_view"] is scene.pick_geometry_in_view
 
 
+def test_local_app_receives_the_scene_pick_part_in_view(local_app_call):
+    """The scene's own part picker is injected, not a lambda around it."""
+    call, scene, _instance = local_app_call
+
+    assert call.kwargs["pick_part_in_view"] is scene.pick_part_in_view
+
+
 def test_local_app_still_receives_the_pre_existing_arguments(local_app_call):
     """The boundary is extended, not broken: the earlier arguments survive."""
     call, scene, instance = local_app_call

@@ -86,6 +86,7 @@ def app(mock_server, api):
         standalone=True,
         scene_mutation_api=api,
         pick_geometry_in_view=MagicMock(),
+        pick_part_in_view=MagicMock(),
     )
 
 

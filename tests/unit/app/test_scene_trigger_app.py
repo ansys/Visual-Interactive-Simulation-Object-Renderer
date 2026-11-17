@@ -2,8 +2,8 @@
 
 Coverage targets
 ----------------
-1.  ``LocalApp`` registers exactly these 23 trigger names: the 19 shared ones
-    defined on ``SceneTriggerApp`` plus its own four local-only ones.
+1.  ``LocalApp`` registers exactly these 24 trigger names: the 19 shared ones
+    defined on ``SceneTriggerApp`` plus its own five local-only ones.
     Neither a missing nor a doubled registration passes this.
 2.  ``LocalApp`` seeds ``rendering_mode`` into server state as ``"client"``
     before the server starts.
@@ -13,6 +13,8 @@ Coverage targets
 5.  ``pick_geometry_in_view`` hands the server picker the client's pixel,
     window size, camera and mode, and returns its pick dumped by alias; a
     window with no width never reaches the picker.
+6.  ``pick_part_in_view`` hands the server picker the client's pixel,
+    window size and camera, and returns its node id.
 
 The coordinator and payload behaviour of the other 18 shared triggers is
 already pinned, trigger by trigger, in ``test_local_app.py`` and its sibling
@@ -28,8 +30,8 @@ from ansys.visor.viewer.models.common.visor_camera_state import VisorCameraState
 from ansys.visor.viewer.models.runtime.picking.geometry_pick import EdgePick
 from ansys.visor.viewer.vtk.picking.part_cell_hit import PickView
 
-# The exact 23 trigger names LocalApp registers: the 19 names shared with
-# every rendering mode, plus LocalApp's own four local-only ones.  Written
+# The exact 24 trigger names LocalApp registers: the 19 names shared with
+# every rendering mode, plus LocalApp's own five local-only ones.  Written
 # out by hand, not derived from the production trigger list, so a missing or
 # a doubled registration fails this rather than following along.
 LOCAL_APP_TRIGGER_NAMES = sorted(
@@ -54,6 +56,7 @@ LOCAL_APP_TRIGGER_NAMES = sorted(
         "set_panel_top_right_tab_index",
         "set_geometry_highlight",
         "pick_geometry_in_view",
+        "pick_part_in_view",
         "perf_report_wasm",
         "perf_report_server_update",
         "set_pixel_scale",
@@ -103,6 +106,7 @@ def test_local_app_registers_exactly_these_triggers(mock_server):
         get_scene_details_json=MagicMock(),
         standalone=True,
         pick_geometry_in_view=MagicMock(),
+        pick_part_in_view=MagicMock(),
     )
 
     names = sorted(call.args[0] for call in mock_server.trigger.call_args_list)
@@ -117,6 +121,7 @@ def test_local_app_seeds_rendering_mode_client(mock_server):
         get_scene_details_json=MagicMock(),
         standalone=True,
         pick_geometry_in_view=MagicMock(),
+        pick_part_in_view=MagicMock(),
     )
 
     assert mock_server.state["rendering_mode"] == "client"
@@ -131,6 +136,7 @@ def test_set_geometry_highlight_forwards_the_parsed_pick(mock_server):
         standalone=True,
         scene_mutation_api=api,
         pick_geometry_in_view=MagicMock(),
+        pick_part_in_view=MagicMock(),
     )
 
     result = app.set_geometry_highlight(
@@ -160,6 +166,7 @@ def test_set_pixel_scale_forwards_the_parsed_scale(mock_server):
         standalone=True,
         scene_mutation_api=api,
         pick_geometry_in_view=MagicMock(),
+        pick_part_in_view=MagicMock(),
     )
 
     result = app.set_pixel_scale({"scale": 2.0})
@@ -178,6 +185,7 @@ def test_set_pixel_scale_ignores_a_scale_that_is_not_positive(mock_server, scale
         standalone=True,
         scene_mutation_api=api,
         pick_geometry_in_view=MagicMock(),
+        pick_part_in_view=MagicMock(),
     )
 
     app.set_pixel_scale({"scale": scale})
@@ -208,6 +216,7 @@ def test_pick_geometry_in_view_forwards_a_pick_view_and_dumps_by_alias(mock_serv
         get_scene_details_json=MagicMock(),
         standalone=True,
         pick_geometry_in_view=picker,
+        pick_part_in_view=MagicMock(),
     )
 
     result = app.pick_geometry_in_view(
@@ -249,6 +258,7 @@ def test_pick_geometry_in_view_rejects_a_zero_width(mock_server):
         get_scene_details_json=MagicMock(),
         standalone=True,
         pick_geometry_in_view=picker,
+        pick_part_in_view=MagicMock(),
     )
 
     result = app.pick_geometry_in_view(
@@ -257,3 +267,36 @@ def test_pick_geometry_in_view_rejects_a_zero_width(mock_server):
 
     assert result is None
     picker.assert_not_called()
+
+
+def test_pick_part_in_view_forwards_a_pick_view_and_returns_the_node(mock_server):
+    """The client's pixel, window size and camera reach the server picker; its node id returns unchanged."""
+    picker = MagicMock(name="pick_part_in_view", return_value=7)
+    app = LocalApp(
+        server=mock_server,
+        get_scene_details_json=MagicMock(),
+        standalone=True,
+        pick_geometry_in_view=MagicMock(),
+        pick_part_in_view=picker,
+    )
+
+    result = app.pick_part_in_view({"x": 150, "y": 100, "width": 600, "height": 400, "camera": _PICK_CAMERA})
+
+    picker.assert_called_once_with(
+        PickView(
+            camera_state=VisorCameraState(
+                position=[1.0, 2.0, 3.0],
+                focal_point=[4.0, 5.0, 6.0],
+                view_up=[0.0, 0.0, 1.0],
+                clipping_range=[0.5, 50.0],
+                parallel_projection=False,
+                view_angle=25.0,
+                parallel_scale=7.0,
+            ),
+            width=600,
+            height=400,
+        ),
+        150,
+        100,
+    )
+    assert result == 7

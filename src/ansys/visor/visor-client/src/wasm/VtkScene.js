@@ -7,7 +7,6 @@
  */
 import CameraGestureTracker from './CameraGestureTracker.js';
 import { MouseButtonState } from '../input/MouseButtonState';
-import { ViewerClickDispatcher } from '../input/ViewerClickDispatcher';
 
 export default class VtkScene {
     /**
@@ -51,8 +50,6 @@ export default class VtkScene {
         let camera;
         /**@type{FrontendVtkObject}*/
         let interactor;
-        /**@type{FrontendVtkObject}*/
-        let picker;
         if (vtk != null) {
             throw new Error('standalone sessions not yet supported');
         } else if (remoteVtkScene == null) {
@@ -61,7 +58,6 @@ export default class VtkScene {
         const { renderer, renderWindow, canvasDiv, canvas } = remoteVtkScene;
         camera = await renderer.GetActiveCamera();
         interactor = await renderWindow.GetInteractor();
-        picker = await interactor.GetPicker();
         this.#remoteVtkScene = remoteVtkScene;
         this.canvas = canvas;
         this.canvasDiv = canvasDiv;
@@ -69,10 +65,9 @@ export default class VtkScene {
         this.renderer = renderer;
         this.renderWindow = renderWindow;
         this.interactor = interactor;
-        this.picker = picker;
         this.#setupFpsMonitor();
         this.#setupCamera();
-        this.#setupPicker();
+        this.#setupClicks();
     }
 
     /**@type{RemoteVtkScene}*/
@@ -89,8 +84,6 @@ export default class VtkScene {
     renderWindow;
     /**@type{FrontendVtkObject}*/
     interactor;
-    /**@type{FrontendVtkObject}*/
-    picker;
     /**
      * @param {number} wasmId
      * @return {FrontendVtkObject}
@@ -124,7 +117,7 @@ export default class VtkScene {
             remover();
         }
         this.#cameraChangedListeners.clear();
-        this.#viewerClicks.clear();
+        this.#canvasClickListeners.clear();
         this.#frameRenderedListeners.clear();
         this.#cameraGestureTracker?.dispose();
     };
@@ -132,7 +125,8 @@ export default class VtkScene {
     #cameraGestureTracker = null;
     /**@type{Map<Function,()=>void>}*/
     #userObserverRemovers = new Map();
-    #viewerClicks = new ViewerClickDispatcher();
+    /**@type{Map<Function,(click:import('../rca/ServerCanvas').CanvasClick)=>void>}*/
+    #canvasClickListeners = new Map();
     /**@type{Map<Function,(camera:FrontendVtkObject)=>void>}*/
     #cameraChangedListeners = new Map();
     /**@type{Map<Function,(fps:number)=>void>}*/
@@ -169,11 +163,15 @@ export default class VtkScene {
         this.#cameraGestureTracker?.noteWidgetGesture();
     };
     /**
-     * @param {(actorId:number,ctrlKey:boolean,shiftKey:boolean,normX:number,normY:number)=>void} handler
+     * Fires on each click with its CanvasClick; picks nothing.
+     *
+     * @param {(click:import('../rca/ServerCanvas').CanvasClick)=>void} handler
      * @return {()=>void}
      */
-    addViewerClickedListener = (handler) => {
-        return this.#viewerClicks.addListener(handler);
+    addCanvasClickListener = (handler) => {
+        const remover = () => this.#canvasClickListeners.delete(remover);
+        this.#canvasClickListeners.set(remover, handler);
+        return remover;
     };
     /**
      * @param {(fps:number)=>void} handler
@@ -185,9 +183,11 @@ export default class VtkScene {
         return remover;
     };
     /**
+     * A left press and release at one point is a click; tell every
+     * canvas-click listener of it.  Nothing in the browser is picked.
      */
-    #setupPicker = () => {
-        const { renderer, interactor, picker, canvasDiv } = this;
+    #setupClicks = () => {
+        const { canvasDiv } = this;
         ///////////////////////////////////////////
         ///////////////////////////////////////////
         /**@type{number|null}*/
@@ -202,7 +202,7 @@ export default class VtkScene {
             lastMouseX = e.clientX;
             lastMouseY = e.clientY;
         });
-        canvasDiv.addEventListener('mouseup', async (e) => {
+        canvasDiv.addEventListener('mouseup', (e) => {
             try {
                 if (lastMouseX == null || lastMouseY == null) {
                     return;
@@ -221,12 +221,9 @@ export default class VtkScene {
                     ctrlKey: e.ctrlKey,
                     shiftKey: e.shiftKey,
                 };
-                await this.#viewerClicks.dispatchAsync(click, async () => {
-                    const [x, y] = await interactor.GetEventPosition();
-                    const found = await picker.Pick([x, y, 0], renderer);
-                    const actor = found ? await picker.GetActor() : null;
-                    return actor?.id ?? null;
-                });
+                for (const listener of this.#canvasClickListeners.values()) {
+                    listener(click);
+                }
             } finally {
                 lastMouseX = lastMouseY = null;
             }
@@ -285,7 +282,7 @@ export default class VtkScene {
                 if (effective != null) {
                     canvas.dispatchEvent(new MouseEvent('mousedown', getEventDict(e, effective)));
                     // While left drives button 0 the event goes on to the VTK
-                    // canvas (and to the picker); every other combination stops it.
+                    // canvas (and to the click listener); every other combination stops it.
                     if (effective !== 0 || !buttons.isDown(0)) {
                         e.stopPropagation();
                     }

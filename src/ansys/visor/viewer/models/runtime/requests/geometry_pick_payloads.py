@@ -1,4 +1,4 @@
-"""Models for the geometry-pick trigger payloads."""
+"""Models for the pick and geometry-highlight trigger payloads."""
 
 from typing import Annotated
 
@@ -16,15 +16,24 @@ class PickGeometryAtPayload(BaseModel):
     mode: GeometryPickMode
 
 
-class PickGeometryInViewPayload(BaseModel):
-    """pick_geometry_in_view payload: a pixel of the client's window, origin bottom-left, the window's size, its camera record, and the mode."""
+class PickInViewPayload(BaseModel):
+    """Fields of every in-view pick payload: a pixel of the client's window, origin bottom-left, the window's size, and its camera record."""
 
     x: int
     y: int
     width: Annotated[int, Field(gt=0)]
     height: Annotated[int, Field(gt=0)]
-    mode: GeometryPickMode
     camera: VisorCameraState
+
+
+class PickPartInViewPayload(PickInViewPayload):
+    """pick_part_in_view payload: the view fields only."""
+
+
+class PickGeometryInViewPayload(PickInViewPayload):
+    """pick_geometry_in_view payload: the view fields and the mode."""
+
+    mode: GeometryPickMode
 
 
 class SetGeometryHighlightPayload(BaseModel):
