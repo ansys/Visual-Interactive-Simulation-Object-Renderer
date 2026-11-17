@@ -68,6 +68,10 @@ Getting started
 
     Set up the environments and the pvserver that PARAVIEW rendering mode uses.
 
+    .. note::
+
+       PARAVIEW mode is a beta feature and is still in development.
+
 
 .. toctree::
    :hidden:
