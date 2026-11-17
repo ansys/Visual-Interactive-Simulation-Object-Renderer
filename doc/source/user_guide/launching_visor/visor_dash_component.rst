@@ -114,7 +114,7 @@ The Dash component accepts only the keyword arguments listed below. Other names
      - Read-only output updated after a snapshot (use with ``fireSnapshot`` callbacks).
 
 For a complete Dash app that uses ``fireSnapshot`` and ``parts``, see
-``examples/python/visor_dash_example.py`` in the VISOR repository.
+`visor_dash_example.py <https://github.com/ansys/Visual-Interactive-Simulation-Object-Renderer/blob/main/examples/python/visor_dash_example.py>`_.
 
 .. note::
 
