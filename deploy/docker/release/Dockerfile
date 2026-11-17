@@ -1,4 +1,4 @@
-FROM python:3.11-slim AS release
+FROM python:3.15-slim AS release
 
 ARG PACKAGE_VERSION
 
