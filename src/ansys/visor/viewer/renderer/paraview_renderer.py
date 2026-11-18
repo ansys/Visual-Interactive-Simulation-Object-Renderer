@@ -15,8 +15,7 @@ representation's per-block properties under the leaf's selector.  Those
 per-block lists, and the source's block selection, are written at the next
 frame, once each, however many parts changed since the last one; the capture
 calls :meth:`ParaviewRenderer.flush_writes` before it renders.  Parts
-coloured by a variable share one colour map per :class:`ColorMapKey`, and at
-most :data:`MAX_COLOR_MAPS` maps are in use at once.
+coloured by a variable share one colour map per :class:`ColorMapKey`.
 """
 
 from __future__ import annotations
@@ -57,9 +56,6 @@ SELECTED_AMBIENT_RGB: tuple[float, float, float] = (0 / 255, 62 / 255, 111 / 255
 
 SELECTED_BLOCK_OPACITY: float = 1.0
 """Opacity of a selected block's wireframe outline."""
-
-MAX_COLOR_MAPS: int = 30
-"""Colour maps in use at once, across every representation; more exceed the texture units of the GPU."""
 
 _ASSOCIATIONS: dict[VisorVtkVariableType, str] = {
     VisorVtkVariableType.POINT: "POINTS",
@@ -108,23 +104,16 @@ class _ColorMaps:
         self._maps: dict[ColorMapKey, _ColorMap] = {}
         self._retired: list[PvLookupTable] = []
 
-    def acquire(self, key: ColorMapKey, releasing: ColorMapKey | None) -> PvLookupTable | None:
-        """The map for key, with one more user; None when a new map would exceed :data:`MAX_COLOR_MAPS`.
+    def acquire(self, key: ColorMapKey) -> PvLookupTable:
+        """The map for key, with one more user.
 
-        *releasing* is the key the caller releases once it has moved to the
-        returned map; a map only the caller uses does not count against the
-        limit.  A new map is created and given its range here, before any
-        part uses it.
+        A new map is created and given its range here, before any part uses
+        it.
         """
         shared = self._maps.get(key)
         if shared is not None:
             shared.users += 1
             return shared.lut
-        in_use = len(self._maps)
-        if releasing is not None and self._maps[releasing].users == 1:
-            in_use -= 1
-        if in_use >= MAX_COLOR_MAPS:
-            return None
         lut = self._session.new_color_map(key.component)
         self._session.rescale_color_map(lut, key.min_val, key.max_val)
         self._maps[key] = _ColorMap(lut, 1)
@@ -697,46 +686,39 @@ class ParaviewRenderer(IRenderer):
         component: int,
         min_val: float,
         max_val: float,
-    ) -> bool:
-        """Colour the part through the shared map for its key, then request a frame; False when refused.
+    ) -> None:
+        """Colour the part through the shared map for its key, then request a frame.
 
         The part moves to the map for (association, array, component, range),
         creating it when no part uses that key yet, and its previous map is
-        released.  Refused, writing nothing, with one WARNING, when that would
-        put more than :data:`MAX_COLOR_MAPS` maps in use.  An association that
-        is not a :class:`VisorVtkVariableType`, and an array the part's
-        dataset does not have, are logged no-ops, as in the pipeline renderer.
+        released.  An association that is not a
+        :class:`VisorVtkVariableType`, and an array the part's dataset does
+        not have, are logged no-ops, as in the pipeline renderer.
         """
         part = self._part(node_id, "apply_color_variable")
         if part is None:
-            return True
+            return
         association = _ASSOCIATIONS.get(array_type) if isinstance(array_type, VisorVtkVariableType) else None
         if association is None:
             logger.warning(
                 "apply_color_variable: association %r is not a VisorVtkVariableType; skipping.", array_type
             )
-            return True
+            return
         data = part.dataset.GetPointData() if association == "POINTS" else part.dataset.GetCellData()
         if data.GetArray(array_name) is None:
             logger.warning(
                 "apply_color_variable: array %r not found for association %s; skipping.", array_name, array_type
             )
-            return True
+            return
         key = ColorMapKey(association, array_name, component, min_val, max_val)
         previous = part.color_key
         if key == previous:
-            return True
-        lut = self._color_maps.acquire(key, releasing=previous)
-        if lut is None:
-            logger.warning(
-                "colour map limit (%d) reached; part %r not coloured by %r", MAX_COLOR_MAPS, node_id, array_name
-            )
-            return False
+            return
+        lut = self._color_maps.acquire(key)
         part.color_by(key, lut)
         if previous is not None:
             self._color_maps.release(previous)
         self._frame_requester.request_frame()
-        return True
 
     def clear_color_variable(self, node_id: int) -> None:
         """Colour the part solid and release its map, then request a frame; a solid part is not rewritten."""

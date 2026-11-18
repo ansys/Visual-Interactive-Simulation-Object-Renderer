@@ -52,7 +52,7 @@ class ParaviewSession(Protocol):
         """Open path on pvserver."""
 
     def show(self, source: PvSource) -> PvRepresentation:
-        """Show source in the view with scalar colouring off and its selection drawn as ParaView's default wireframe."""
+        """Show source in the view with scalar colouring off, scalars mapped to colours before interpolation, and its selection drawn as ParaView's default wireframe."""
 
     def delete(self, source: PvSource) -> None:
         """Hide and delete source on pvserver."""
@@ -156,12 +156,17 @@ class PvSimpleSession:
         return source
 
     def show(self, source: PvSource) -> PvRepresentation:
-        """Show source in the view with scalar colouring off and its selection drawn as ParaView's default wireframe.
+        """Show source in the view with scalar colouring off, scalars mapped to colours before interpolation, and its selection drawn as ParaView's default wireframe.
 
         A surface selection is coplanar with the faces it covers and
         z-fights with them; lines are offset towards the camera.
+
+        With ``InterpolateScalarsBeforeMapping`` off, a colour map is applied
+        as vertex colours rather than as a colour texture, so the number of
+        distinct maps is not bounded by the GPU's texture units.
         """
         rep = self._simple.Show(source, self._view)
+        rep.InterpolateScalarsBeforeMapping = 0
         self.clear_color(rep)
         return rep
 

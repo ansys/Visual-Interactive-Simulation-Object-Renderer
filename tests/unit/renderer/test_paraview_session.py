@@ -117,6 +117,14 @@ def test_show_leaves_the_selection_representation_at_its_default(monkeypatch):
     assert not hasattr(session.show(object()), "SelectionRepresentation")
 
 
+def test_show_turns_off_interpolate_scalars_before_mapping(monkeypatch):
+    """A colour map is applied as vertex colours, not as a texture, so maps do not consume texture units."""
+    simple, session = _session(monkeypatch)
+    simple.Show = lambda source, view: SimpleNamespace(InterpolateScalarsBeforeMapping=1)
+
+    assert session.show(object()).InterpolateScalarsBeforeMapping == 0
+
+
 def test_block_point_count_reads_the_blocks_hierarchy_subset(monkeypatch):
     _, session = _session(monkeypatch)
     calls = []

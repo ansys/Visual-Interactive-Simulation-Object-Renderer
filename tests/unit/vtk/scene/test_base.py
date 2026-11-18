@@ -560,31 +560,6 @@ def test_set_part_color_variable_non_participating_part_is_refused_and_not_store
     assert registry.get_part_state(NODE_ID) is None
 
 
-def test_set_part_color_variable_refused_by_the_renderer_records_nothing(scene, registry):
-    """A colouring the renderer refuses leaves the part with no reference."""
-    _seed_records(scene, _seeded_record())
-    scene._renderer.apply_color_variable = MagicMock(name="apply_color_variable", return_value=False)
-
-    result = scene.set_part_color_variable(
-        NODE_ID, "POINT::pressure::1", VisorVtkVariableType.POINT, "pressure", 0
-    )
-
-    assert (result, registry.get_part_state(NODE_ID).color_variable) == (False, None)
-
-
-def test_set_part_color_variable_refused_by_the_renderer_keeps_the_previous_reference(scene, registry):
-    """A re-colouring the renderer refuses leaves the reference the part is drawn with."""
-    _seed_records(scene, _seeded_record())
-    scene.set_part_color_variable(NODE_ID, "POINT::pressure::1", VisorVtkVariableType.POINT, "pressure", 0)
-    scene._renderer.apply_color_variable = MagicMock(name="apply_color_variable", return_value=False)
-
-    scene.set_part_color_variable(NODE_ID, "POINT::pressure::1", VisorVtkVariableType.POINT, "pressure", 0)
-
-    assert registry.get_part_state(NODE_ID).color_variable == VariableReference(
-        variable_id="POINT::pressure::1", variable_component=0
-    )
-
-
 def test_set_part_color_variable_reserializes_the_mapper_after_the_write_under_the_lock(
     scene, pipeline
 ):
@@ -3554,16 +3529,6 @@ def test_rebuild_with_unchanged_records_writes_no_mapper_and_serializes_nothing(
     scene._renderer.apply_color_variable.assert_not_called()
     scene._renderer.clear_color_variable.assert_not_called()
     object_manager.UpdateStateFromObject.assert_not_called()
-
-
-def test_set_variable_range_refused_by_the_renderer_clears_the_reference(scene, registry):
-    """A part the renderer refuses to re-colour at the new range is recorded as not coloured."""
-    _color_part_by_pressure_component(scene, registry)
-    scene._renderer.apply_color_variable = MagicMock(name="apply_color_variable", return_value=False)
-
-    scene.set_variable_range(VARIABLE_ID, 0, 3.25, 6.75)
-
-    assert registry.get_part_state(NODE_ID).color_variable is None
 
 
 def test_rebuild_keeps_a_custom_range_on_a_colored_part(scene, registry, pipeline):

@@ -172,15 +172,10 @@ class IRenderer(ABC):
         component: int,
         min_val: float,
         max_val: float,
-    ) -> bool:
+    ) -> None:
         """
         Configure the mapper to colour *node_id* by the given scalar array
-        and range; return False when the renderer refuses it.
-
-        A renderer may refuse when it cannot draw one more colour map; it
-        then writes nothing, and the caller must not record the part as
-        coloured by the variable.  Every other outcome, a logged no-op
-        included, returns True.
+        and range.
 
         Parameters
         ----------
