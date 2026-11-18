@@ -244,8 +244,8 @@ class VtkPipelineRenderer(IRenderer):
         component: int,
         min_val: float,
         max_val: float,
-    ) -> bool:
-        """See :meth:`IRenderer.apply_color_variable`; never refuses, so always True.
+    ) -> None:
+        """See :meth:`IRenderer.apply_color_variable`.
 
         Resolves the pipeline and delegates to
         :meth:`VtkNodePipeline.set_color_variable`.  *array_type* must
@@ -263,10 +263,9 @@ class VtkPipelineRenderer(IRenderer):
             logger.debug(
                 "apply_color_variable: no pipeline for node %s; skipping.", node_id
             )
-            return True
+            return
         pipe.set_color_variable(array_type, array_name, component, min_val, max_val)
         self._publish_part_mapper(node_id)
-        return True
 
     def clear_color_variable(self, node_id: int) -> None:
         """See :meth:`IRenderer.clear_color_variable`.

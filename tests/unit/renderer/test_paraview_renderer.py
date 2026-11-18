@@ -11,7 +11,6 @@ values are hand-written literals.
 from __future__ import annotations
 
 from types import SimpleNamespace
-from unittest.mock import patch
 
 import pytest
 from vtkmodules.vtkCommonCore import vtkDoubleArray, vtkPoints
@@ -178,8 +177,8 @@ def _last_write(session: _FakeSession, name: str):
     return [value for _, prop, value in session.writes if prop == name][-1]
 
 
-def _color(renderer: ParaviewRenderer, node_id: int, max_val: float = 5.0) -> bool:
-    return renderer.apply_color_variable(node_id, VisorVtkVariableType.POINT, "velocity", 0, 0.0, max_val)
+def _color(renderer: ParaviewRenderer, node_id: int, max_val: float = 5.0) -> None:
+    renderer.apply_color_variable(node_id, VisorVtkVariableType.POINT, "velocity", 0, 0.0, max_val)
 
 
 def test_apply_visibility_requests_a_frame_and_never_renders():
@@ -375,52 +374,6 @@ def test_deregister_node_releases_its_map():
     assert session.deleted_maps == [0]
 
 
-def test_color_by_past_the_map_limit_writes_nothing_and_warns():
-    session = _FakeSession()
-    renderer, _ = _renderer(session)
-    for node_id in range(1, 32):
-        _register(renderer, node_id, f"s{node_id}")
-    for node_id in range(1, 31):
-        _color(renderer, node_id, max_val=float(node_id))
-    session.writes.clear()
-
-    with patch("ansys.visor.viewer.renderer.paraview_renderer.logger") as log:
-        refused = _color(renderer, 31, max_val=31.0)
-
-    fmt, *args = log.warning.call_args.args
-    assert (refused, session.writes, len(session.maps), fmt % tuple(args)) == (
-        False,
-        [],
-        30,
-        "colour map limit (30) reached; part 31 not coloured by 'velocity'",
-    )
-
-
-def test_map_limit_counts_maps_across_representations():
-    session = _FakeSession()
-    renderer, _ = _renderer(session)
-    _register_wing_and_rib(renderer)
-    for node_id in range(3, 32):
-        _register(renderer, node_id, f"s{node_id}")
-        _color(renderer, node_id, max_val=float(node_id))
-    _color(renderer, 1, max_val=1.0)
-
-    assert _color(renderer, 2, max_val=2.0) is False
-
-
-def test_a_parts_own_map_does_not_count_when_it_moves_at_the_limit():
-    session = _FakeSession()
-    renderer, _ = _renderer(session)
-    for node_id in range(1, 31):
-        _register(renderer, node_id, f"s{node_id}")
-        _color(renderer, node_id, max_val=float(node_id))
-
-    moved = _color(renderer, 30, max_val=99.0)
-    renderer.flush_writes()
-
-    assert (moved, session.deleted_maps) == (True, [29])
-
-
 def test_apply_selected_selects_the_block():
     session = _FakeSession()
     renderer, _ = _renderer(session)
@@ -543,20 +496,18 @@ def test_a_burst_of_selection_changes_makes_one_selection_write():
     assert session.selections == [("/shared/mb.vtm", ["/Root/b0", "/Root/b2"])]
 
 
-def test_a_released_map_stops_counting_at_once_and_is_deleted_after_the_lists_are_written():
+def test_a_released_map_is_deleted_only_after_the_lists_are_written():
     session = _FakeSession()
     renderer, _ = _renderer(session)
-    _register_blocks(renderer, 31)
-    for node_id in range(1, 31):
-        _color(renderer, node_id, max_val=float(node_id))
+    _register_blocks(renderer, 2)
+    _color(renderer, 1, max_val=1.0)
+    _color(renderer, 2, max_val=2.0)
     renderer.clear_color_variable(1)
 
-    coloured = _color(renderer, 31, max_val=31.0)
     deleted_before_flush = list(session.deleted_maps)
     renderer.flush_writes()
 
-    assert (coloured, deleted_before_flush, session.deleted_maps, session.maps[0] in _last_write(session, "BlockLookupTables")) == (
-        True,
+    assert (deleted_before_flush, session.deleted_maps, session.maps[0] in _last_write(session, "BlockLookupTables")) == (
         [],
         [0],
         False,
