@@ -4,6 +4,8 @@ import {
     GeometryPickMode,
     IRenderer,
     NodeId,
+    PartSelection,
+    PartVisibility,
     PickGeometryResult,
     TrameTriggerSender,
     VisorCameraState,
@@ -425,6 +427,14 @@ export class WasmRenderer implements IRenderer {
 
     async sendClearPartColorVariableAsync(nodeId: NodeId): Promise<void> {
         await this.#sends.sendClearPartColorVariableAsync(nodeId);
+    }
+
+    async sendPartsVisibilityAsync(parts: readonly PartVisibility[]): Promise<void> {
+        await this.#sends.sendPartsVisibilityAsync(parts);
+    }
+
+    async sendPartsSelectedAsync(parts: readonly PartSelection[]): Promise<void> {
+        await this.#sends.sendPartsSelectedAsync(parts);
     }
 
     // ---- View-level widgets -------------------------------------------------
