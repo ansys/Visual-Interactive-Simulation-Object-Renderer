@@ -601,7 +601,7 @@ def _run_list_variables(iface):
         pytest.param(_run_remove_dataset_with_datasets_left, 1, id="remove_dataset-left"),
         pytest.param(_run_remove_last_dataset, 1, id="remove_dataset-last"),
         pytest.param(_run_clear, 1, id="clear"),
-        pytest.param(_run_update_variables, 1, id="update_variables"),
+        pytest.param(_run_update_variables, 0, id="update_variables"),
         pytest.param(_run_load_state, 1, id="load_state"),
         pytest.param(_run_start, 0, id="start"),
         pytest.param(_run_list_datasets, 0, id="list_datasets"),
@@ -626,6 +626,15 @@ def test_failed_scene_operation_still_notifies(iface):
         iface.clear()
 
     assert iface._post_scene_change_hook.call_count == 1
+
+
+def test_update_variables_notifies_a_data_change_once(iface):
+    """update_variables notifies the data-change hook once, so connected clients refresh rather than rebuild."""
+    iface._post_data_change_hook = MagicMock()
+
+    _run_update_variables(iface)
+
+    assert iface._post_data_change_hook.call_count == 1
 
 
 # ================================================================== #

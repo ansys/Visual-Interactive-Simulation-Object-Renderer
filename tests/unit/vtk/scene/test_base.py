@@ -17,7 +17,7 @@ test_local_scene.py, exercised through the concrete VisorLocalScene subclass.
 """
 import json
 import threading
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 import pytest
 from vtkmodules.vtkCommonCore import vtkFloatArray
@@ -3481,7 +3481,7 @@ def test_rebuild_at_update_follows_the_reload_and_the_metadata_refresh(records_s
 
     node = records_scene._scene_graph.get_descendant_node.return_value
     node.refresh_descendant_variable_metadata.side_effect = lambda **_: order.append("refresh")
-    real_build = VisorVariableRecords.from_registry
+    real_build = VisorVariableRecords.from_registry_keeping_ranges
 
     def _build(*args):
         order.append("rebuild")
@@ -3489,7 +3489,7 @@ def test_rebuild_at_update_follows_the_reload_and_the_metadata_refresh(records_s
 
     with (
         patch.object(registry, "update_variables", side_effect=_update_variables),
-        patch.object(VisorVariableRecords, "from_registry", side_effect=_build),
+        patch.object(VisorVariableRecords, "from_registry_keeping_ranges", side_effect=_build),
     ):
         records_scene.update_variables_for_dataset(1, [])
 
@@ -3661,6 +3661,93 @@ def test_rebuild_keeps_a_custom_range_on_a_colored_part(scene, registry, pipelin
     _add_dataset_carrying(scene, registry, _wider_pressure_variable())
 
     assert pipeline.mapper.GetScalarRange() == pytest.approx((3.25, 6.75))
+
+
+def _update_pressure_to_wider(scene, registry):
+    """update_variables_for_dataset so NODE_ID's "pressure" carries wider values at the same width."""
+    scene._scene_graph = MagicMock(name="scene_graph")
+
+    def _update_variables(dataset_id, variables):
+        _seed_part_variables(registry, [_wider_pressure_variable()])
+
+    with patch.object(registry, "update_variables", side_effect=_update_variables):
+        scene.update_variables_for_dataset(1, [])
+
+
+# A part coloured at the default, and one coloured at a custom range: both keep
+# their effective component range across an update that widens the data.
+_KEEP_ACROSS_UPDATE_CASES = [
+    pytest.param(None, (10.0, 20.0), id="no_custom"),
+    pytest.param((3.25, 6.75), (3.25, 6.75), id="custom"),
+]
+
+
+@pytest.mark.parametrize("custom_range,expected_range", _KEEP_ACROSS_UPDATE_CASES)
+def test_update_keeps_each_effective_range_and_recomputes_the_default(
+        scene, registry, pipeline, custom_range, expected_range
+):
+    """Store half: the record keeps its effective ranges, and its defaults follow the new data."""
+    _color_part_by_pressure_component(scene, registry)
+    if custom_range is not None:
+        scene.set_variable_range(VARIABLE_ID, 0, *custom_range)
+
+    _update_pressure_to_wider(scene, registry)
+
+    record = scene._variable_records.variables[VARIABLE_ID]
+    assert record.ranges == [expected_range]
+    assert record.magnitude_range == (0.0, 49.0)
+    assert record.default_ranges == [(-5.0, 30.0)]
+    assert record.default_magnitude_range == (0.0, 60.0)
+
+
+@pytest.mark.parametrize("custom_range,expected_range", _KEEP_ACROSS_UPDATE_CASES)
+def test_update_leaves_the_colored_part_mapper_at_the_effective_range(
+        scene, registry, pipeline, custom_range, expected_range
+):
+    """Apply half: the mapper stays at the effective range and is not re-serialized; the default still follows."""
+    _color_part_by_pressure_component(scene, registry)
+    if custom_range is not None:
+        scene.set_variable_range(VARIABLE_ID, 0, *custom_range)
+    scene._vtk_lock = _LockSpy()
+    serialized = _record_mapper_serializations(
+        scene, pipeline.mapper, lambda: tuple(pipeline.mapper.GetScalarRange())
+    )
+
+    _update_pressure_to_wider(scene, registry)
+
+    assert pipeline.mapper.GetScalarRange() == pytest.approx(expected_range)
+    assert serialized == []
+    assert scene._variable_records.variables[VARIABLE_ID].default_ranges == [(-5.0, 30.0)]
+
+
+def test_update_pushes_to_the_client_as_data_only(scene, registry, pipeline):
+    """update_variables_for_dataset pushes with dataOnly=True, so the wasm frontend is not rebuilt."""
+    _seed_part_variables(registry, [_pressure_variable()])
+    scene._rebuild_variable_records_from_registry()
+    scene._renderer._local_view.update.reset_mock()
+
+    _update_pressure_to_wider(scene, registry)
+
+    assert scene._renderer._local_view.update.call_args_list == [call(dataOnly=True)]
+
+
+def test_get_variable_records_json_serves_the_held_records_by_alias(records_scene):
+    """The records trigger's payload is the held records, keyed by identifier, dumped by alias."""
+    _seed_records(records_scene, _pressure_record())
+
+    assert json.loads(records_scene.get_variable_records_json()) == {
+        "POINT::pressure::1": {
+            "id": "POINT::pressure::1",
+            "arrayName": "pressure",
+            "type": "POINT",
+            "numComponents": 1,
+            "partIds": [7],
+            "defaultMagnitudeRange": [0.0, 49.0],
+            "defaultRanges": [[10.0, 20.0]],
+            "magnitudeRange": [0.0, 49.0],
+            "ranges": [[10.0, 20.0]],
+        }
+    }
 
 
 def test_load_overlays_the_file_range_before_the_part_restore(scene, registry):

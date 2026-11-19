@@ -76,3 +76,13 @@ def test_scene_change_bumps_the_one_publisher(wiring):
     publishers[0][1].bump_scene_version.assert_called_once_with()
 
 
+def test_data_change_bumps_data_version_and_not_scene_version(wiring):
+    """The data-change hook bumps data_version, so connected clients refresh in place and do not rebuild."""
+    _app_cls, _scene_cls, _bridge_cls, _mgr, publishers, viewer = wiring
+
+    viewer._post_data_change_hook()
+
+    publishers[0][1].bump_data_version.assert_called_once_with()
+    publishers[0][1].bump_scene_version.assert_not_called()
+
+

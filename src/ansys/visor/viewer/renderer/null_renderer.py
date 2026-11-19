@@ -140,4 +140,7 @@ class NullRenderer(IRenderer):
     def render(self) -> None:
         pass
 
+    def render_without_rebuild(self) -> None:
+        """No window and no frontend; nothing to do."""
+
 

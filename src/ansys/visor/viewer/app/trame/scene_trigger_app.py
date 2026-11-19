@@ -2,7 +2,7 @@ import functools
 import urllib.parse
 from abc import ABC, abstractmethod
 from logging import Logger
-from typing import List, Optional, Protocol, Sequence
+from typing import Callable, List, Optional, Protocol, Sequence
 
 from pydantic import BaseModel, Field, ValidationError
 from trame.app.core import Server
@@ -217,10 +217,14 @@ class SceneTriggerApp(ABC):
         standalone: bool,
         trame_logger: Logger | None,
         scene_mutation_api: SceneMutationApi | None,
+        *,
+        get_variable_records_json: Callable[[], str],
     ):
         self.server = server
         # Callable to get the scene details in JSON format
         self._get_scene_details_json = get_scene_details_json
+        # Callable to get the held variable records in JSON format
+        self._get_variable_records_json = get_variable_records_json
         # Per-part visual state coordinator (see SceneMutationApi).  The one
         # production construction site always supplies it; it is optional so
         # that the class stays constructible without a scene.
@@ -290,6 +294,11 @@ class SceneTriggerApp(ABC):
     def get_visor_scene_details_json(self):
         """ returns the scene details in JSON format. """
         return self._get_scene_details_json()
+
+    @trigger("get_variable_records_json")
+    def get_variable_records_json(self) -> str:
+        """Return the held variable records, keyed by identifier, in JSON format."""
+        return self._get_variable_records_json()
 
     # ------------------------------------------------------------------
     # Per-part visual state triggers

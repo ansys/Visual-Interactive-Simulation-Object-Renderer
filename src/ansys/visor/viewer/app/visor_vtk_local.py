@@ -48,10 +48,14 @@ class VisorVTKLocal(VisorVTK):
             # structurally: the coordinator methods carry exactly the names
             # and signatures the triggers call.
             scene_mutation_api=self._scene,
+            get_variable_records_json=self._scene.get_variable_records_json,
             pick_geometry_in_view=self._scene.pick_geometry_in_view,
             pick_part_in_view=self._scene.pick_part_in_view,
         )
 
     def _post_scene_change_hook(self) -> None:
         """Client mode signals through LocalView.update and set_state; nothing to bump."""
+
+    def _post_data_change_hook(self) -> None:
+        """Client mode signals through the data-only LocalView.update the operation already pushed; nothing to bump."""
 

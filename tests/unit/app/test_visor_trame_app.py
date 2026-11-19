@@ -54,6 +54,7 @@ def test_init_sets_attributes(
     app = LocalApp(
         server=mock_server,
         get_scene_details_json=mock_get_scene_details_json,
+        get_variable_records_json=MagicMock(),
         standalone=True,
         trame_logger=mock_logger,
         pick_geometry_in_view=MagicMock(),
@@ -71,6 +72,7 @@ def test_register_lifecycle_hooks_adds_handlers(
     LocalApp(
         server=mock_server,
         get_scene_details_json=mock_get_scene_details_json,
+        get_variable_records_json=MagicMock(),
         standalone=True,
         pick_geometry_in_view=MagicMock(),
         pick_part_in_view=MagicMock(),
@@ -85,6 +87,7 @@ def test_set_headers_sets_http_headers(
     LocalApp(
         server=mock_server,
         get_scene_details_json=mock_get_scene_details_json,
+        get_variable_records_json=MagicMock(),
         standalone=True,
         pick_geometry_in_view=MagicMock(),
         pick_part_in_view=MagicMock(),
@@ -108,6 +111,7 @@ def test_set_www_path_sets_www(
     LocalApp(
         server=mock_server,
         get_scene_details_json=mock_get_scene_details_json,
+        get_variable_records_json=MagicMock(),
         standalone=True,
         pick_geometry_in_view=MagicMock(),
         pick_part_in_view=MagicMock(),
@@ -122,6 +126,7 @@ def test_get_visor_scene_details_json_returns_scene_details(
     app = LocalApp(
         server=mock_server,
         get_scene_details_json=mock_get_scene_details_json,
+        get_variable_records_json=MagicMock(),
         standalone=True,
         pick_geometry_in_view=MagicMock(),
         pick_part_in_view=MagicMock(),
@@ -142,6 +147,7 @@ def test_trame_logger_is_set_when_provided(
     app = LocalApp(
         server=mock_server,
         get_scene_details_json=mock_get_scene_details_json,
+        get_variable_records_json=MagicMock(),
         standalone=True,
         trame_logger=mock_logger,
         pick_geometry_in_view=MagicMock(),
@@ -161,6 +167,7 @@ def test_trame_logger_is_none_when_not_provided(
     app = LocalApp(
         server=mock_server,
         get_scene_details_json=mock_get_scene_details_json,
+        get_variable_records_json=MagicMock(),
         standalone=True,
         pick_geometry_in_view=MagicMock(),
         pick_part_in_view=MagicMock(),
@@ -180,6 +187,7 @@ def test_lifecycle_logging_calls_debug(
     LocalApp(
         server=mock_server,
         get_scene_details_json=mock_get_scene_details_json,
+        get_variable_records_json=MagicMock(),
         standalone=True,
         trame_logger=mock_logger,
         pick_geometry_in_view=MagicMock(),
