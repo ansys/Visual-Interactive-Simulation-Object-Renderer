@@ -60,9 +60,7 @@ export class ServerViewer {
         // its immediate callback starts the initial build and data_version's
         // queues a records refresh to run after it.
         const unwatchScene = this.#state.watch([SCENE_VERSION_KEY], () => queue.requestRebuild());
-        const unwatchData = this.#state.watch([DATA_VERSION_KEY], () =>
-            queue.requestDataRefresh()
-        );
+        const unwatchData = this.#state.watch([DATA_VERSION_KEY], () => queue.requestDataRefresh());
         this.#unwatch = () => {
             unwatchScene();
             unwatchData();
