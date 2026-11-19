@@ -51,14 +51,16 @@ def check_init_args(
         rendering_mode,
         standalone,
         dark_mode,
+        pvserver_host,
+        pvserver_port,
 ):
     """
-    If the user explicitly passed --rendering-mode, --standalone, or --dark-mode, check whether
-    the target instance already exists.  These flags have no effect when
+    If the user explicitly passed --rendering-mode, --standalone, --dark-mode, --pvserver-host or
+    --pvserver-port, check whether the target instance already exists.  These flags have no effect when
     connecting to an existing instance, so we treat it as an error to
     prevent silent misconfiguration.
     """
-    # Check if --rendering-mode, --standalone, or --dark-mode args are passed
+    # Check if any creation-time flag is passed
     user_set_flags = []
     if rendering_mode is not None:
         user_set_flags.append("--rendering-mode")
@@ -66,6 +68,10 @@ def check_init_args(
         user_set_flags.append("--standalone")
     if dark_mode is not None:
         user_set_flags.append("--dark-mode")
+    if pvserver_host is not None:
+        user_set_flags.append("--pvserver-host")
+    if pvserver_port is not None:
+        user_set_flags.append("--pvserver-port")
 
     # If neither is passed, no need to check for existing instance since we're not trying to set any params
     if not user_set_flags:
@@ -149,8 +155,19 @@ def main():
                 args.rendering_mode,
                 args.standalone,
                 args.dark_mode,
+                args.pvserver_host,
+                args.pvserver_port,
             )
-            api.initialize(args.host, args.port, args.rendering_mode, args.standalone, args.dark_mode, args.start)
+            api.initialize(
+                args.host,
+                args.port,
+                args.rendering_mode,
+                args.standalone,
+                args.dark_mode,
+                args.pvserver_host,
+                args.pvserver_port,
+                args.start,
+            )
         elif args.action == "list":
             api.list()
     elif args.group == "instance":

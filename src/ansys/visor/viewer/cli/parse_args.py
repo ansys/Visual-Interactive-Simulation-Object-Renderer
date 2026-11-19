@@ -54,6 +54,17 @@ def parse_args():
         ),
     )
     init_parser.add_argument(
+        "--pvserver-host",
+        default=None,
+        help="pvserver host for a PARAVIEW instance (default: pvserver_host from .visor)"
+    )
+    init_parser.add_argument(
+        "--pvserver-port",
+        type=int,
+        default=None,
+        help="pvserver port for a PARAVIEW instance (default: pvserver_port from .visor)"
+    )
+    init_parser.add_argument(
         "--standalone",
         type=lambda x: x.lower() == "true",
         default=None,

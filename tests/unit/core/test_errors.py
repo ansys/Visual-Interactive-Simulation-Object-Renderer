@@ -1,4 +1,20 @@
+import pytest
+
 import ansys.visor.viewer.core.errors as errors
+
+
+@pytest.mark.parametrize(
+    "error_cls",
+    [
+        errors.PvserverConnectionError,
+        errors.ParaviewSessionError,
+        errors.ParaviewNotConfiguredError,
+        errors.UnsupportedInModeError,
+    ],
+)
+def test_paraview_errors_are_runtime_errors(error_cls):
+    """Verify that each PARAVIEW error is reported through the API's runtime-error branch."""
+    assert isinstance(error_cls("m"), RuntimeError)
 
 
 def test_invalid_file_error_str():

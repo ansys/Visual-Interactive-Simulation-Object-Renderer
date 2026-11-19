@@ -7,6 +7,8 @@ import yaml
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings
 
+from ansys.visor.viewer.core.pvserver_address import PvserverAddress
+
 
 class Settings(BaseSettings):
     """
@@ -36,6 +38,12 @@ class Settings(BaseSettings):
     binding_host: str | None = Field(default_factory=lambda: os.environ.get("GLOW_PRODUCT_BINDING_HOST"))
     # Optional SSL certificate for Trame/wslink in the format "<cert>,<key>".
     ssl_certificate: str | None = None
+    # PARAVIEW mode; read from the .visor YAML.
+    paraview_pvpython: str | None = None  # path to pvpython(.exe); required for PARAVIEW
+    paraview_venv: str | None = None  # path to the venv passed to pvpython --venv; required for PARAVIEW
+    pvserver_host: str = "localhost"  # default pvserver host when a session gives none
+    pvserver_port: int = 11111  # default pvserver port when a session gives none
+    paraview_session_start_timeout: float = 120.0  # seconds to wait for the session's ready message
 
     @classmethod
     def settings_customise_sources(
@@ -65,6 +73,10 @@ class Settings(BaseSettings):
         if standalone:
             return self.default_client_bundle
         return None
+
+    def default_pvserver_address(self) -> PvserverAddress:
+        """The settings default pvserver address."""
+        return PvserverAddress(host=self.pvserver_host, port=self.pvserver_port)
 
     @model_validator(mode="after")
     def _resolve_ssl_certificate(self) -> "Settings":

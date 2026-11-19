@@ -3,6 +3,7 @@ from pydantic import ValidationError
 
 from ansys.visor.viewer.api.models import Info, InitProps, RemoveDatasetProps, StartProps, UpdateProps
 from ansys.visor.viewer.core.metadata import Metadata
+from ansys.visor.viewer.core.pvserver_address import PvserverAddress
 
 
 def test_info_model_valid():
@@ -40,6 +41,17 @@ def test_initprops_invalid_host():
     """Verify that InitProps raises a ValidationError for an invalid host."""
     with pytest.raises(ValidationError):
         InitProps(host="bad host!", port=8081)
+
+@pytest.mark.parametrize("mode", ["SERVER", None])
+def test_initprops_rejects_pvserver_fields_outside_paraview(mode):
+    """Verify that pvserver fields are refused unless the mode is PARAVIEW."""
+    with pytest.raises(ValidationError, match="pvserver_port only allowed when rendering_mode is PARAVIEW"):
+        InitProps(host="localhost", rendering_mode=mode, pvserver_port=1)
+
+def test_initprops_pvserver_address_fills_missing_from_default():
+    """Verify that a missing pvserver field is taken from the default address."""
+    props = InitProps(host="localhost", rendering_mode="PARAVIEW", pvserver_host="pv")
+    assert props.pvserver_address(PvserverAddress(host="d", port=2)) == PvserverAddress(host="pv", port=2)
 
 def test_startprops_all_fields():
     """Verify that StartProps stores all provided field values."""

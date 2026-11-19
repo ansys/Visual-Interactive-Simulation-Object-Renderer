@@ -98,28 +98,42 @@ def test_main_server_init(mock_parse_args, mock_server_api):
     args = make_args(
         "server", "init",
         host="h", port=42, rendering_mode=RenderingMode.CLIENT,
-        standalone=True, dark_mode=False, start=False,
+        standalone=True, dark_mode=False, pvserver_host=None, pvserver_port=None, start=False,
     )
     mock_parse_args.return_value = args
     api = MagicMock()
     mock_server_api.return_value = api
     with patch("ansys.visor.viewer.cli.visor_cli.check_server_running", return_value=True):
         visor_cli.main()
-        api.initialize.assert_called_once_with("h", 42, RenderingMode.CLIENT, True, False, False)
+        api.initialize.assert_called_once_with("h", 42, RenderingMode.CLIENT, True, False, None, None, False)
 
 def test_main_server_init_with_start(mock_parse_args, mock_server_api):
     """Verify that server initialization forwards the --start flag."""
     args = make_args(
         "server", "init",
         host="h", port=42, rendering_mode=RenderingMode.CLIENT,
-        standalone=True, dark_mode=False, start=True,
+        standalone=True, dark_mode=False, pvserver_host=None, pvserver_port=None, start=True,
     )
     mock_parse_args.return_value = args
     api = MagicMock()
     mock_server_api.return_value = api
     with patch("ansys.visor.viewer.cli.visor_cli.check_server_running", return_value=True):
         visor_cli.main()
-        api.initialize.assert_called_once_with("h", 42, RenderingMode.CLIENT, True, False, True)
+        api.initialize.assert_called_once_with("h", 42, RenderingMode.CLIENT, True, False, None, None, True)
+
+def test_main_server_init_paraview_forwards_pvserver_flags(mock_server_api, mock_requests_get):
+    """Verify that --pvserver-host and --pvserver-port reach ServerAPI.initialize in order."""
+    mock_requests_get.return_value.json.return_value = {"urls": []}
+    api = MagicMock()
+    mock_server_api.return_value = api
+    argv = [
+        "visor-cli", "server", "init", "--rendering-mode", "PARAVIEW",
+        "--pvserver-host", "pv", "--pvserver-port", "2",
+    ]
+    with patch("sys.argv", argv), \
+            patch("ansys.visor.viewer.cli.visor_cli.check_server_running", return_value=True):
+        visor_cli.main()
+    api.initialize.assert_called_once_with("localhost", 0, "PARAVIEW", None, None, "pv", 2, False)
 
 def test_main_instance_actions(mock_parse_args, mock_instance_api):
     """Verify that instance actions invoke the corresponding API methods."""

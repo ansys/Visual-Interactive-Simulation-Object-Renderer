@@ -1,6 +1,13 @@
 from unittest.mock import patch
 
 import ansys.visor.viewer.config as config
+from ansys.visor.viewer.core.pvserver_address import PvserverAddress
+
+
+def test_default_pvserver_address(tmp_path, monkeypatch):
+    """Verify the pvserver address used when neither the request nor .visor gives one."""
+    monkeypatch.chdir(tmp_path)
+    assert config.Settings().default_pvserver_address() == PvserverAddress(host="localhost", port=11111)
 
 
 def test_settings_defaults():

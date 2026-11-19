@@ -2,12 +2,14 @@ import { render, waitFor } from '@testing-library/react';
 import App from '../App';
 
 /**
- * When the probe reports server rendering, the page never starts the
- * client-mode wasm scene: it streams frames over the probe's session instead.
+ * When the probe reports a streamed mode (server or paraview), the page never
+ * starts the client-mode wasm scene: it streams frames over the probe's session
+ * instead.
  *
  * Expected values are hand-written literals.
  */
 
+const mockMode = { value: 'server' as 'server' | 'paraview' };
 const mockGetInstanceAsync = jest.fn();
 const mockSubscribe = jest.fn(() => ({ unsubscribe: () => {} }));
 const mockTrame = {
@@ -34,13 +36,15 @@ jest.mock('../wasm/RemoteVtkScene', () => ({
 }));
 
 jest.mock('../hooks/useRenderingMode', () => ({
-    useRenderingMode: () => ({ mode: 'server', trame: mockTrame, error: null }),
+    useRenderingMode: () => ({ mode: mockMode.value, trame: mockTrame, error: null }),
 }));
 
 const globals = globalThis as unknown as { ResizeObserver: unknown };
 let originalResizeObserver: unknown;
 
 beforeEach(() => {
+    mockSubscribe.mockClear();
+    mockGetInstanceAsync.mockClear();
     originalResizeObserver = globals.ResizeObserver;
     globals.ResizeObserver = class {
         observe() {}
@@ -53,11 +57,15 @@ afterEach(() => {
 });
 
 describe('App mode branch', () => {
-    test('server mode never loads the wasm scene', async () => {
-        render(<App />);
+    test.each([['server'], ['paraview']] as const)(
+        '%s mode never loads the wasm scene',
+        async (mode) => {
+            mockMode.value = mode;
+            render(<App />);
 
-        await waitFor(() => expect(mockSubscribe).toHaveBeenCalled());
+            await waitFor(() => expect(mockSubscribe).toHaveBeenCalled());
 
-        expect(mockGetInstanceAsync).not.toHaveBeenCalled();
-    });
+            expect(mockGetInstanceAsync).not.toHaveBeenCalled();
+        }
+    );
 });
