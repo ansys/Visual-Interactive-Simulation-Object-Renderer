@@ -13,6 +13,7 @@ from ansys.visor.viewer import Visor
 from ansys.visor.viewer.app.trame.trame_server_manager import TrameServerManager
 from ansys.visor.viewer.app.visor import Metadata
 from ansys.visor.viewer.core.perf_timer import PerfTimer
+from ansys.visor.viewer.core.pvserver_address import PvserverAddress
 from ansys.visor.viewer.core.visor_enums import RenderingMode
 from ansys.visor.viewer.core.visor_logging import VisorDefaultLogger
 from ansys.visor.viewer.core.visor_types import VisorDatasetType
@@ -170,6 +171,7 @@ class VisorVTK(Visor):
             standalone: bool = True,
             dark_mode: bool | None = None,
             trame_log_dir: str | None = None,
+            pvserver: PvserverAddress | None = None,
     ):
         """
         Initializes the Visor class.
@@ -181,7 +183,10 @@ class VisorVTK(Visor):
             dark_mode (bool): A flag indicating whether to use the Dark mode
             trame_log_dir (Optional[str]): The path to the Trame log file. Defaults to None.
                     If set to a value, Trame logging is enabled (is disabled by default).
+            pvserver (Optional[PvserverAddress]): Accepted so that ``Visor(...)`` has one
+                    signature in every mode; an address raises ValueError naming the mode.
         """
+        self._reject_pvserver_outside_paraview(RenderingMode.from_string(rendering_mode), pvserver)
         super().__init__(url, standalone, dark_mode)
 
         # I/O helper — owns all filesystem interactions (e.g. reading datasets, reading/writing state)

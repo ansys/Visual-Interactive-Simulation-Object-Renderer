@@ -5,6 +5,7 @@ from typing import Any, Awaitable, Dict, List, Type
 import ansys.visor.viewer.core.errors as errors
 from ansys.visor.viewer.config import settings
 from ansys.visor.viewer.core.metadata import Metadata
+from ansys.visor.viewer.core.pvserver_address import PvserverAddress
 from ansys.visor.viewer.core.visor_enums import RenderingEngine, RenderingMode
 from ansys.visor.viewer.core.visor_helpers import validate_url
 from ansys.visor.viewer.core.visor_logging import VisorDefaultLogger
@@ -34,6 +35,9 @@ class Visor:
     dark_mode : bool, Default: None
        Whether to use dark mode for the app. If ``None``,
        the default dark mode setting from the configuration is used.
+    pvserver : PvserverAddress, default: None
+       The pvserver a PARAVIEW session renders on; the settings default when
+       ``None``.  Any other mode rejects an address.
     """
     def __new__(cls,
                 rendering_engine: RenderingEngine = RenderingEngine.VTK,
@@ -41,6 +45,7 @@ class Visor:
                 url: str | None = None,
                 standalone: bool = True,
                 dark_mode: bool | None = None,
+                pvserver: PvserverAddress | None = None,
                 **kwargs,
                 ) -> "Visor":
         """
@@ -48,12 +53,14 @@ class Visor:
 
         This is a factory method to return an instance of a subclass
         that is determined by the ``rendering_engine`` enum value provided as input.
+        PARAVIEW mode returns a handle to a session in its own process.
         """
         if cls is not Visor:
             return super().__new__(cls)
 
         rendering_engine = RenderingEngine.from_string(rendering_engine)
         rendering_mode = RenderingMode.from_string(rendering_mode)
+        Visor._reject_pvserver_outside_paraview(rendering_mode, pvserver)
 
         from ansys.visor.viewer.app.visor_vtk import VisorVTK
 
@@ -68,6 +75,10 @@ class Visor:
                     f"Unsupported rendering engine: {rendering_engine}.  "
                     f"Valid values: {list(engine_map.keys())}."
                 ))
+        if rendering_mode is RenderingMode.PARAVIEW:
+            from ansys.visor.viewer.app.paraview.paraview_handle import VisorParaviewHandle
+
+            return super().__new__(VisorParaviewHandle)
         # Delegate to the engine class's __new__, passing rendering_mode through.
         return engine_class.__new__(engine_class, rendering_mode=rendering_mode, **kwargs)
 
@@ -238,6 +249,12 @@ class Visor:
         raise NotImplementedError
 
     """ Protected Methods """
+    @staticmethod
+    def _reject_pvserver_outside_paraview(rendering_mode: RenderingMode, pvserver: PvserverAddress | None) -> None:
+        """Raise ValueError naming rendering_mode when a pvserver address is given for a mode other than PARAVIEW."""
+        if pvserver is not None and rendering_mode is not RenderingMode.PARAVIEW:
+            raise ValueError(f"pvserver is accepted only in PARAVIEW mode, not {rendering_mode.name}")
+
     def _set_default_url(self, url: str | None) -> None:
         """Validate and parse the provided URL, set as default if None"""
         if url is None:

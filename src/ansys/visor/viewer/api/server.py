@@ -27,6 +27,7 @@ from ansys.visor.viewer.api.models import (
 from ansys.visor.viewer.api.visor_cache import VisorCache
 from ansys.visor.viewer.config import settings
 from ansys.visor.viewer.core.net import find_unused_port
+from ansys.visor.viewer.core.pvserver_address import PvserverAddress
 from ansys.visor.viewer.core.visor_enums import RenderingMode
 from ansys.visor.viewer.core.visor_logging import VisorLogger
 
@@ -139,6 +140,7 @@ class VisorAPI:
             self.settings.default_port,
             self.settings.default_standalone,
             self.settings.default_dark_mode,
+            None,
         )[0]
 
         # Configure FastAPI application
@@ -209,12 +211,15 @@ class VisorAPI:
             else settings.default_dark_mode
         rendering_mode = init_props.rendering_mode if init_props.rendering_mode is not None\
             else RenderingMode.CLIENT
+        pvserver = init_props.pvserver_address(self.settings.default_pvserver_address())\
+            if rendering_mode == RenderingMode.PARAVIEW else None
         # initialize an instance of Visor
         self.visualizer, warnings = self._connect_or_initialize_visualizer(
             host,
             port,
             standalone,
             dark_mode,
+            pvserver,
             rendering_mode
         )
         url = self._get_url(host, port)
@@ -440,17 +445,21 @@ class VisorAPI:
             port: int,
             standalone: bool,
             dark_mode: bool,
+            pvserver: PvserverAddress | None,
             rendering_mode: RenderingMode = RenderingMode.CLIENT,
     ) -> Tuple[Visor, str]:
         """Connect to a visualizer instance with the given host and port if one
-        exists; otherwise, create a new visualizer instance on that host and port."""
+        exists; otherwise, create a new visualizer instance on that host and port.
+        pvserver is the PARAVIEW session's address, None for other modes."""
         url = self._get_url(host, port)
         msg = (
             f'Connecting to Visor server on {url} (standalone={standalone}, dark_mode={dark_mode})'
         )
         logger.info(msg)
         # Initialize the server with the given port, host and client distribution path
-        instance, warnings = VisorCache.get_instance(url, rendering_mode, standalone, dark_mode, self.trame_log_dir)
+        instance, warnings = VisorCache.get_instance(
+            url, rendering_mode, standalone, dark_mode, pvserver, self.trame_log_dir
+        )
         return instance, warnings
 
 
