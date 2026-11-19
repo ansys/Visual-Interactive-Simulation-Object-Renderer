@@ -16,25 +16,17 @@ from typing import TYPE_CHECKING
 from trame_rca.rca import VtkRemoteControlledArea
 from trame_server import Server
 
+from ansys.visor.viewer.renderer.gl_context_lock import GlContextLock
 from ansys.visor.viewer.renderer.server_renderer import ServerRenderer
 from ansys.visor.viewer.renderer.server_window import VisorRcaWindow
+from ansys.visor.viewer.renderer.streamed_protocols import BACKGROUND_RGB
 from ansys.visor.viewer.vtk.scene.base import VisorSceneBase
 
 if TYPE_CHECKING:
     from ansys.visor.viewer.app.trame.server_loop_bridge import ServerLoopBridge
     from ansys.visor.viewer.models.runtime.picking.geometry_pick import GeometryPick
     from ansys.visor.viewer.models.runtime.scene.runtime_app_state import RuntimeAppState
-    from ansys.visor.viewer.renderer.server_renderer import ViewRecordPublisher
-
-BACKGROUND_RGB: dict[bool, tuple[float, float, float]] = {
-    False: (247 / 255, 247 / 255, 247 / 255),
-    True: (54 / 255, 60 / 255, 67 / 255),
-}
-"""Viewer background per theme, keyed on dark.
-
-The values of ``--visor-viewer-background`` in the client's
-``public/css/theme-light.css`` and ``public/css/theme-dark.css``.
-"""
+    from ansys.visor.viewer.renderer.streamed_protocols import ViewRecordPublisher
 
 
 class VisorServerScene(VisorSceneBase):
@@ -50,9 +42,14 @@ class VisorServerScene(VisorSceneBase):
         bridge: ServerLoopBridge,
         view_record_publisher: ViewRecordPublisher,
     ) -> None:
-        """Build the ServerRenderer and the RCA window over this scene's lock."""
+        """Build the ServerRenderer, a GlContextLock over its window as the scene lock, and the RCA window over that lock."""
         renderer = ServerRenderer(BACKGROUND_RGB[dark_mode], bridge, view_record_publisher)
-        super().__init__(server, dark_mode, renderer=renderer)
+        super().__init__(
+            server,
+            dark_mode,
+            renderer=renderer,
+            vtk_lock=GlContextLock(renderer.render_window),
+        )
         self._rca_window = VisorRcaWindow(
             VtkRemoteControlledArea(renderer.render_window),
             renderer,

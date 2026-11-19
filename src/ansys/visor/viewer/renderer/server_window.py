@@ -1,7 +1,7 @@
 """
 VisorRcaWindow
 ==============
-trame-rca remote-controlled area over a :class:`ServerRenderer`.
+trame-rca remote-controlled area over an :class:`RcaRenderTarget`.
 
 trame-rca's scheduler reads :attr:`VisorRcaWindow.img_cols_rows` on the event
 loop thread, and its resize and interaction RPCs arrive on the same thread.
@@ -18,13 +18,14 @@ cross-section plane, once, in the same locked section, after the batch.
 
 from __future__ import annotations
 
-from typing import Callable, Protocol
+from typing import Callable
 
 import numpy as np
 from numpy.typing import NDArray
 from trame_rca.rca.protocol import RemoteControlledAreaProtocol
 
-from ansys.visor.viewer.renderer.server_renderer import INITIAL_WINDOW_SIZE, ServerRenderer
+from ansys.visor.viewer.renderer.gl_context_lock import SceneLock
+from ansys.visor.viewer.renderer.streamed_protocols import INITIAL_WINDOW_SIZE, RcaRenderTarget
 
 GESTURE_END_EVENT_TYPES: frozenset[str] = frozenset(
     {"LeftButtonRelease", "MiddleButtonRelease", "RightButtonRelease", "MouseWheel"}
@@ -36,21 +37,11 @@ so each gesture forwards one release.
 """
 
 
-class SceneLock(Protocol):
-    """The two lock operations the window uses."""
-
-    def acquire(self, blocking: bool = True) -> bool:
-        """Acquire; non-blocking returns False when held elsewhere."""
-
-    def release(self) -> None:
-        """Release one level."""
-
-
 class VisorRcaWindow:
-    """trame-rca area over a ServerRenderer that touches VTK only while holding the scene lock."""
+    """trame-rca area over an RcaRenderTarget that touches VTK only while holding the scene lock."""
 
     _capture: RemoteControlledAreaProtocol
-    _renderer: ServerRenderer
+    _renderer: RcaRenderTarget
     _vtk_lock: SceneLock
     _reschedule: Callable[[], None]
     _pending_size: tuple[int, int] | None
@@ -62,7 +53,7 @@ class VisorRcaWindow:
     def __init__(
         self,
         capture: RemoteControlledAreaProtocol,
-        renderer: ServerRenderer,
+        renderer: RcaRenderTarget,
         vtk_lock: SceneLock,
         reschedule: Callable[[], None],
     ) -> None:
@@ -103,7 +94,6 @@ class VisorRcaWindow:
             self._last_frame = frame
             return frame
         finally:
-            self._renderer.render_window.ReleaseCurrent()
             self._vtk_lock.release()
 
     def process_resize_event(self, width: int, height: int) -> None:

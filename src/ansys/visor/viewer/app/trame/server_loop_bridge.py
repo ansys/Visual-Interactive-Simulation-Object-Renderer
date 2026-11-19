@@ -15,7 +15,7 @@ import threading
 from trame_rca.view_adapter import RcaViewAdapter
 
 from ansys.visor.viewer.app.trame.async_runner import AsyncRunner
-from ansys.visor.viewer.renderer.server_renderer import FrameRequester
+from ansys.visor.viewer.renderer.streamed_protocols import FrameRequester
 
 
 class ServerLoopBridge(FrameRequester):
