@@ -32,7 +32,6 @@ jest.mock('../hooks/useRenderingMode', () => ({
 function mockMakeWasmView() {
     return {
         trameGetState: () => false,
-        clearObserversAndEventListeners: () => {},
         addServerUpdatedListener: () => () => {},
         addDataUpdatedListener: () => {},
         addSetStateListener: () => () => {},

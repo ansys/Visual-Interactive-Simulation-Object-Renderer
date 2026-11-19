@@ -69,7 +69,6 @@ function mockSceneDetailsPayload() {
 function mockMakeWasmView() {
     return {
         trameGetState: () => false,
-        clearObserversAndEventListeners: () => {},
         addServerUpdatedListener: () => () => {},
         addDataUpdatedListener: () => {},
         addSetStateListener: () => () => {},

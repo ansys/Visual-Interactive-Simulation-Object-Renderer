@@ -496,26 +496,14 @@ export default class RemoteVtkScene {
     ////////////////////////////////////////////////////////////////////////////////////////
 
     /**@type{Map<Function,()=>void>}*/
-    #userObserverRemovers = new Map();
-    /**@type{Map<Function,()=>void>}*/
     #serverUpdatedListeners = new Map();
     /**@type{Map<Function,(payload:any)=>void>}*/
     #setStateListeners = new Map();
     /**
-     * Never cleared, so a data update arriving during a rebuild still reaches its listener.
+     * Never emptied, so a data update arriving during a rebuild still reaches its listener.
      * @type{(()=>void)[]}
      */
     #dataUpdatedListeners = [];
-    /**
-     * @return {void}
-     */
-    clearObserversAndEventListeners = () => {
-        for (const remover of this.#userObserverRemovers.values()) {
-            remover();
-        }
-        this.#serverUpdatedListeners.clear();
-        this.#setStateListeners.clear();
-    };
     /**
      * @param {()=>void} handler
      * @return {()=>void}
