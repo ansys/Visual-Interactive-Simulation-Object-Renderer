@@ -6,7 +6,8 @@ import type { VisorArgs } from '../hooks/useVisorArgs';
 /**
  * In server mode every change of scene_version rebuilds the frontend from
  * freshly fetched scene details, one build at a time, and the replaced
- * build's renderer stops listening.
+ * build's renderer stops listening.  A change of data_version only fetches
+ * the variable records and keeps the frontend.
  *
  * Expected values are hand-written literals.
  */
@@ -96,6 +97,10 @@ async function answerFetchAsync(n: number, payload: unknown): Promise<void> {
     });
 }
 
+function recordsFetchCount(): number {
+    return triggerNames.filter((name) => name === 'get_variable_records_json').length;
+}
+
 const globals = globalThis as unknown as { ResizeObserver: unknown; fetch: unknown };
 let originalResizeObserver: unknown;
 let originalFetch: unknown;
@@ -109,6 +114,9 @@ beforeEach(() => {
         state,
         trigger: async (name: string) => {
             triggerNames.push(name);
+            if (name === 'get_variable_records_json') {
+                return '{}';
+            }
             if (name !== 'get_visor_scene_details_json') {
                 return undefined;
             }
@@ -158,6 +166,41 @@ describe('useServerVtk rebuild', () => {
         await waitFor(() => expect(result.current.visorFrontend).not.toBe(first));
 
         expect(state.liveWatchers('server_camera_state')).toBe(1);
+    });
+
+    test('a data_version change fetches the records and does not rebuild', async () => {
+        const { result } = renderHook(() => useServerVtk(trame, argsWith(undefined)));
+        await answerFetchAsync(0, sceneDetailsPayload());
+        await waitFor(() => expect(result.current.visorFrontend).not.toBeNull());
+        const first = result.current.visorFrontend;
+        // The watch calls back at once, so one refresh follows the first build.
+        await waitFor(() => expect(recordsFetchCount()).toBe(1));
+
+        act(() => state.notify('data_version'));
+        await waitFor(() => expect(recordsFetchCount()).toBe(2));
+
+        expect(fetchAnswers.length).toBe(1);
+        expect(result.current.visorFrontend).toBe(first);
+    });
+
+    test('data_version and scene_version changed together build once more', async () => {
+        const { result } = renderHook(() => useServerVtk(trame, argsWith(undefined)));
+        await answerFetchAsync(0, sceneDetailsPayload());
+        await waitFor(() => expect(result.current.visorFrontend).not.toBeNull());
+        const first = result.current.visorFrontend;
+        await waitFor(() => expect(recordsFetchCount()).toBe(1));
+
+        act(() => {
+            state.notify('data_version');
+            state.notify('scene_version');
+        });
+        await answerFetchAsync(1, sceneDetailsPayload());
+        await waitFor(() => expect(result.current.visorFrontend).not.toBe(first));
+        await act(async () => {
+            await new Promise((resolve) => setTimeout(resolve, 0));
+        });
+
+        expect(fetchAnswers.length).toBe(2);
     });
 
     test('a mismatch on rebuild sets schemaMismatchError and keeps the frontend', async () => {

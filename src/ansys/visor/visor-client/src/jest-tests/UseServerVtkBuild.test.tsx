@@ -33,9 +33,12 @@ function sceneDetailsPayload() {
     };
 }
 
-const trigger = jest.fn(async (name: string, ..._args: unknown[]) =>
-    name === 'get_visor_scene_details_json' ? sceneDetailsPayload() : undefined
-);
+const trigger = jest.fn(async (name: string, ..._args: unknown[]) => {
+    if (name === 'get_variable_records_json') {
+        return '{}';
+    }
+    return name === 'get_visor_scene_details_json' ? sceneDetailsPayload() : undefined;
+});
 const session = {
     subscribe: () => ({ unsubscribe: () => {} }),
     call: async () => undefined,

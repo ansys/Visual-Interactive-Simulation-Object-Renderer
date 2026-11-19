@@ -27,6 +27,15 @@ export default class VisorVariableState {
         this.copy(state, false, key);
     }
 
+    /** Parse a records payload keyed by composed id; a key differing from its record's id throws. */
+    static listFromRecordsJson(payload: StateInput<JsonDict>): VisorVariableState[] {
+        const data = parseState(payload);
+        if (data == null) {
+            throw new Error(`variable records payload is empty`);
+        }
+        return Object.entries(data).map(([key, record]) => new VisorVariableState(record, key));
+    }
+
     get id(): string {
         return this._id;
     }

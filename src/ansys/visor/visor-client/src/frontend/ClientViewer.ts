@@ -3,6 +3,7 @@ import VisorSceneDetails, {
     SchemaVersionMismatchError,
 } from '../state/appstate/VisorSceneDetails.tsx';
 import VisorAppState from '../state/appstate/VisorAppState.tsx';
+import VisorVariableState from '../state/appstate/VisorVariableState.tsx';
 import RemoteVtkScene from '../wasm/RemoteVtkScene';
 import { WasmRenderer } from '../renderer/WasmRenderer';
 import { requireWasmAnnotation } from '../renderer/RendererAnnotation';
@@ -10,6 +11,7 @@ import { attachCameraSyncReporter } from '../CameraSyncReporter';
 import { buildFrontendAsync } from '../buildFrontendAsync';
 import type { Trame } from '@kitware/trame/src/trame.js';
 import type { VisorArgs } from '../hooks/useVisorArgs';
+import { FrontendUpdateQueue } from './FrontendUpdateQueue';
 import {
     CurrentFrontend,
     type FrontendBuild,
@@ -30,9 +32,12 @@ class ClientFrontendBuild implements FrontendBuild {
     }
 }
 
-/** A client-mode view over the wasm scene: rebuilds on each server update and applies set_state to the current frontend. */
+/**
+ * A client-mode view over the wasm scene: rebuilds on each structural server update, refreshes the
+ * variable records in place on each data-only one, and applies set_state to the current frontend.
+ */
 export class ClientViewer {
-    /** Connect the wasm scene over the given session, listen for server updates and run the first build; all parameters required. */
+    /** Connect the wasm scene over the given session, listen for server updates and queue the first build; all parameters required. */
     static async connectAsync(
         visorArgs: VisorArgs,
         trame: Trame,
@@ -50,7 +55,12 @@ export class ClientViewer {
         });
         const viewer = new ClientViewer(wasm, visorArgs.darkMode, onChange);
         wasm.addServerUpdatedListener(viewer.#onServerUpdated);
-        await viewer.#rebuildAsync();
+        // Registered once and never cleared, so a data update arriving
+        // mid-rebuild queues a refresh that runs on the new frontend.
+        wasm.addDataUpdatedListener(() => viewer.#queue.requestDataRefresh());
+        // Queued rather than awaited, so a data update during the first build
+        // waits for it instead of refreshing no frontend.
+        viewer.#queue.requestRebuild();
         return viewer;
     }
 
@@ -62,14 +72,35 @@ export class ClientViewer {
         this.#wasm = wasm;
         this.#darkMode = darkMode;
         this.#current = new CurrentFrontend(onChange);
+        this.#queue = new FrontendUpdateQueue(
+            () => this.#rebuildAsync(),
+            () => this.#refreshDataAsync(),
+            (err) => console.error('[VISOR] client-mode rebuild failed', err)
+        );
     }
 
     readonly #wasm: RemoteVtkScene;
     readonly #darkMode: boolean | undefined;
     readonly #current: CurrentFrontend;
+    readonly #queue: FrontendUpdateQueue;
     #cameraSyncRemover: (() => void) | null = null;
-    readonly #onServerUpdated = () => this.#rebuildAsync();
+    readonly #onServerUpdated = () => this.#queue.requestRebuild();
     readonly #onSetState = (payload: unknown) => this.#applySetStateAsync(payload);
+
+    /** Fetch the held variable records and apply them to the current frontend; sends nothing without one. */
+    async #refreshDataAsync(): Promise<void> {
+        if (this.#current.frontend == null) {
+            return;
+        }
+        try {
+            const recordsJson = await this.#wasm.trameTriggerAsync('get_variable_records_json');
+            const records = VisorVariableState.listFromRecordsJson(recordsJson);
+            // Read again: the frontend may have been replaced during the fetch.
+            await this.#current.frontend?.applyVariableRecordsAsync(records);
+        } catch (err) {
+            console.error('[VISOR] variable records refresh failed', err);
+        }
+    }
 
     /** Rebuild from fresh scene details; the update and set_state listeners are registered again however it ends. */
     async #rebuildAsync(): Promise<void> {

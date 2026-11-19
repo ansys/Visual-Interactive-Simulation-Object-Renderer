@@ -4,8 +4,9 @@ import type { VisorArgs } from '../hooks/useVisorArgs';
 import type { Trame } from '@kitware/trame/src/trame.js';
 
 /**
- * In client mode every server update rebuilds the frontend over the same wasm
- * scene.  A successful rebuild releases the replaced frontend and names the new
+ * In client mode every structural server update rebuilds the frontend over the
+ * same wasm scene, and a data-only update fetches the variable records and keeps
+ * it.  A successful rebuild releases the replaced frontend and names the new
  * one on `window.__visorState`; a schema mismatch keeps the current frontend
  * and reports the error.  The scene connects over the session the hook is given.
  *
@@ -13,9 +14,11 @@ import type { Trame } from '@kitware/trame/src/trame.js';
  */
 
 const mockScene = {
-    serverUpdated: null as null | (() => Promise<void>),
+    serverUpdated: null as null | (() => void),
+    dataUpdated: null as null | (() => void),
     payloads: [] as unknown[],
     fetches: 0,
+    recordsFetches: 0,
     renderers: [] as { liveCanvasClicks: Set<() => void> }[],
     configs: [] as { trame?: unknown }[],
 };
@@ -69,20 +72,29 @@ function mockSceneDetailsPayload() {
     };
 }
 
-/** The client-mode scene connection: keeps the latest server-updated listener and answers each fetch in turn. */
+/** The client-mode scene connection: keeps the latest listeners, answers each details fetch in turn and counts records fetches. */
 function mockMakeWasmView() {
     return {
         trameGetState: () => false,
         clearObserversAndEventListeners: () => {},
-        addServerUpdatedListener: (handler: () => Promise<void>) => {
+        addServerUpdatedListener: (handler: () => void) => {
             mockScene.serverUpdated = handler;
             return () => {};
         },
+        addDataUpdatedListener: (listener: () => void) => {
+            mockScene.dataUpdated = listener;
+        },
         addSetStateListener: () => () => {},
-        trameTriggerAsync: async (name: string) =>
-            name === 'get_visor_scene_details_json'
-                ? mockScene.payloads[mockScene.fetches++]
-                : undefined,
+        trameTriggerAsync: async (name: string) => {
+            if (name === 'get_visor_scene_details_json') {
+                return mockScene.payloads[mockScene.fetches++];
+            }
+            if (name === 'get_variable_records_json') {
+                mockScene.recordsFetches++;
+                return '{}';
+            }
+            return undefined;
+        },
         vtkScene: { resizeAsync: async () => undefined },
     };
 }
@@ -125,17 +137,25 @@ async function mountBuiltAsync() {
     return hook;
 }
 
-/** Deliver one server update and let its rebuild finish. */
+/** Let every pending promise chain, including a queued rebuild or refresh, run out. */
+async function drain() {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+/** Deliver one server update and let its queued rebuild finish. */
 async function serverUpdateAsync() {
     await act(async () => {
-        await mockScene.serverUpdated!();
+        mockScene.serverUpdated!();
+        await drain();
     });
 }
 
 beforeEach(() => {
     mockScene.serverUpdated = null;
+    mockScene.dataUpdated = null;
     mockScene.payloads = [];
     mockScene.fetches = 0;
+    mockScene.recordsFetches = 0;
     mockScene.renderers = [];
     mockScene.configs = [];
 });
@@ -182,5 +202,20 @@ describe('useClientVtk rebuild', () => {
 
         expect(result.current.visorFrontend).not.toBe(first);
         expect((window as any).__visorState).toBe(result.current.visorFrontend);
+    });
+
+    test('a data update fetches the records and does not rebuild', async () => {
+        mockScene.payloads = [mockSceneDetailsPayload()];
+        const { result } = await mountBuiltAsync();
+        const first = result.current.visorFrontend;
+
+        await act(async () => {
+            mockScene.dataUpdated!();
+            await drain();
+        });
+
+        expect(mockScene.recordsFetches).toBe(1);
+        expect(mockScene.fetches).toBe(1);
+        expect(result.current.visorFrontend).toBe(first);
     });
 });

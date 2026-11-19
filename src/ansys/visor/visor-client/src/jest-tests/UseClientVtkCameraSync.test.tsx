@@ -19,7 +19,7 @@ import type { CameraOrigin, VisorCameraState } from '../renderer/IRenderer';
 
 const mockScene = {
     settledListeners: new Map<() => void, (origin: CameraOrigin) => void>(),
-    serverUpdated: null as null | (() => Promise<void>),
+    serverUpdated: null as null | (() => void),
     trameTriggerAsync: jest.fn(),
     renderersBuilt: 0,
     settleDuringFirstSeed: false,
@@ -81,10 +81,11 @@ function mockMakeWasmView() {
     return {
         trameGetState: () => false,
         clearObserversAndEventListeners: () => {},
-        addServerUpdatedListener: (handler: () => Promise<void>) => {
+        addServerUpdatedListener: (handler: () => void) => {
             mockScene.serverUpdated = handler;
             return () => {};
         },
+        addDataUpdatedListener: () => {},
         addSetStateListener: () => () => {},
         trameTriggerAsync: mockScene.trameTriggerAsync,
         vtkScene: { resizeAsync: async () => undefined },
@@ -174,11 +175,14 @@ describe('useClientVtk camera sync', () => {
     test('one gesture settle after two rebuilds sends one sync_camera', async () => {
         const { result } = renderHook(() => useClientVtk(ARGS, TRAME));
         await waitFor(() => expect(result.current.visorFrontend).not.toBeNull());
+        // The listener only queues the rebuild; drain lets each one finish.
         await act(async () => {
-            await mockScene.serverUpdated!();
+            mockScene.serverUpdated!();
+            await drain();
         });
         await act(async () => {
-            await mockScene.serverUpdated!();
+            mockScene.serverUpdated!();
+            await drain();
         });
 
         await act(async () => {

@@ -5,6 +5,7 @@ import VisorAppState from './state/appstate/VisorAppState.tsx';
 import VisorDatasetState from './state/appstate/VisorDatasetState.tsx';
 import VisorPartState from './state/appstate/VisorPartState.tsx';
 import VisorSceneState from './state/appstate/VisorSceneState.tsx';
+import type VisorVariableState from './state/appstate/VisorVariableState.tsx';
 import { TreeViewUtil } from './treeview/TreeView.tsx';
 import { StateInput } from './state/appstate/VisorStateCommon.tsx';
 import VisorVtkSceneNode from './state/appstate/vtkInfo/VisorVtkSceneNode.tsx';
@@ -517,6 +518,14 @@ export class VisorFrontend {
             }
             await renderer.resizeAsync();
         };
+        this.applyVariableRecordsAsync = async (records) => {
+            variableManager.setRecords(records);
+            // setRecords fires nothing; the legend re-reads only on a refresh.
+            if (isPanelTopRightUtilSet()) {
+                const panelTopRight = await panelTopRightUtilPromise;
+                await panelTopRight.refreshSelectionAsync();
+            }
+        };
         Object.freeze(this);
     }
 
@@ -576,6 +585,8 @@ export class VisorFrontend {
     setOrthographicModeAsync: (enable?: boolean) => Promise<void>;
     getAppStateAsync: (keyedByName?: boolean) => Promise<VisorAppState>;
     setAppStateAsync: (state?: StateInput<VisorAppState>, updateUI?: boolean) => Promise<void>;
+    /** Swap the held variable records and refresh the legend from them. */
+    applyVariableRecordsAsync: (records: VisorVariableState[]) => Promise<void>;
     // Selection mode
     getSelectionMode: () => 'part' | 'vertex' | 'edge' | 'face';
     setSelectionMode: (mode: 'part' | 'vertex' | 'edge' | 'face') => void;

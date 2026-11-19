@@ -11,7 +11,7 @@ export type ClientVtk = Readonly<{
     schemaMismatchError: SchemaVersionMismatchError | null;
 }>;
 
-/** Connect the wasm scene over the given session, rebuild on each server update, and apply set_state; idle while trame is null. */
+/** Connect the wasm scene over the given session, rebuild on each structural server update, refresh in place on each data-only one, and apply set_state; idle while trame is null. */
 export function useClientVtk(visorArgs: VisorArgs, trame: Trame | null): ClientVtk {
     const [visorFrontend, setVisorFrontend] = useState<VisorFrontend | null>(null);
     const [schemaMismatchError, setSchemaMismatchError] =
