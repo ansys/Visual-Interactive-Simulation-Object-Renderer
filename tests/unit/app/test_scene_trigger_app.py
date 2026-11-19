@@ -2,7 +2,7 @@
 
 Coverage targets
 ----------------
-1.  ``LocalApp`` registers exactly these 26 trigger names: the 21 shared ones
+1.  ``LocalApp`` registers exactly these 27 trigger names: the 22 shared ones
     defined on ``SceneTriggerApp`` plus its own five local-only ones.
     Neither a missing nor a doubled registration passes this.
 2.  ``LocalApp`` seeds ``rendering_mode`` into server state as ``"client"``
@@ -30,13 +30,14 @@ from ansys.visor.viewer.models.common.visor_camera_state import VisorCameraState
 from ansys.visor.viewer.models.runtime.picking.geometry_pick import EdgePick
 from ansys.visor.viewer.vtk.picking.part_cell_hit import PickView
 
-# The exact 26 trigger names LocalApp registers: the 21 names shared with
+# The exact 27 trigger names LocalApp registers: the 22 names shared with
 # every rendering mode, plus LocalApp's own five local-only ones.  Written
 # out by hand, not derived from the production trigger list, so a missing or
 # a doubled registration fails this rather than following along.
 LOCAL_APP_TRIGGER_NAMES = sorted(
     [
         "get_visor_scene_details_json",
+        "get_variable_records_json",
         "set_part_visibility",
         "set_part_opacity",
         "set_part_diffuse_color",
@@ -96,7 +97,7 @@ def mock_server():
 
 
 def test_local_app_registers_exactly_these_triggers(mock_server):
-    """The registered trigger names are exactly the hand-written 26, sorted.
+    """The registered trigger names are exactly the hand-written 27, sorted.
 
     A missing registration shortens the list; a doubled one (``@TrameApp()``
     on both the base and the leaf) duplicates a name in
@@ -106,6 +107,7 @@ def test_local_app_registers_exactly_these_triggers(mock_server):
     LocalApp(
         server=mock_server,
         get_scene_details_json=MagicMock(),
+        get_variable_records_json=MagicMock(),
         standalone=True,
         pick_geometry_in_view=MagicMock(),
         pick_part_in_view=MagicMock(),
@@ -121,6 +123,7 @@ def test_local_app_seeds_rendering_mode_client(mock_server):
     LocalApp(
         server=mock_server,
         get_scene_details_json=MagicMock(),
+        get_variable_records_json=MagicMock(),
         standalone=True,
         pick_geometry_in_view=MagicMock(),
         pick_part_in_view=MagicMock(),
@@ -129,12 +132,27 @@ def test_local_app_seeds_rendering_mode_client(mock_server):
     assert mock_server.state["rendering_mode"] == "client"
 
 
+def test_get_variable_records_json_returns_the_injected_records(mock_server):
+    """The trigger serves exactly what the injected records callable returns."""
+    app = LocalApp(
+        server=mock_server,
+        get_scene_details_json=MagicMock(),
+        get_variable_records_json=MagicMock(return_value='{"POINT::pressure::1": {}}'),
+        standalone=True,
+        pick_geometry_in_view=MagicMock(),
+        pick_part_in_view=MagicMock(),
+    )
+
+    assert app.get_variable_records_json() == '{"POINT::pressure::1": {}}'
+
+
 def test_set_geometry_highlight_forwards_the_parsed_pick(mock_server):
     """The wire payload, keyed by alias, reaches the coordinator as the one pick model it validates as."""
     api = MagicMock(name="scene_mutation_api")
     app = LocalApp(
         server=mock_server,
         get_scene_details_json=MagicMock(),
+        get_variable_records_json=MagicMock(),
         standalone=True,
         scene_mutation_api=api,
         pick_geometry_in_view=MagicMock(),
@@ -165,6 +183,7 @@ def test_set_pixel_scale_forwards_the_parsed_scale(mock_server):
     app = LocalApp(
         server=mock_server,
         get_scene_details_json=MagicMock(),
+        get_variable_records_json=MagicMock(),
         standalone=True,
         scene_mutation_api=api,
         pick_geometry_in_view=MagicMock(),
@@ -184,6 +203,7 @@ def test_set_pixel_scale_ignores_a_scale_that_is_not_positive(mock_server, scale
     app = LocalApp(
         server=mock_server,
         get_scene_details_json=MagicMock(),
+        get_variable_records_json=MagicMock(),
         standalone=True,
         scene_mutation_api=api,
         pick_geometry_in_view=MagicMock(),
@@ -216,6 +236,7 @@ def test_pick_geometry_in_view_forwards_a_pick_view_and_dumps_by_alias(mock_serv
     app = LocalApp(
         server=mock_server,
         get_scene_details_json=MagicMock(),
+        get_variable_records_json=MagicMock(),
         standalone=True,
         pick_geometry_in_view=picker,
         pick_part_in_view=MagicMock(),
@@ -258,6 +279,7 @@ def test_pick_geometry_in_view_rejects_a_zero_width(mock_server):
     app = LocalApp(
         server=mock_server,
         get_scene_details_json=MagicMock(),
+        get_variable_records_json=MagicMock(),
         standalone=True,
         pick_geometry_in_view=picker,
         pick_part_in_view=MagicMock(),
@@ -277,6 +299,7 @@ def test_pick_part_in_view_forwards_a_pick_view_and_returns_the_node(mock_server
     app = LocalApp(
         server=mock_server,
         get_scene_details_json=MagicMock(),
+        get_variable_records_json=MagicMock(),
         standalone=True,
         pick_geometry_in_view=MagicMock(),
         pick_part_in_view=picker,

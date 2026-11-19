@@ -98,6 +98,22 @@ def notifies_scene_change(func):
     return wrapper
 
 
+def notifies_data_change(func):
+    """Call self._post_data_change_hook() once after func, whether func returns or raises.
+
+    For an operation that changes data values only, so connected clients
+    refresh in place rather than rebuild.  A failed operation can still have
+    changed data, so it notifies too.  Placed directly above the method.
+    """
+    @wraps(func)
+    def wrapper(self, *args, **kwargs):
+        try:
+            return func(self, *args, **kwargs)
+        finally:
+            self._post_data_change_hook()
+    return wrapper
+
+
 class VisorVTK(Visor):
     """
     VisorVTK is a class that provides an interface for initializing and managing a
@@ -210,6 +226,11 @@ class VisorVTK(Visor):
     @abstractmethod
     def _post_scene_change_hook(self) -> None:
         """Signal one finished scene-changing operation to connected clients."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def _post_data_change_hook(self) -> None:
+        """Signal one finished data-only operation to connected clients, without a frontend rebuild."""
         raise NotImplementedError
 
     """ Properties """
@@ -364,7 +385,7 @@ class VisorVTK(Visor):
         return self._scene.list_variables_for_dataset(dataset_id)
 
     @handle_errors("update_variables")
-    @notifies_scene_change
+    @notifies_data_change
     def update_variables(self, dataset_id: int, variables: List[Dict[str, Any]]) -> None:
         """
         Update the variables of a specific dataset in the scene.

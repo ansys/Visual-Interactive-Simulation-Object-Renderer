@@ -150,10 +150,10 @@ class VisorSceneBase(ABC):
         self._ui_state = ui_defaults.model_copy()
 
         # The server's variable records, keyed by composed identifier.  Created once
-        # here and never rebound.  Written only by _rebuild_variable_records_from_registry
-        # and _load_variable_records, under _vtk_lock, by assigning a new dict
-        # (copy-on-write) so the unlocked reader in
-        # get_scene_details never sees a dict change size.  Handed out only as
+        # here and never rebound.  Written only by _replace_variable_records,
+        # _load_variable_records and set_variable_range, under _vtk_lock, by assigning a new dict
+        # (copy-on-write) so the unlocked readers in get_scene_details and
+        # get_variable_records_json never see a dict change size.  Handed out only as
         # model_copy(deep=True): a shallow copy would share the dict and its entries.
         self._variable_records = VisorVariableRecords()
 
@@ -414,6 +414,18 @@ class VisorSceneBase(ABC):
         """Return the VisorVtkPipelineState as JSON string."""
         return json.dumps(self.get_scene_details().model_dump(by_alias=True))
 
+    def get_variable_records_json(self) -> str:
+        """Return the held variable records as JSON, keyed by composed identifier, dumped by alias.
+
+        Read without ``_vtk_lock``: every writer replaces the holder's dict whole
+        under the lock and never mutates it or its entries, so the dict read
+        here is a complete snapshot.
+        """
+        variables = self._variable_records.model_copy(deep=True).variables
+        return json.dumps(
+            {variable_id: record.model_dump(by_alias=True) for variable_id, record in variables.items()}
+        )
+
     def clear(self):
         """Remove all actors from the renderer and reset the scene.
 
@@ -582,11 +594,13 @@ class VisorSceneBase(ABC):
             with timer.phase("update_descendant_parts"):
                 dataset_node.refresh_descendant_variable_metadata(include_self=True)
 
-            # After the reload and the metadata refresh: a width change changes the id.
-            self._rebuild_variable_records_from_registry()
+            # After the reload and the metadata refresh: every existing slot keeps
+            # its effective range and the defaults follow the new data.
+            self._rebuild_variable_records_keeping_ranges()
 
+            # Data only: the frontend is updated in place, never rebuilt.
             with timer.phase("render"):
-                self.render()
+                self._renderer.render_without_rebuild()
 
             timer.log()
 
@@ -594,14 +608,35 @@ class VisorSceneBase(ABC):
         """Rebuild the held records from the registry, carrying custom ranges, then reconcile part references;
         under ``_vtk_lock``.
 
-        Used at add, remove, clear and update.  Assigns a new dict to the holder
-        (copy-on-write); never mutates the live dict or its entries, so the dict
-        it replaces is still intact when it is handed to
-        :meth:`_reconcile_part_color_variables` as the previous records.
+        Used at add, remove and clear.  A slot at its default follows the new
+        default; a custom slot keeps its range.
+        """
+        with self._vtk_lock:
+            records = VisorVariableRecords.from_registry(self._dataset_registry, self._variable_records).variables
+            self._replace_variable_records(records)
+
+    def _rebuild_variable_records_keeping_ranges(self) -> None:
+        """Rebuild the held records from the registry, every existing slot keeping its effective range, then
+        reconcile part references; under ``_vtk_lock``.
+
+        Used at update.  The default ranges are recomputed from the new data.
+        """
+        with self._vtk_lock:
+            records = VisorVariableRecords.from_registry_keeping_ranges(
+                self._dataset_registry, self._variable_records
+            ).variables
+            self._replace_variable_records(records)
+
+    def _replace_variable_records(self, records: Dict[str, VisorVariableRecord]) -> None:
+        """Swap *records* into the holder, then reconcile part references against the replaced dict;
+        under ``_vtk_lock``.
+
+        Assigns a new dict to the holder (copy-on-write); never mutates the live
+        dict or its entries, so the dict it replaces is still intact when it is
+        handed to :meth:`_reconcile_part_color_variables` as the previous records.
         """
         with self._vtk_lock:
             previous = self._variable_records.variables
-            records = VisorVariableRecords.from_registry(self._dataset_registry, self._variable_records).variables
             self._variable_records.variables = records
             logger.debug("variable records rebuilt from registry: %d records", len(records))
             self._reconcile_part_color_variables(previous)

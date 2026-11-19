@@ -59,6 +59,7 @@ class LocalApp(SceneTriggerApp):
             trame_logger: Logger | None = None,
             scene_mutation_api: LocalSceneMutationApi | None = None,
             *,
+            get_variable_records_json: Callable[[], str],
             pick_geometry_in_view: Callable[[PickView, int, int, str], GeometryPick],
             pick_part_in_view: Callable[[PickView, int, int], int | None],
     ):
@@ -70,6 +71,7 @@ class LocalApp(SceneTriggerApp):
             standalone=standalone,
             trame_logger=trame_logger,
             scene_mutation_api=scene_mutation_api,
+            get_variable_records_json=get_variable_records_json,
         )
 
     @property
