@@ -9,13 +9,19 @@ import type { Trame } from '@kitware/trame/src/trame.js';
  * it.  A successful rebuild releases the replaced frontend and names the new
  * one on `window.__visorState`; a schema mismatch keeps the current frontend
  * and reports the error.  The scene connects over the session the hook is given.
+ * A structural update arriving while a rebuild runs builds once more.
+ *
+ * The scene double keeps every registration of a server-updated listener under
+ * its own remover, as the real scene does, and a details fetch can be held on a
+ * gate the test opens.
  *
  * Expected values are hand-written literals.
  */
 
 const mockScene = {
-    serverUpdated: null as null | (() => void),
+    serverUpdatedListeners: new Map<() => void, () => void>(),
     dataUpdated: null as null | (() => void),
+    detailsGate: Promise.resolve() as Promise<void>,
     payloads: [] as unknown[],
     fetches: 0,
     recordsFetches: 0,
@@ -72,14 +78,16 @@ function mockSceneDetailsPayload() {
     };
 }
 
-/** The client-mode scene connection: keeps the latest listeners, answers each details fetch in turn and counts records fetches. */
+/** The client-mode scene connection: keeps every listener, answers each details fetch in turn after the gate and counts records fetches. */
 function mockMakeWasmView() {
     return {
         trameGetState: () => false,
-        clearObserversAndEventListeners: () => {},
         addServerUpdatedListener: (handler: () => void) => {
-            mockScene.serverUpdated = handler;
-            return () => {};
+            const remover = () => {
+                mockScene.serverUpdatedListeners.delete(remover);
+            };
+            mockScene.serverUpdatedListeners.set(remover, handler);
+            return remover;
         },
         addDataUpdatedListener: (listener: () => void) => {
             mockScene.dataUpdated = listener;
@@ -87,7 +95,9 @@ function mockMakeWasmView() {
         addSetStateListener: () => () => {},
         trameTriggerAsync: async (name: string) => {
             if (name === 'get_visor_scene_details_json') {
-                return mockScene.payloads[mockScene.fetches++];
+                const payload = mockScene.payloads[mockScene.fetches++];
+                await mockScene.detailsGate;
+                return payload;
             }
             if (name === 'get_variable_records_json') {
                 mockScene.recordsFetches++;
@@ -142,17 +152,25 @@ async function drain() {
     await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
+/** Call every server-updated listener still registered, as the scene does after a structural update. */
+function fireServerUpdated() {
+    for (const listener of [...mockScene.serverUpdatedListeners.values()]) {
+        listener();
+    }
+}
+
 /** Deliver one server update and let its queued rebuild finish. */
 async function serverUpdateAsync() {
     await act(async () => {
-        mockScene.serverUpdated!();
+        fireServerUpdated();
         await drain();
     });
 }
 
 beforeEach(() => {
-    mockScene.serverUpdated = null;
+    mockScene.serverUpdatedListeners.clear();
     mockScene.dataUpdated = null;
+    mockScene.detailsGate = Promise.resolve();
     mockScene.payloads = [];
     mockScene.fetches = 0;
     mockScene.recordsFetches = 0;
@@ -178,8 +196,32 @@ describe('useClientVtk rebuild', () => {
 
         await serverUpdateAsync();
 
+        expect(mockScene.fetches).toBe(2);
         expect(mockScene.renderers.length).toBe(2);
         expect(mockScene.renderers[0].liveCanvasClicks.size).toBe(0);
+    });
+
+    test('a server update during a rebuild builds once more', async () => {
+        mockScene.payloads = [mockSceneDetailsPayload(), mockSceneDetailsPayload()];
+        let openGate: () => void = () => {};
+        mockScene.detailsGate = new Promise<void>((resolve) => {
+            openGate = resolve;
+        });
+        const { result } = renderHook(() => useClientVtk(ARGS, TRAME));
+        await waitFor(() => expect(mockScene.fetches).toBe(1));
+
+        await act(async () => {
+            fireServerUpdated();
+            openGate();
+            await drain();
+        });
+        await waitFor(() => expect(result.current.visorFrontend).not.toBeNull());
+        await act(async () => {
+            await drain();
+        });
+
+        expect(mockScene.fetches).toBe(2);
+        expect(mockScene.renderers.length).toBe(2);
     });
 
     test('a mismatch on client rebuild sets schemaMismatchError and keeps the frontend', async () => {

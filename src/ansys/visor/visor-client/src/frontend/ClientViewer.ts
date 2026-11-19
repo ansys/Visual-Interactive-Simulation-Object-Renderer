@@ -54,9 +54,10 @@ export class ClientViewer {
             serverOrigin,
         });
         const viewer = new ClientViewer(wasm, visorArgs.darkMode, onChange);
+        // Each listener is registered once for the viewer's lifetime, so an
+        // update arriving mid-rebuild is queued rather than missed.
         wasm.addServerUpdatedListener(viewer.#onServerUpdated);
-        // Registered once and never cleared, so a data update arriving
-        // mid-rebuild queues a refresh that runs on the new frontend.
+        wasm.addSetStateListener(viewer.#onSetState);
         wasm.addDataUpdatedListener(() => viewer.#queue.requestDataRefresh());
         // Queued rather than awaited, so a data update during the first build
         // waits for it instead of refreshing no frontend.
@@ -102,42 +103,33 @@ export class ClientViewer {
         }
     }
 
-    /** Rebuild from fresh scene details; the update and set_state listeners are registered again however it ends. */
+    /** Rebuild from fresh scene details; a schema mismatch keeps the current frontend. */
     async #rebuildAsync(): Promise<void> {
         const wasm = this.#wasm;
         const perfLogging = wasm.trameGetState('perf_logging') === true;
         const t0 = perfLogging ? performance.now() : 0;
         if (perfLogging) console.log(`[PERF] onServerUpdateAsync start`);
 
-        wasm.clearObserversAndEventListeners();
+        const sceneDetailsJson = await wasm.trameTriggerAsync('get_visor_scene_details_json');
         let newFrontend: VisorFrontend;
-        // The listeners cleared above are registered again however this
-        // block ends, so a failed rebuild still receives the next server
-        // update, and `set_state` keeps reaching the current frontend.
         try {
-            const sceneDetailsJson = await wasm.trameTriggerAsync('get_visor_scene_details_json');
-            try {
-                newFrontend = await buildFrontendAsync(
-                    sceneDetailsJson,
-                    (sceneDetails) => this.#createRendererAsync(sceneDetails),
-                    wasm.trameTriggerAsync,
-                    this.#darkMode
-                );
-            } catch (err) {
-                if (err instanceof SchemaVersionMismatchError) {
-                    this.#current.showMismatch(err);
-                    return;
-                }
-                throw err;
+            newFrontend = await buildFrontendAsync(
+                sceneDetailsJson,
+                (sceneDetails) => this.#createRendererAsync(sceneDetails),
+                wasm.trameTriggerAsync,
+                this.#darkMode
+            );
+        } catch (err) {
+            if (err instanceof SchemaVersionMismatchError) {
+                this.#current.showMismatch(err);
+                return;
             }
-            // Dash snapshots the frontend named here; it is written before
-            // React commits the new frontend, as App writes it only after.
-            (window as any).__visorState = newFrontend;
-            this.#current.swapTo(new ClientFrontendBuild(newFrontend));
-        } finally {
-            wasm.addServerUpdatedListener(this.#onServerUpdated);
-            wasm.addSetStateListener(this.#onSetState);
+            throw err;
         }
+        // Dash snapshots the frontend named here; it is written before
+        // React commits the new frontend, as App writes it only after.
+        (window as any).__visorState = newFrontend;
+        this.#current.swapTo(new ClientFrontendBuild(newFrontend));
         setTimeout(() => {
             wasm.vtkScene.resizeAsync();
         }, 100);
@@ -169,16 +161,17 @@ export class ClientViewer {
         return renderer;
     }
 
-    /** Apply a set_state payload to the current frontend, the darkMode prop winning over the stored theme. */
+    /** Apply a set_state payload to the current frontend, the darkMode prop winning over the stored theme; dropped and logged with no frontend. */
     async #applySetStateAsync(payload: any): Promise<void> {
+        const frontend = this.#current.frontend;
+        if (frontend == null) {
+            console.error('[VISOR] set_state arrived before any frontend was built; dropped');
+            return;
+        }
         const newAppState = new VisorAppState(payload?.appState);
         if (this.#darkMode != null) {
             // Explicit Dash prop takes precedence over the theme stored in saved state.
             newAppState.ui.setDarkTheme(this.#darkMode);
-        }
-        const frontend = this.#current.frontend;
-        if (frontend == null) {
-            throw new Error(`set_state arrived before any frontend was built`);
         }
         await frontend.setAppStateAsync(newAppState, true);
     }
