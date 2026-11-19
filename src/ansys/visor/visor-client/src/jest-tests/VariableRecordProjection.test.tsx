@@ -604,6 +604,45 @@ describe('the legend follows a delivery with no selection change', () => {
     });
 });
 
+describe('an in-place records apply', () => {
+    /** The server's records payload holding one pressure record with a new default range. */
+    function recordsWithNewDefault(): VisorVariableState[] {
+        return VisorVariableState.listFromRecordsJson(
+            JSON.stringify({ [PRESSURE_ID]: pressureRecord({ defaultMagnitudeRange: [-1, 12] }) })
+        );
+    }
+
+    test('the held record takes the applied default range', async () => {
+        const { frontend } = await mountOnDeliveredRecord(pressureRecord(), PRESSURE_ID, -1);
+
+        await act(async () => {
+            await frontend.applyVariableRecordsAsync(recordsWithNewDefault());
+        });
+
+        expect(
+            frontend.globalVariableCollection.getVariable(PRESSURE_ID)!.getRangeInfo(-1)
+        ).toEqual({ defaultRange: [-1, 12], customRange: [2, 8] });
+    });
+
+    test('reset shows the applied default range', async () => {
+        const { frontend, container } = await mountOnDeliveredRecord(
+            pressureRecord(),
+            PRESSURE_ID,
+            -1
+        );
+
+        await act(async () => {
+            await frontend.applyVariableRecordsAsync(recordsWithNewDefault());
+        });
+        const minRow = legendRow(container, 'Min');
+        await act(async () => {
+            fireEvent.click(minRow.reset);
+        });
+
+        expect(minRow.input.value).toBe('-1');
+    });
+});
+
 describe('the range trigger is sent for an edit and never for a delivery', () => {
     test('an apply click on the magnitude sends one set_variable_range with component -1', async () => {
         const { container, triggerSender } = await mountOnDeliveredRecord(

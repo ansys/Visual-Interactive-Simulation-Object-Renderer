@@ -5,7 +5,8 @@ import { RCA_AREA_NAME, ServerCanvas, type RcaSession } from '../rca/ServerCanva
 import { ServerRenderer, type ServerStateSource } from '../renderer/ServerRenderer';
 import type { TrameTriggerSender } from '../renderer/IRenderer';
 import { buildFrontendAsync } from '../buildFrontendAsync';
-import { FrontendRebuilder } from './FrontendRebuilder';
+import VisorVariableState from '../state/appstate/VisorVariableState.tsx';
+import { FrontendUpdateQueue } from './FrontendUpdateQueue';
 import {
     CurrentFrontend,
     type FrontendBuild,
@@ -14,6 +15,9 @@ import {
 
 /** State key the server bumps after each scene change; must equal server_state_publisher.py's. */
 export const SCENE_VERSION_KEY = 'scene_version';
+
+/** State key the server bumps after each data-only change; must equal server_state_publisher.py's. */
+export const DATA_VERSION_KEY = 'data_version';
 
 /** A server-mode frontend and the renderer it was built over, released together when replaced. */
 class ServerFrontendBuild implements FrontendBuild {
@@ -32,9 +36,12 @@ class ServerFrontendBuild implements FrontendBuild {
     }
 }
 
-/** A server-mode view over the probe's trame: streams frames and rebuilds the frontend on every scene_version change. */
+/**
+ * A server-mode view over the probe's trame: streams frames, rebuilds the frontend on every
+ * scene_version change and refreshes its variable records in place on every data_version change.
+ */
 export class ServerViewer {
-    /** Subscribe the canvas, watch scene_version and start the first build; all parameters required. */
+    /** Subscribe the canvas, watch scene_version and data_version and start the first build; all parameters required. */
     constructor(trame: Trame, darkMode: boolean | undefined, onChange: FrontendChangeListener) {
         this.#trame = trame;
         this.#darkMode = darkMode;
@@ -44,12 +51,22 @@ export class ServerViewer {
         // that render produces reaches the canvas.
         this.#canvas = new ServerCanvas(sessionOf(trame), RCA_AREA_NAME);
         this.#sender = (triggerName, payload) => trame.trigger(triggerName, [payload]);
-        const rebuilder = new FrontendRebuilder(
+        const queue = new FrontendUpdateQueue(
             () => this.#buildAsync(),
+            () => this.#refreshDataAsync(),
             (err) => console.error('[VISOR] server-mode rebuild failed', err)
         );
-        // `watch` also calls back at once, which is the initial build.
-        this.#unwatch = this.#state.watch([SCENE_VERSION_KEY], () => rebuilder.request());
+        // `watch` also calls back at once.  scene_version is watched first, so
+        // its immediate callback starts the initial build and data_version's
+        // queues a records refresh to run after it.
+        const unwatchScene = this.#state.watch([SCENE_VERSION_KEY], () => queue.requestRebuild());
+        const unwatchData = this.#state.watch([DATA_VERSION_KEY], () =>
+            queue.requestDataRefresh()
+        );
+        this.#unwatch = () => {
+            unwatchScene();
+            unwatchData();
+        };
     }
 
     readonly #trame: Trame;
@@ -110,6 +127,21 @@ export class ServerViewer {
             return;
         }
         this.#current.swapTo(new ServerFrontendBuild(newFrontend, renderer));
+    }
+
+    /** Fetch the held variable records and apply them to the current frontend; sends nothing without one. */
+    async #refreshDataAsync(): Promise<void> {
+        if (this.#disposed || this.#current.frontend == null) {
+            return;
+        }
+        try {
+            const recordsJson = await this.#trame.trigger('get_variable_records_json');
+            const records = VisorVariableState.listFromRecordsJson(recordsJson);
+            // Read again: the frontend may have been replaced or cleared during the fetch.
+            await this.#current.frontend?.applyVariableRecordsAsync(records);
+        } catch (err) {
+            console.error('[VISOR] variable records refresh failed', err);
+        }
     }
 }
 

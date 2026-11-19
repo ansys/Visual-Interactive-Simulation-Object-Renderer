@@ -49,14 +49,20 @@ class PendingUpdate {
 /** Applies server updates one at a time; updates arriving while one runs merge into a single pending update. */
 export class SerialUpdateQueue {
     readonly #applyWasmAsync: (bindCanvas: unknown) => Promise<void>;
-    readonly #rebuild: () => void;
+    readonly #serverUpdated: () => void;
+    readonly #dataUpdated: () => void;
     #running: Promise<void> | null = null;
     #pending: PendingUpdate | null = null;
 
-    /** applyAsync applies one wasm update; rebuild fires the server-updated listeners once. */
-    constructor(applyAsync: (bindCanvas: unknown) => Promise<void>, rebuild: () => void) {
+    /** Serial wasm update queue; fires serverUpdated after a rebuilding apply and dataUpdated after a data-only one. */
+    constructor(
+        applyAsync: (bindCanvas: unknown) => Promise<void>,
+        serverUpdated: () => void,
+        dataUpdated: () => void
+    ) {
         this.#applyWasmAsync = applyAsync;
-        this.#rebuild = rebuild;
+        this.#serverUpdated = serverUpdated;
+        this.#dataUpdated = dataUpdated;
     }
 
     /** Starts at once on an idle queue; otherwise merges into the pending update; returns that update's promise. */
@@ -74,11 +80,13 @@ export class SerialUpdateQueue {
         return this.#pending.promise;
     }
 
-    /** Apply one update; rebuild once if its flag is set and the apply fulfilled. */
+    /** Apply one update; once it fulfils, fire serverUpdated if its flag is set, dataUpdated otherwise. */
     async #applyAsync(update: PendingUpdate): Promise<void> {
         await this.#applyWasmAsync(update.bindCanvas);
         if (update.rebuildsFrontend) {
-            this.#rebuild();
+            this.#serverUpdated();
+        } else {
+            this.#dataUpdated();
         }
     }
 
