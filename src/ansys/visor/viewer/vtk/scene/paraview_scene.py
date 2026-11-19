@@ -59,7 +59,7 @@ class VisorParaviewScene(VisorSceneBase):
         renderer = ParaviewRenderer(session, BACKGROUND_RGB[dark_mode], bridge, view_record_publisher)
         super().__init__(server, dark_mode, renderer=renderer, vtk_lock=threading.RLock())
         self._rca_window = VisorRcaWindow(
-            ParaviewCapture(session),
+            ParaviewCapture(session, renderer.flush_writes),
             renderer,
             self._vtk_lock,
             bridge.retry_frame,
