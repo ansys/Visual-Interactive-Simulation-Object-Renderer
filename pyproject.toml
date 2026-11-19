@@ -53,8 +53,8 @@ packages = [
 
 include = [
     { path = "src/ansys/visor/viewer/client_bundle/**", format = ["sdist", "wheel"] },
-    { path = "src/ansys/visor/viewer/dash/visordash/**", format = ["sdist", "wheel"] },
-    { path = "src/ansys/visor/viewer/dash/src/lib/**", format = ["sdist", "wheel"] },
+    { path = "src/ansys/visor/dash/visordash/**", format = ["sdist", "wheel"] },
+    { path = "src/ansys/visor/dash/src/lib/**", format = ["sdist", "wheel"] },
     { path = "README.rst", format = ["sdist", "wheel"] },
     { path = "LICENSE", format = ["sdist", "wheel"] },
 ]

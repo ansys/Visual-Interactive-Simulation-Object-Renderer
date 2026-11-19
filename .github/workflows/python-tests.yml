@@ -17,7 +17,7 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     strategy:
       matrix:
         python-version: ["3.11", '3.12', '3.13', '3.14']
@@ -173,6 +173,35 @@ jobs:
             echo "No '$NOTEBOOK_PATH' directory found; skipping nbval run." | tee tests/artifacts/notebook/nbval-result.log
           fi
 
+      # The SAF smoke test needs Dash 3 from the SAF dependency graph, so it runs in an isolated venv
+      # with the wheel built from the assets above. SAF supports Python 3.11-3.14 like Visor, so it
+      # runs in every leg of the matrix.
+      - name: Build current Visor wheel for SAF smoke
+        continue-on-error: true
+        run: |
+          # Same workaround as build_and_package.yml, Poetry skips git-ignored build outputs otherwise
+          sed -i '/client_bundle\|dash\|GITIGNORE/d' .gitignore
+          poetry build --format wheel
+
+      - name: Install SAF smoke environment
+        continue-on-error: true
+        run: |
+          python -m venv .venv-saf
+          .venv-saf/bin/python -m pip --isolated install --index-url https://pypi.org/simple --upgrade pip packaging
+          .venv-saf/bin/python tests/fixtures/saf_visor_solution/install_latest.py dist/*.whl
+          .venv-saf/bin/python -m visor_saf_smoke.main analysis
+          .venv-saf/bin/python -m playwright install chromium
+
+      - name: Run SAF smoke tests
+        continue-on-error: true
+        env:
+          DISPLAY: ":99"  # Use the virtual X server started by Xvfb
+          VTK_DEFAULT_RENDER_WINDOW_OFFSCREEN: "1"  # Force VTK to use offscreen rendering
+        run: |
+          set -o pipefail
+          mkdir -p tests/artifacts/saf-smoke/reports
+          .venv-saf/bin/python -m pytest tests/e2e/smoke/test_smoke_saf_visor.py --browser chromium --junitxml=tests/artifacts/saf-smoke/reports/saf-smoke-junit.xml --html=tests/artifacts/saf-smoke/reports/saf-smoke-tests.html --self-contained-html -v --durations=0 | tee tests/artifacts/saf-smoke/reports/saf-smoke-result.log
+
       # Check for test failures in the log, so the workflow only fails if tests actually fail,
       # not just because of X server errors at shutdown
 
@@ -183,36 +212,16 @@ jobs:
           MISSING_XML_MODE: error
           DETECT_ERRORS: "true"
         run: |
-          bash .github/scripts/check_junit_results.sh \
-            "unit:tests/artifacts/unit/unit-junit.xml" \
-            "frontend-unit:tests/artifacts/unit/frontend-junit.xml" \
-            "integration:tests/artifacts/integration/integration-junit.xml" \
-            "smoke:tests/artifacts/smoke/reports/smoke-junit.xml" \
-            "regression:tests/artifacts/regressions/reports/regressions-junit.xml" \
+          suites=(
+            "unit:tests/artifacts/unit/unit-junit.xml"
+            "frontend-unit:tests/artifacts/unit/frontend-junit.xml"
+            "integration:tests/artifacts/integration/integration-junit.xml"
+            "smoke:tests/artifacts/smoke/reports/smoke-junit.xml"
+            "regression:tests/artifacts/regressions/reports/regressions-junit.xml"
             "notebook:tests/artifacts/notebook/notebook-junit.xml"
-
-      # saf-smoke tests commented out temporarily. have to
-      # comment out this whole block or else CI/CD fails.
-      # - name: Check for test failures and errors
-      #   if: always()
-      #   id: check_results
-      #   env:
-      #     MISSING_XML_MODE: error
-      #     DETECT_ERRORS: "true"
-      #   run: |
-      #     saf-smoke XML only exists on Python versions that ran the SAF steps
-      #     SAF_SMOKE_ARG=""
-      #     if [ -f "tests/artifacts/saf-smoke/reports/saf-smoke-junit.xml" ]; then
-      #       SAF_SMOKE_ARG="saf-smoke:tests/artifacts/saf-smoke/reports/saf-smoke-junit.xml"
-      #     fi
-      #     bash .github/scripts/check_junit_results.sh \
-      #       "unit:tests/artifacts/unit/unit-junit.xml" \
-      #       "frontend-unit:tests/artifacts/unit/frontend-junit.xml" \
-      #       "integration:tests/artifacts/integration/integration-junit.xml" \
-      #       "smoke:tests/artifacts/smoke/reports/smoke-junit.xml" \
-      #       $SAF_SMOKE_ARG \
-      #       "regression:tests/artifacts/regressions/reports/regressions-junit.xml" \
-      #       "notebook:tests/artifacts/notebook/notebook-junit.xml"
+            "saf-smoke:tests/artifacts/saf-smoke/reports/saf-smoke-junit.xml"
+          )
+          bash .github/scripts/check_junit_results.sh "${suites[@]}"
 
       - name: Upload test logs
         if: always()

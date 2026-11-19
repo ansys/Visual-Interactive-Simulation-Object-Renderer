@@ -1,336 +1,258 @@
-# ©2026, ANSYS Inc part of Synopsys. Unauthorized use, distribution or duplication is prohibited.
+"""Public SAF transactions, browser uploads and Visor state persistence."""
 
-"""
-Smoke tests: verify saf-visor-poc loads and visualizes supported VTK file types.
-
-Each parametrized case uploads a file of a given type (.vtp, .vtu) through the
-"VTK Files" page and asserts that the upload succeeds and the Visor viewer
-container is populated.
-
-These tests are skipped automatically when the SAF CLI is not available.
-"""
-
+import importlib.util
+import inspect
+import json
 import os
-import re
+import shutil
 import subprocess
-import tempfile
+import sys
 import time
-import warnings
-from dataclasses import dataclass
+from collections.abc import Generator, Iterator
+from contextlib import ExitStack, contextmanager
+from importlib.metadata import distribution, version
 from pathlib import Path
 
 import pytest
 import requests
 from playwright.sync_api import Page, expect
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 from ansys.visor.viewer.vtk.io.file_to_dataset import file_to_dataset
-from tests.helpers.utils.ports import reserve_free_port
+from tests.helpers.utils.canvas import wait_for_canvas_alive
+from tests.helpers.utils.ports import reserved_port
 from tests.helpers.utils.process import kill_proc_tree
-from tests.helpers.utils.visor_api_tool import discover_from_log, list_datasets, save_state
+from tests.helpers.utils.visor_api_tool import list_datasets, save_state
+
+ROOT = Path(__file__).resolve().parents[3]
+HOST = "127.0.0.1"
 
 
-def _saf_cli_available() -> bool:
-    """Check if the SAF CLI is installed by running 'saf --version'."""
-    try:
-        result = subprocess.run(
-            ["saf", "--version"],
-            capture_output=True,
-            timeout=10,
+def wait_for_server(url: str, process: subprocess.Popen, log_path: Path) -> None:
+    """Poll `url` until it returns HTTP 200.
+
+    Args:
+        url: Readiness endpoint of the server.
+        process: Server process, checked for early exit while waiting.
+        log_path: Server log, referenced in error messages.
+
+    Raises:
+        RuntimeError: If the process exits or the server is not ready within 90 seconds.
+    """
+    deadline = time.monotonic() + 90
+    while time.monotonic() < deadline:
+        if process.poll() is not None:
+            raise RuntimeError(f"Server exited with {process.returncode}. See {log_path}")
+        try:
+            response = requests.get(url, timeout=2)
+        except (requests.ConnectionError, requests.Timeout):
+            time.sleep(0.2)
+            continue
+        if response.status_code == 200:
+            return
+        time.sleep(0.2)
+    raise RuntimeError(f"Server did not become ready at {url}. See {log_path}")
+
+
+@contextmanager
+def server_process(
+    command: list[str], env: dict[str, str], log_path: Path,
+) -> Generator[subprocess.Popen, None, None]:
+    """Run a server subprocess logging to `log_path` and kill its process tree on exit."""
+    # Launch the server with output going to a log file, in its own process group or session so its whole tree can be killed later.
+    with log_path.open("w", encoding="utf-8") as log:
+        process = subprocess.Popen(
+            command,
+            env=env,
+            stdout=log,
+            stderr=subprocess.STDOUT,
+            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0,
+            start_new_session=os.name != "nt",
         )
-        return result.returncode == 0
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        return False
-
-
-if not _saf_cli_available():
-    pytest.skip("SAF CLI not available (saf --version failed)", allow_module_level=True)
-
-# Console error substrings that originate from TDV WASM initialisation and are benign
-_BENIGN_CONSOLE_PATTERNS = (
-    "appendChild",
-    "addSelectionChangeListener",
-    "style",
-    "rows",
-    "FpsCounter",
-)
-
-# The VISOR launch alert fires once launch_visor()'s long-running transaction
-# completes, but the shared "visor" instance handle used by update_visor() can
-# take a little longer to become visible.
-# These substrings identify that specific transient error
-# so the upload can be retried instead of treated as a real failure.
-_TRANSIENT_INSTANCE_ERROR_MARKERS = (
-    "has not been initialized",
-    "out of sequence",
-)
-
-
-@dataclass
-class SafServerInfo:
-    """SAF server connection info yielded by the saf_server fixture."""
-
-    project_url: str
-    log_path: str
-
-
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
+        # Give the running process to the caller. On exit, kill its tree if still alive and wait for it to stop.
+        try:
+            yield process
+        finally:
+            if process.poll() is None:
+                kill_proc_tree(process.pid)
+            process.wait(timeout=15)
 
 
 @pytest.fixture(scope="module")
-def saf_server(request):
+def saf_stack() -> Iterator[tuple[str, str, int, Path]]:
+    """Start the Visor management API and the SAF GLOW API and UI once per module.
+
+    Yields:
+        The UI URL, the GLOW API URL, the Visor management port and the artifact directory.
     """
-    Launch saf-visor-poc via `saf run` and yield its connection info.
+    # Preflight: the fixture package must be installed, otherwise fail with setup instructions.
+    if importlib.util.find_spec("visor_saf_smoke") is None:
+        pytest.fail("Install tests/fixtures/saf_visor_solution[test] and the current Visor wheel first.")
 
-    project_url includes the SAF project ID path (e.g. /projects/<id>), which is
-    required for Dash project-context injection to work. log_path is the SAF
-    stdout log, used to discover the Visor management API host/port (see
-    tests/helpers/utils/visor_api_tool.py).
+    # One folder for logs, the SQLite database and provenance, replaced on every run so artifacts do not pile up.
+    artifact_dir = ROOT / "tests" / "artifacts" / "saf-smoke" / "run"
+    shutil.rmtree(artifact_dir, ignore_errors=True)
+    artifact_dir.mkdir(parents=True)
+    # Build an isolated child environment: drop inherited GLOW_, OTEL_ and SAF_VISOR_ settings, then force a local SQLite desktop deployment.
+    env = {
+        key: value
+        for key, value in os.environ.items()
+        if not key.startswith(("GLOW_", "OTEL_", "SAF_VISOR_"))
+    }
+    env.update(
+        PYTHONUNBUFFERED="1",
+        GLOW_DEPLOYMENT="Desktop",
+        GLOW_DATABASE_TYPE="sqlite",
+        GLOW_DATABASE_LOCATION=str(artifact_dir / "glow.db"),
+        GLOW_PROJECT_FILES_DIRECTORY=str(artifact_dir / "files"),
+        GLOW_UI_PROJECT_FILES_DIRECTORY=str(artifact_dir / "files"),
+        OTEL_SDK_DISABLED="true",
+        NO_PROXY="127.0.0.1,localhost",
+        no_proxy="127.0.0.1,localhost",
+    )
+    # Record which Python, Visor and SAF versions and install sources this run used, for traceability.
+    (artifact_dir / "provenance.json").write_text(
+        json.dumps(
+            {
+                "python": sys.executable,
+                "visor": version("ansys-visor-viewer"),
+                "saf_sdk": version("ansys-saf-sdk"),
+                "visor_module": inspect.getfile(file_to_dataset),
+                "visor_install": json.loads(
+                    distribution("ansys-visor-viewer").read_text("direct_url.json") or "{}"
+                ),
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    # Start the services under one ExitStack so every server is stopped when the fixture ends, even on failure.
+    # Three free localhost ports are reserved up front (Visor, API, UI).
+    with ExitStack() as stack:
+        ports = []
+        for _ in range(3):
+            _, port, guard = stack.enter_context(reserved_port(HOST))
+            ports.append((port, guard))
+        visor_port, api_port, ui_port = [item[0] for item in ports]
+        # Wire the API and UI to the Visor and API ports chosen above, through environment variables.
+        visor_url = f"http://{HOST}:{visor_port}"
+        api_url = f"http://{HOST}:{api_port}"
+        env["SAF_VISOR_API_URL"] = visor_url
+        env["GLOW_API_URL"] = api_url
+        # Command line for each service, in startup order: Visor, SAF API, SAF UI.
+        commands = [
+            [
+                sys.executable, "-m", "ansys.visor.viewer.cli.visor_cli",
+                "--api-host", HOST, "--api-port", str(visor_port), "server", "start",
+            ],
+            [sys.executable, "-m", "visor_saf_smoke.main", "api", "--host", HOST, "--port", str(api_port)],
+            [
+                sys.executable, "-m", "visor_saf_smoke.main", "ui",
+                "--host", HOST, "--port", str(ui_port), "--api-server-url", api_url,
+            ],
+        ]
+        # Start each service in turn and wait for its health endpoint before starting the next.
+        # Each port guard is released just before its service launches, which limits port races.
+        for (port, guard), name, command in zip(ports, ("visor", "api", "ui"), commands, strict=True):
+            guard.close()
+            log_path = artifact_dir / f"{name}.log"
+            process = stack.enter_context(server_process(command, env, log_path))
+            path = "/health" if name == "visor" else "/docs" if name == "api" else "/"
+            wait_for_server(f"http://{HOST}:{port}{path}", process, log_path)
 
-    Requires either --saf-project-dir CLI option or SAF_VISOR_POC_DIR env var
-    to point at the saf-visor-poc root directory.
+        # Hand the endpoints to the tests. The servers keep running until the tests finish and the ExitStack unwinds.
+        yield f"http://{HOST}:{ui_port}", api_url, visor_port, artifact_dir
+
+
+@pytest.fixture
+def saf_project(
+    request: pytest.FixtureRequest, saf_stack: tuple[str, str, int, Path],
+) -> Iterator[tuple[str, int, Path]]:
+    """Create a fresh SAF project for one case and reset Visor afterwards.
+
+    Yields:
+        The project URL, the Visor management port and the per-case artifact directory.
     """
-    saf_project_dir_raw = request.config.getoption("--saf-project-dir") or os.environ.get(
-        "SAF_VISOR_POC_DIR"
+    ui_url, api_url, visor_port, artifact_dir = saf_stack
+    # One folder per parametrized case, then a new empty SAF project created through the GLOW API.
+    case_dir = artifact_dir / request.node.callspec.id
+    case_dir.mkdir()
+    response = requests.post(
+        f"{api_url}/projects", json={"display_name": "SAF Visor smoke", "description": ""}, timeout=30,
     )
-    if not saf_project_dir_raw:
-        pytest.skip(
-            "SAF project dir not configured; "
-            "pass --saf-project-dir or set SAF_VISOR_POC_DIR env var"
-        )
-
-    saf_project_dir = Path(saf_project_dir_raw).resolve()
-    if not saf_project_dir.is_dir():
-        pytest.skip(f"SAF project dir not found: {saf_project_dir}")
-
-    host = request.config.getoption("--host")
-
-    _, ui_port, ui_guard = reserve_free_port(host=host)
-    _, api_port, api_guard = reserve_free_port(host=host)
-    # Release guard sockets so the SAF server can bind to those ports
-    ui_guard.close()
-    api_guard.close()
-
-    base_url = f"http://{host}:{ui_port}"
-
-    popen_kwargs: dict = {}
-    if os.name == "nt":
-        popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
-    else:
-        popen_kwargs["preexec_fn"] = os.setsid
-
-    # Write to a temp file — avoids pipe-buffer deadlock (SAF emits many
-    # WARNING lines on startup) and lets us extract the project URL from the log.
-    log_file = tempfile.NamedTemporaryFile(
-        mode="w", suffix=".log", prefix="saf_server_", delete=False
-    )
-    log_path = log_file.name
-
-    proc = subprocess.Popen(
-        [
-            "saf", "run", str(saf_project_dir),
-            "--solution-ui-port", str(ui_port),
-            "--solution-api-port", str(api_port),
-        ],
-        stdout=log_file,
-        stderr=subprocess.STDOUT,
-        **popen_kwargs,
-    )
-
-    # Poll until the UI HTTP server responds (else clause fires only on timeout)
-    deadline = time.time() + 90
-    last_err: Exception | None = None
-    while time.time() < deadline:
-        try:
-            resp = requests.get(base_url, timeout=2)
-            if resp.status_code == 200:
-                break
-        except Exception as exc:
-            last_err = exc
-        time.sleep(2)
-    else:
-        log_file.flush()
-        log_file.close()
-        kill_proc_tree(proc.pid)
-        raise RuntimeError(
-            f"SAF UI not reachable at {base_url} within 90s. "
-            f"Last error: {last_err!r}"
-        )
-
-    # SAF logs "INFO - Solution UI: http://host:port/projects/<id>" after startup.
-    # Navigate directly to the project URL so the Dash project context is set.
-    # The Flask app can start accepting connections (HTTP 200 above) slightly
-    # before this log line is written, so poll the log for a few seconds.
-    project_url = None
-    log_deadline = time.time() + 15
-    while time.time() < log_deadline:
-        log_file.flush()
-        with open(log_path) as f:
-            log_content = f.read()
-        match = re.search(r"INFO - Solution UI: (http://\S+)", log_content)
-        if match:
-            project_url = match.group(1)
-            break
-        time.sleep(1)
-
-    if project_url is None:
-        log_file.close()
-        kill_proc_tree(proc.pid)
-        raise RuntimeError(
-            f"Could not find 'Solution UI' project URL in SAF log within 15s. "
-            f"Log path: {log_path}"
-        )
-
-    yield SafServerInfo(project_url=project_url, log_path=log_path)
-
-    kill_proc_tree(proc.pid)
+    response.raise_for_status()
+    yield f"{ui_url}/{response.json()['name']}", visor_port, case_dir
+    # Best-effort reset so the next case initializes a new empty visualizer. Only a failed reset is recorded.
     try:
-        proc.wait(timeout=10)
-    except subprocess.TimeoutExpired:
-        proc.kill()
-    log_file.close()
-    try:
-        Path(log_path).unlink(missing_ok=True)
-    except PermissionError:
-        pass  # Windows may keep the file locked briefly after process exit
-
-
-# ---------------------------------------------------------------------------
-# Tests
-# ---------------------------------------------------------------------------
-
-# Each entry is (file_path,) the test ID reflects the file extension.
-_VTK_CASES = [
-    pytest.param(Path("tests/files/plate.vtp"), id="vtp"),
-    pytest.param(Path("tests/files/mesh.vtu"), id="vtu"),
-]
+        reset = requests.post(f"http://{HOST}:{visor_port}/stop", timeout=30)
+        result = None if reset.ok else {"status": reset.status_code, "body": reset.text}
+    except requests.RequestException as exc:
+        result = {"error": str(exc)}
+    if result:
+        (case_dir / "visor-stop.json").write_text(json.dumps(result), encoding="utf-8")
 
 
 @pytest.mark.smoke
 @pytest.mark.saf
-@pytest.mark.parametrize("vtk_file_path", _VTK_CASES)
+@pytest.mark.parametrize("filename", ["plate.vtp", "mesh.vtu"], ids=["vtp", "vtu"])
 def test_saf_visor_vtk_filetype_loads(
-    page: Page,
-    saf_server: SafServerInfo,
-    vtk_file_path: Path,
+    page: Page, saf_project: tuple[str, int, Path], filename: str,
 ) -> None:
-    """
-    Smoke: Verify saf-visor-poc loads and visualizes VTP and VTU files.
+    """Upload a VTK file through the SAF UI and verify Visor loads and saves matching geometry."""
 
-    Navigates to the VTK Files page, uploads a file, and asserts:
-      - The upload status reports success with the filename.
-      - The Visor viewer container is populated after upload.
-    """
-    vtk_file = vtk_file_path.resolve()
+    project_url, api_port, artifact_dir = saf_project
+    input_path = ROOT / "tests" / "files" / filename
+    assert input_path.is_file(), f"Required smoke asset is missing: {input_path}"
+    passed = False
 
-    if not vtk_file.is_file():
-        pytest.skip(f"Test file not found: {vtk_file}")
+    # Collect uncaught browser errors and use a fixed viewport so UI checks are repeatable.
+    browser_errors: list[str] = []
+    page.on("pageerror", lambda error: browser_errors.append(error.stack or str(error)))
+    page.set_viewport_size({"width": 1280, "height": 900})
 
-    page.set_viewport_size({"width": 1280, "height": 800})
+    # UI flow: open the project, initialize Visor, and wait until it reports ready.
+    try:
+        page.goto(project_url, wait_until="domcontentloaded")
+        page.get_by_role("button", name="Initialize Visor").click()
+        expect(page.locator("#launch-status")).to_have_text("ready", timeout=90_000)
 
-    console_errors: list[str] = []
+        # Check that Visor starts empty, then upload the file and confirm it arrived in both the UI and the Visor backend.
+        assert list_datasets(HOST, api_port) == {}, "Visor must start without preloaded geometry"
 
-    def _on_console(msg) -> None:
-        is_benign = any(pattern in msg.text for pattern in _BENIGN_CONSOLE_PATTERNS)
-        if msg.type == "error" and not is_benign:
-            console_errors.append(msg.text)
+        wait_for_canvas_alive(page, "before upload", timeout_ms=60_000)
+        page.locator("input[type=file]").set_input_files(str(input_path))
+        # Wait for any result first, so a rejected upload fails fast with its error text instead of timing out.
+        status = page.locator("#upload-status")
+        expect(status).not_to_be_empty(timeout=30_000)
+        expect(status).to_have_text(f"loaded: {filename}", timeout=5_000)
+        datasets = list_datasets(HOST, api_port)
 
-    page.on("console", _on_console)
+        assert len(datasets) == 1, f"Expected only the current upload, got {datasets}"
+        assert filename in json.dumps(datasets), f"Loaded dataset does not identify {filename}: {datasets}"
 
-    page.goto(saf_server.project_url, wait_until="domcontentloaded")
+        # Round-trip check: save Visor state, then compare the saved geometry (points, cells, bounds) with the original file.
+        state_dir = artifact_dir / "state"
+        save_state(HOST, api_port, str(state_dir))
+        snapshots = list(state_dir.rglob("*.vtkhdf"))
+        assert len(snapshots) == 1, f"Expected one fresh snapshot, found {snapshots}"
+        expected = file_to_dataset(str(input_path))
+        saved = file_to_dataset(str(snapshots[0]))
+        assert saved.GetNumberOfPoints() == expected.GetNumberOfPoints() > 0
+        assert saved.GetNumberOfCells() == expected.GetNumberOfCells() > 0
+        assert saved.GetBounds() == pytest.approx(expected.GetBounds())
+        wait_for_canvas_alive(page, "after upload")
+        assert not browser_errors, f"Uncaught browser errors: {browser_errors}"
+        passed = True
 
-    # The About page auto-launches the Visor service on first load.
-    # We need to wait for the launch result alert before navigating away so that
-    # update_visor() does not fail with "shared product instance not initialized".
-    page.locator("#visor_launch_message .alert").wait_for(state="visible", timeout=120_000)
-
-    # The launch alert fires once launch_visor()'s transaction completes, but the
-    # shared "visor" instance handle can take a little longer to become visible.
-    # The "Visor API host/port" log line itself can also lag slightly behind the alert
-    instance_ready_deadline = time.time() + 60
-    while True:
-        try:
-            api_host, api_port = discover_from_log(saf_server.log_path)
-            list_datasets(api_host, api_port)
-            break
-        except (requests.ConnectionError, RuntimeError):
-            if time.time() >= instance_ready_deadline:
-                pytest.fail("Visor shared instance did not become ready within 60s")
-            time.sleep(2)
-
-    # Click "VTK Files" in the sidebar navigation
-    vtk_nav = page.locator("text=VTK Files")
-    vtk_nav.wait_for(state="visible", timeout=15_000)
-    vtk_nav.click()
-
-    # Confirm the upload button is visible before attempting upload
-    upload_btn = page.locator("#btn_vtk_upload")
-    upload_btn.wait_for(state="visible", timeout=10_000)
-
-    status_locator = page.locator("#vtk_upload_status")
-
-    # Retry on the transient "instance not initialized" race (see marker comment
-    # above) as a safety net, since re-selecting the file re-triggers the upload
-    # callback cleanly.
-    max_attempts = 3
-    for attempt in range(1, max_attempts + 1):
-        page.locator("input[type='file']").set_input_files(str(vtk_file))
-        expect(status_locator).to_contain_text(vtk_file.name, timeout=30_000)
-        status_text = status_locator.inner_text()
-
-        is_transient = any(marker in status_text for marker in _TRANSIENT_INSTANCE_ERROR_MARKERS)
-        if not is_transient or attempt == max_attempts:
-            break
-        page.wait_for_timeout(2_000 * attempt)
-
-    assert "✅" in status_text, (
-        f"Upload did not succeed for {vtk_file.name}. Status: {status_text!r}"
-    )
-
-    # # # Currently disabled: SAF-visor poc always show at least one child even on a failed upload
-    # # Assert the Visor viewer container was populated with child elements
-    # viewer = page.locator("#visor_vtk_viewer_container")
-    # viewer.wait_for(state="visible", timeout=10_000)
-    # child_count = viewer.evaluate("el => el.children.length")
-    # assert child_count > 0, "Visor viewer container is empty after upload"
-
-    # Report console errors as warnings but allow test to pass
-    if console_errors:
-        warnings.warn(
-            f"Unexpected JS console errors detected: {console_errors}",
-            UserWarning,
-            stacklevel=2,
-        )
-
-    # Save the visualizer's state and assert the resulting VTKHDF snapshot actually contains geometry.
-
-    state_dir = Path(
-        "tests/artifacts", "saf-smoke", "results", "test_saf_visor_vtk_filetype_loads", vtk_file_path.stem
-    ).resolve()
-    state_dir.mkdir(parents=True, exist_ok=True)
-
-    # Retry save_state briefly since backend registration can lag after upload.
-    save_state_deadline = time.time() + 30
-    while True:
-        try:
-            save_state(api_host, api_port, str(state_dir))
-            break
-        except requests.HTTPError as exc:
-            body = exc.response.text if exc.response is not None else "<no body>"
-            if time.time() >= save_state_deadline:
-                pytest.fail(
-                    f"save_state failed with {exc}.\nServer response body:\n{body}"
-                )
-            time.sleep(2)
-
-    vtkhdf_files = list(state_dir.rglob("*.vtkhdf"))
-    assert vtkhdf_files, f"No .vtkhdf snapshot files found under {state_dir}"
-
-    dataset = file_to_dataset(str(vtkhdf_files[0]))
-    assert dataset.GetNumberOfPoints() > 0, (
-        f"Saved VTKHDF snapshot {vtkhdf_files[0].name} contains no points"
-    )
-    assert dataset.GetNumberOfCells() > 0, (
-        f"Saved VTKHDF snapshot {vtkhdf_files[0].name} contains no cells"
-    )
+    # Keep diagnostics only when the case failed: browser errors and a screenshot. Drop the saved geometry after a pass.
+    finally:
+        if passed:
+            for snapshot in (artifact_dir / "state").rglob("*.vtkhdf"):
+                snapshot.unlink()
+        if browser_errors:
+            (artifact_dir / "browser-errors.json").write_text(json.dumps(browser_errors), encoding="utf-8")
+        if not passed and not page.is_closed():
+            try:
+                page.screenshot(path=str(artifact_dir / "page.png"), full_page=True, timeout=5_000)
+            except PlaywrightTimeoutError as exc:
+                (artifact_dir / "screenshot-error.txt").write_text(str(exc), encoding="utf-8")
