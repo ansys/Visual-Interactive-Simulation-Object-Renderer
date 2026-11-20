@@ -879,6 +879,22 @@ def test_clear_holds_the_lock(mocked_scene):
     assert mocked_scene._vtk_lock.enter_count == mocked_scene._vtk_lock.exit_count
 
 
+def test_clear_resets_the_cross_section_plane(mocked_scene):
+    """clear() discards the renderer's plane record, so the next populate seeds a default."""
+    mocked_scene.clear()
+
+    mocked_scene._renderer.reset_cross_section_plane.assert_called_once_with()
+
+
+def test_clear_resets_the_cross_section_plane_under_the_lock(mocked_scene):
+    """The plane reset runs with the lock held."""
+    observed = _depth_probe(mocked_scene, mocked_scene._renderer, "reset_cross_section_plane")
+
+    mocked_scene.clear()
+
+    assert observed["depth"] >= 1
+
+
 def test_add_dataset_holds_the_lock(mocked_scene):
     """add_dataset() registers nodes with the lock held."""
     subtree = mocked_scene._scene_graph.get_descendant_node.return_value

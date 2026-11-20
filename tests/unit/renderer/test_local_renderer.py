@@ -1190,6 +1190,11 @@ REPORTED_PLANE_NORMAL = [0.0, 1.0, 0.0]
 RECORDED_PLANE_ORIGIN = [7.0, 8.0, 9.0]
 RECORDED_PLANE_NORMAL = [1.0, 0.0, 0.0]
 
+# What the widget's plane reports on a later populate.  Every component
+# differs from the seed's origin, so a record left at the first seed fails.
+RESEEDED_PLANE_ORIGIN = [10.0, 11.0, 12.0]
+RESEEDED_PLANE_NORMAL = [0.0, 0.0, 1.0]
+
 # One literal per object, so asserting these two fails -- rather than
 # coincides -- if production names the widget, the render window or anything
 # else.  Distinct from the camera's literals above for the same reason.
@@ -1209,6 +1214,16 @@ class _PlaneDouble:
 
     def GetNormal(self):  # noqa: N802
         return tuple(SEEDED_PLANE_NORMAL)
+
+
+class _ReseededPlaneDouble:
+    """Stand-in for the widget's ``vtkPlane`` after a later populate moved the default."""
+
+    def GetOrigin(self):  # noqa: N802
+        return tuple(RESEEDED_PLANE_ORIGIN)
+
+    def GetNormal(self):  # noqa: N802
+        return tuple(RESEEDED_PLANE_NORMAL)
 
 
 class _CrossSectionWidgetDouble:
@@ -1417,5 +1432,106 @@ class TestCrossSectionPlane:
         record = renderer.get_cross_section_plane()
         assert record.origin == RECORDED_PLANE_ORIGIN
         assert record.normal == RECORDED_PLANE_NORMAL
+
+    # -- update_bounds: a seeded record follows the bounds ------------------
+    #
+    # A seeded record is the default plane, not a placement anyone chose.
+    # Every mapper clips against it, so it must be re-seeded on every bounds
+    # update; a record frozen at the first scene's bounds clips away any
+    # dataset added below it.
+
+    def test_update_bounds_with_a_seeded_record_reseeds_the_record(
+        self, renderer, widget
+    ):
+        """A second update_bounds re-reads the widget's plane over a seeded record."""
+        renderer.update_bounds(BOUNDS)
+        widget._plane = _ReseededPlaneDouble()
+
+        renderer.update_bounds(BOUNDS)
+
+        record = renderer.get_cross_section_plane()
+        assert record.origin == RESEEDED_PLANE_ORIGIN
+        assert record.normal == RESEEDED_PLANE_NORMAL
+
+    def test_update_bounds_with_a_seeded_record_writes_nothing_back(
+        self, renderer, widget
+    ):
+        """Over a seeded record, the widget keeps the default its own update_bounds wrote."""
+        renderer.update_bounds(BOUNDS)
+        widget.calls.clear()
+
+        renderer.update_bounds(BOUNDS)
+
+        assert widget.calls == [("update_bounds", BOUNDS)]
+
+    def test_update_bounds_moves_a_seeded_plane_below_a_grown_scene(self, renderer):
+        """A real widget's clip plane drops to the new z-minimum when the scene grows downward.
+
+        First bounds z 4..6; grown bounds z -1..6, so the default plane origin
+        is the z-midpoint 2.5 less 1.25 times the half-height 3.5.
+        """
+        widget = VisorCrossSectionWidget(vtkRenderWindowInteractor())
+        renderer._cross_section_widget = widget
+        renderer.update_bounds([-1.0, 1.0, -1.0, 1.0, 4.0, 6.0])
+
+        renderer.update_bounds([-1.0, 1.0, -1.0, 1.0, -1.0, 6.0])
+
+        assert widget.plane.GetOrigin() == pytest.approx((0.0, 0.0, -1.875))
+
+    # -- reset_cross_section_plane ------------------------------------------
+
+    def test_reset_cross_section_plane_discards_the_record(self, renderer, widget):
+        """After a reset there is no record, as before the first populate."""
+        renderer.sync_cross_section_plane(RECORDED_PLANE_ORIGIN, RECORDED_PLANE_NORMAL)
+
+        renderer.reset_cross_section_plane()
+
+        assert renderer.get_cross_section_plane() is None
+
+    def test_reset_cross_section_plane_writes_no_vtk_object(self, renderer, widget):
+        """The reset touches only the record; the next populate places the plane."""
+        renderer.sync_cross_section_plane(RECORDED_PLANE_ORIGIN, RECORDED_PLANE_NORMAL)
+        widget.calls.clear()
+
+        renderer.reset_cross_section_plane()
+
+        assert widget.calls == []
+
+    def test_update_bounds_after_reset_reseeds_an_explicit_record(self, renderer, widget):
+        """A plane placed before the reset is not restored: the record is seeded from the widget."""
+        renderer.sync_cross_section_plane(RECORDED_PLANE_ORIGIN, RECORDED_PLANE_NORMAL)
+        renderer.reset_cross_section_plane()
+
+        renderer.update_bounds(BOUNDS)
+
+        record = renderer.get_cross_section_plane()
+        assert record.origin == SEEDED_PLANE_ORIGIN
+        assert record.normal == SEEDED_PLANE_NORMAL
+
+    def test_update_bounds_after_reset_writes_nothing_back(self, renderer, widget):
+        """After a reset the widget keeps its own default; the placed plane is not written back."""
+        renderer.sync_cross_section_plane(RECORDED_PLANE_ORIGIN, RECORDED_PLANE_NORMAL)
+        renderer.reset_cross_section_plane()
+        widget.calls.clear()
+
+        renderer.update_bounds(BOUNDS)
+
+        assert widget.calls == [("update_bounds", BOUNDS)]
+
+    def test_update_bounds_after_reset_places_the_plane_below_the_new_scene(self, renderer):
+        """A real widget's clip plane leaves a placed position for the new scene's default.
+
+        The plane is placed at z 5, then reset; the new bounds z -1..1 put the
+        default origin at the z-midpoint 0 less 1.25 times the half-height 1.
+        """
+        widget = VisorCrossSectionWidget(vtkRenderWindowInteractor())
+        renderer._cross_section_widget = widget
+        renderer.update_bounds([-1.0, 1.0, -1.0, 1.0, 4.0, 6.0])
+        renderer.sync_cross_section_plane([0.0, 0.0, 5.0], [0.0, 0.0, 1.0])
+        renderer.reset_cross_section_plane()
+
+        renderer.update_bounds([-1.0, 1.0, -1.0, 1.0, -1.0, 1.0])
+
+        assert widget.plane.GetOrigin() == pytest.approx((0.0, 0.0, -1.25))
 
 
