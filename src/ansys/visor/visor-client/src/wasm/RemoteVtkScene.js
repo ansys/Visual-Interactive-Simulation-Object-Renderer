@@ -443,12 +443,22 @@ export default class RemoteVtkScene {
         }
     };
     /**
+     * Call every data-updated listener once.
+     * @return {void}
+     */
+    #fireDataUpdated = () => {
+        for (const callback of this.#dataUpdatedListeners) {
+            callback();
+        }
+    };
+    /**
      * Serial queue every server update runs through.
      * @type{SerialUpdateQueue}
      */
     #updates = new SerialUpdateQueue(
         (bindCanvas) => this.#applyUpdateAsync(bindCanvas),
-        () => this.#fireServerUpdated()
+        () => this.#fireServerUpdated(),
+        () => this.#fireDataUpdated()
     );
     /**
      * @param {string} name
@@ -486,21 +496,14 @@ export default class RemoteVtkScene {
     ////////////////////////////////////////////////////////////////////////////////////////
 
     /**@type{Map<Function,()=>void>}*/
-    #userObserverRemovers = new Map();
-    /**@type{Map<Function,()=>void>}*/
     #serverUpdatedListeners = new Map();
     /**@type{Map<Function,(payload:any)=>void>}*/
     #setStateListeners = new Map();
     /**
-     * @return {void}
+     * Never emptied, so a data update arriving during a rebuild still reaches its listener.
+     * @type{(()=>void)[]}
      */
-    clearObserversAndEventListeners = () => {
-        for (const remover of this.#userObserverRemovers.values()) {
-            remover();
-        }
-        this.#serverUpdatedListeners.clear();
-        this.#setStateListeners.clear();
-    };
+    #dataUpdatedListeners = [];
     /**
      * @param {()=>void} handler
      * @return {()=>void}
@@ -518,5 +521,13 @@ export default class RemoteVtkScene {
         const remover = () => this.#setStateListeners.delete(remover);
         this.#setStateListeners.set(remover, handler);
         return remover;
+    };
+    /**
+     * Register a listener fired after a fulfilled data-only (dataOnly=true) update.
+     * @param {()=>void} listener
+     * @return {void}
+     */
+    addDataUpdatedListener = (listener) => {
+        this.#dataUpdatedListeners.push(listener);
     };
 }

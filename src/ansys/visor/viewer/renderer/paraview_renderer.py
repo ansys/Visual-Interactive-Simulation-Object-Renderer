@@ -805,6 +805,10 @@ class ParaviewRenderer(IRenderer):
         """Request a frame; never renders on the calling thread."""
         self._frame_requester.request_frame()
 
+    def render_without_rebuild(self) -> None:
+        """Request a frame, as :meth:`render` does."""
+        self.render()
+
     # ------------------------------------------------------------------
     # RCA render-target surface
     # ------------------------------------------------------------------

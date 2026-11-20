@@ -145,8 +145,7 @@ class _VariableAccumulator:
     def to_record(self, previous_record: VisorVariableRecord | None) -> VisorVariableRecord:
         """Build the record, carrying each custom slot from ``previous_record``."""
         n = self.num_components
-        default_magnitude = self.magnitude or (0.0, 0.0)
-        default_ranges = [slot if slot is not None else (0.0, 0.0) for slot in self.components]
+        default_magnitude, default_ranges = self._default_slots()
 
         custom_magnitude = default_magnitude
         custom_ranges = list(default_ranges)
@@ -158,12 +157,34 @@ class _VariableAccumulator:
                 if k < len(old.ranges) and k < len(old.default_ranges) else default_ranges[k]
                 for k in range(n)
             ]
+        return self._record_at(custom_magnitude, custom_ranges)
 
+    def to_record_keeping_ranges(self, previous_record: VisorVariableRecord | None) -> VisorVariableRecord:
+        """Build the record, each slot keeping ``previous_record``'s effective range; a new id starts at default."""
+        default_magnitude, default_ranges = self._default_slots()
+        old = previous_record
+        if old is None:
+            return self._record_at(default_magnitude, list(default_ranges))
+        custom_ranges = [
+            tuple(old.ranges[k]) if k < len(old.ranges) else default_ranges[k]
+            for k in range(self.num_components)
+        ]
+        return self._record_at(tuple(old.magnitude_range), custom_ranges)
+
+    def _default_slots(self) -> Tuple[Range, List[Range]]:
+        """Return the widened default magnitude and component ranges, an empty slot as ``(0.0, 0.0)``."""
+        default_magnitude = self.magnitude or (0.0, 0.0)
+        default_ranges = [slot if slot is not None else (0.0, 0.0) for slot in self.components]
+        return default_magnitude, default_ranges
+
+    def _record_at(self, custom_magnitude: Range, custom_ranges: List[Range]) -> VisorVariableRecord:
+        """Build the record at these custom ranges over this accumulator's widened defaults."""
+        default_magnitude, default_ranges = self._default_slots()
         return VisorVariableRecord(
             id=self.variable_id,
             array_name=self.name,
             type=self.variable_type,
-            num_components=n,
+            num_components=self.num_components,
             part_ids=sorted(self.part_ids),
             default_magnitude_range=default_magnitude,
             default_ranges=default_ranges,
@@ -195,6 +216,36 @@ class VisorVariableRecords(BaseModel):
 
         ``previous`` is never mutated.
         """
+        variables: Dict[str, VisorVariableRecord] = {}
+        for accumulator in cls._accumulate(registry).values():
+            variable_id = accumulator.variable_id
+            variables[variable_id] = accumulator.to_record(previous.variables.get(variable_id))
+        return cls(variables=variables)
+
+    @classmethod
+    def from_registry_keeping_ranges(
+            cls,
+            registry: "VisorDatasetRegistry",
+            previous: "VisorVariableRecords",
+    ) -> "VisorVariableRecords":
+        """Build a new holder from the registry; an existing id keeps its effective ranges, a new id starts at default.
+
+        Participation and default ranges are rebuilt as in :meth:`from_registry`,
+        so the defaults follow the registry's current data.  Every slot of an
+        existing id takes ``previous``'s effective range as its custom range,
+        whether or not it had been edited.
+
+        ``previous`` is never mutated.
+        """
+        variables: Dict[str, VisorVariableRecord] = {}
+        for accumulator in cls._accumulate(registry).values():
+            variable_id = accumulator.variable_id
+            variables[variable_id] = accumulator.to_record_keeping_ranges(previous.variables.get(variable_id))
+        return cls(variables=variables)
+
+    @staticmethod
+    def _accumulate(registry: "VisorDatasetRegistry") -> Dict[tuple, _VariableAccumulator]:
+        """Union participation and widen default ranges per (association, name, width) key."""
         accumulators: Dict[tuple, _VariableAccumulator] = {}
         for dataset in list(registry.datasets.values()):
             for part_variables in dataset.list_variables():
@@ -203,12 +254,7 @@ class VisorVariableRecords(BaseModel):
                     if key not in accumulators:
                         accumulators[key] = _VariableAccumulator(*key)
                     accumulators[key].add_part(part_variables.part_id, variable)
-
-        variables: Dict[str, VisorVariableRecord] = {}
-        for accumulator in accumulators.values():
-            variable_id = accumulator.variable_id
-            variables[variable_id] = accumulator.to_record(previous.variables.get(variable_id))
-        return cls(variables=variables)
+        return accumulators
 
     @classmethod
     def from_file(

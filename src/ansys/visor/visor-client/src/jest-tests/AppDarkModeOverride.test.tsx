@@ -69,8 +69,8 @@ function mockSceneDetailsPayload() {
 function mockMakeWasmView() {
     return {
         trameGetState: () => false,
-        clearObserversAndEventListeners: () => {},
         addServerUpdatedListener: () => () => {},
+        addDataUpdatedListener: () => {},
         addSetStateListener: () => () => {},
         trameTriggerAsync: async (name: string) =>
             name === 'get_visor_scene_details_json' ? mockSceneDetailsPayload() : undefined,

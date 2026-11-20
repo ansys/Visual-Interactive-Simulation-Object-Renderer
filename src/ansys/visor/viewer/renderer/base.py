@@ -337,4 +337,8 @@ class IRenderer(ABC):
     def render(self) -> None:
         """Trigger a render and flush to the frontend."""
 
+    @abstractmethod
+    def render_without_rebuild(self) -> None:
+        """Trigger a render and present it without rebuilding the client frontend."""
+
 

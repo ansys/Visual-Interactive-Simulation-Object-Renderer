@@ -3,6 +3,7 @@ import VisorSceneDetails, {
     SchemaVersionMismatchError,
 } from '../state/appstate/VisorSceneDetails.tsx';
 import VisorAppState from '../state/appstate/VisorAppState.tsx';
+import VisorVariableState from '../state/appstate/VisorVariableState.tsx';
 import RemoteVtkScene from '../wasm/RemoteVtkScene';
 import { WasmRenderer } from '../renderer/WasmRenderer';
 import { requireWasmAnnotation } from '../renderer/RendererAnnotation';
@@ -10,6 +11,7 @@ import { attachCameraSyncReporter } from '../CameraSyncReporter';
 import { buildFrontendAsync } from '../buildFrontendAsync';
 import type { Trame } from '@kitware/trame/src/trame.js';
 import type { VisorArgs } from '../hooks/useVisorArgs';
+import { FrontendUpdateQueue } from './FrontendUpdateQueue';
 import {
     CurrentFrontend,
     type FrontendBuild,
@@ -30,9 +32,12 @@ class ClientFrontendBuild implements FrontendBuild {
     }
 }
 
-/** A client-mode view over the wasm scene: rebuilds on each server update and applies set_state to the current frontend. */
+/**
+ * A client-mode view over the wasm scene: rebuilds on each structural server update, refreshes the
+ * variable records in place on each data-only one, and applies set_state to the current frontend.
+ */
 export class ClientViewer {
-    /** Connect the wasm scene over the given session, listen for server updates and run the first build; all parameters required. */
+    /** Connect the wasm scene over the given session, listen for server updates and queue the first build; all parameters required. */
     static async connectAsync(
         visorArgs: VisorArgs,
         trame: Trame,
@@ -49,8 +54,14 @@ export class ClientViewer {
             serverOrigin,
         });
         const viewer = new ClientViewer(wasm, visorArgs.darkMode, onChange);
+        // Each listener is registered once for the viewer's lifetime, so an
+        // update arriving mid-rebuild is queued rather than missed.
         wasm.addServerUpdatedListener(viewer.#onServerUpdated);
-        await viewer.#rebuildAsync();
+        wasm.addSetStateListener(viewer.#onSetState);
+        wasm.addDataUpdatedListener(() => viewer.#queue.requestDataRefresh());
+        // Queued rather than awaited, so a data update during the first build
+        // waits for it instead of refreshing no frontend.
+        viewer.#queue.requestRebuild();
         return viewer;
     }
 
@@ -62,51 +73,63 @@ export class ClientViewer {
         this.#wasm = wasm;
         this.#darkMode = darkMode;
         this.#current = new CurrentFrontend(onChange);
+        this.#queue = new FrontendUpdateQueue(
+            () => this.#rebuildAsync(),
+            () => this.#refreshDataAsync(),
+            (err) => console.error('[VISOR] client-mode rebuild failed', err)
+        );
     }
 
     readonly #wasm: RemoteVtkScene;
     readonly #darkMode: boolean | undefined;
     readonly #current: CurrentFrontend;
+    readonly #queue: FrontendUpdateQueue;
     #cameraSyncRemover: (() => void) | null = null;
-    readonly #onServerUpdated = () => this.#rebuildAsync();
+    readonly #onServerUpdated = () => this.#queue.requestRebuild();
     readonly #onSetState = (payload: unknown) => this.#applySetStateAsync(payload);
 
-    /** Rebuild from fresh scene details; the update and set_state listeners are registered again however it ends. */
+    /** Fetch the held variable records and apply them to the current frontend; sends nothing without one. */
+    async #refreshDataAsync(): Promise<void> {
+        if (this.#current.frontend == null) {
+            return;
+        }
+        try {
+            const recordsJson = await this.#wasm.trameTriggerAsync('get_variable_records_json');
+            const records = VisorVariableState.listFromRecordsJson(recordsJson);
+            // Read again: the frontend may have been replaced during the fetch.
+            await this.#current.frontend?.applyVariableRecordsAsync(records);
+        } catch (err) {
+            console.error('[VISOR] variable records refresh failed', err);
+        }
+    }
+
+    /** Rebuild from fresh scene details; a schema mismatch keeps the current frontend. */
     async #rebuildAsync(): Promise<void> {
         const wasm = this.#wasm;
         const perfLogging = wasm.trameGetState('perf_logging') === true;
         const t0 = perfLogging ? performance.now() : 0;
         if (perfLogging) console.log(`[PERF] onServerUpdateAsync start`);
 
-        wasm.clearObserversAndEventListeners();
+        const sceneDetailsJson = await wasm.trameTriggerAsync('get_visor_scene_details_json');
         let newFrontend: VisorFrontend;
-        // The listeners cleared above are registered again however this
-        // block ends, so a failed rebuild still receives the next server
-        // update, and `set_state` keeps reaching the current frontend.
         try {
-            const sceneDetailsJson = await wasm.trameTriggerAsync('get_visor_scene_details_json');
-            try {
-                newFrontend = await buildFrontendAsync(
-                    sceneDetailsJson,
-                    (sceneDetails) => this.#createRendererAsync(sceneDetails),
-                    wasm.trameTriggerAsync,
-                    this.#darkMode
-                );
-            } catch (err) {
-                if (err instanceof SchemaVersionMismatchError) {
-                    this.#current.showMismatch(err);
-                    return;
-                }
-                throw err;
+            newFrontend = await buildFrontendAsync(
+                sceneDetailsJson,
+                (sceneDetails) => this.#createRendererAsync(sceneDetails),
+                wasm.trameTriggerAsync,
+                this.#darkMode
+            );
+        } catch (err) {
+            if (err instanceof SchemaVersionMismatchError) {
+                this.#current.showMismatch(err);
+                return;
             }
-            // Dash snapshots the frontend named here; it is written before
-            // React commits the new frontend, as App writes it only after.
-            (window as any).__visorState = newFrontend;
-            this.#current.swapTo(new ClientFrontendBuild(newFrontend));
-        } finally {
-            wasm.addServerUpdatedListener(this.#onServerUpdated);
-            wasm.addSetStateListener(this.#onSetState);
+            throw err;
         }
+        // Dash snapshots the frontend named here; it is written before
+        // React commits the new frontend, as App writes it only after.
+        (window as any).__visorState = newFrontend;
+        this.#current.swapTo(new ClientFrontendBuild(newFrontend));
         setTimeout(() => {
             wasm.vtkScene.resizeAsync();
         }, 100);
@@ -138,16 +161,17 @@ export class ClientViewer {
         return renderer;
     }
 
-    /** Apply a set_state payload to the current frontend, the darkMode prop winning over the stored theme. */
+    /** Apply a set_state payload to the current frontend, the darkMode prop winning over the stored theme; dropped and logged with no frontend. */
     async #applySetStateAsync(payload: any): Promise<void> {
+        const frontend = this.#current.frontend;
+        if (frontend == null) {
+            console.error('[VISOR] set_state arrived before any frontend was built; dropped');
+            return;
+        }
         const newAppState = new VisorAppState(payload?.appState);
         if (this.#darkMode != null) {
             // Explicit Dash prop takes precedence over the theme stored in saved state.
             newAppState.ui.setDarkTheme(this.#darkMode);
-        }
-        const frontend = this.#current.frontend;
-        if (frontend == null) {
-            throw new Error(`set_state arrived before any frontend was built`);
         }
         await frontend.setAppStateAsync(newAppState, true);
     }
