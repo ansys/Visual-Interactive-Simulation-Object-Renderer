@@ -424,15 +424,21 @@ class VtkPipelineRenderer(IRenderer):
         the record is never ``None`` once a scene has been populated and
         ``get_state`` can assign it unconditionally, as it does the camera's.
 
-        **The seed runs only when there is no record.**  This method is not
-        reached once per scene: ``set_part_visibility`` fans out to
-        ``_update_widget_bounds``, so a part toggle or a dataset add reaches
-        here too.  Seeding unconditionally would therefore discard a plane the
-        user had dragged, on the next toggle, and the widget's own
-        ``update_bounds`` would already have overwritten both VTK objects with
-        the default plane.  With a record present this writes the record
-        *back* to the widget instead -- after the widget's own call, never
-        before -- and leaves the record itself untouched.
+        **The seed runs whenever the record is not explicit**, that is, when
+        nothing has placed the plane through ``sync_cross_section_plane`` since
+        the last ``reset_cross_section_plane``.  The default plane sits below
+        the scene, and every mapper clips against it, so a default record must
+        follow the bounds as datasets are added; a stale one clips away any
+        dataset that lies below it.
+
+        This method is not reached once per scene: ``set_part_visibility``
+        fans out to ``_update_widget_bounds``, so a part toggle or a dataset
+        add reaches here too.  Seeding over an explicit record would therefore
+        discard a plane the user had dragged, on the next toggle, and the
+        widget's own ``update_bounds`` would already have overwritten both VTK
+        objects with the default plane.  With an explicit record this writes
+        the record *back* to the widget instead -- after the widget's own
+        call, never before -- and leaves the record itself untouched.
 
         Ordering is load-bearing in both branches.  Seeded before the widget
         call, the record holds the previous plane and is one populate behind;
@@ -442,7 +448,7 @@ class VtkPipelineRenderer(IRenderer):
         """
         self._cross_section_widget.update_bounds(bounds)
         self._bounding_box_widget.update_bounds(bounds)
-        if self._last_cross_section_state is None:
+        if not self._cross_section_plane_is_explicit:
             plane = self._cross_section_widget.plane
             self._last_cross_section_state = VisorCrossSectionState(
                 origin=list(plane.GetOrigin()),
