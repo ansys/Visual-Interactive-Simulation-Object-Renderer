@@ -10,6 +10,7 @@ CSS's 0-255 triples.
 
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -22,12 +23,14 @@ from vtkmodules.vtkRenderingCore import vtkRenderWindow, vtkRenderWindowInteract
 from ansys.visor.viewer.core.errors import UnsupportedInModeError, VisorAddDatasetError
 from ansys.visor.viewer.core.metadata import ExtendedMetadata
 from ansys.visor.viewer.models.runtime.picking.geometry_pick import NoGeometryPick
+from ansys.visor.viewer.vtk.io.file_to_dataset import file_to_dataset
 from ansys.visor.viewer.vtk.scene import paraview_scene
 from ansys.visor.viewer.vtk.scene.paraview_scene import VisorParaviewScene
 from tests.helpers.utils.locks import LockSpy, lock_held_by_another_thread
 
 LIGHT_CSS_RGB = (247, 247, 247)
 DARK_CSS_RGB = (54, 60, 67)
+MANY_BLOCKS_VTM = Path(__file__).parents[3] / "files" / "many_blocks" / "many_blocks.vtm"
 
 
 class _FakeSession:
@@ -42,6 +45,8 @@ class _FakeSession:
         self._interactor = interactor
         self.reported_points = point_count
         self.opened: list[str] = []
+        self.shown: list[object] = []
+        self.writes: list[tuple[str, object]] = []
         self.deleted: list[object] = []
         self.backgrounds: list[tuple[float, float, float]] = []
         self.render_count = 0
@@ -50,10 +55,8 @@ class _FakeSession:
         self.opened.append(path)
         return SimpleNamespace(path=path)
 
-    def extract(self, source, selectors):
-        return SimpleNamespace(source=source, selectors=selectors)
-
     def show(self, source):
+        self.shown.append(source)
         return SimpleNamespace(shows=source)
 
     def delete(self, source):
@@ -62,16 +65,25 @@ class _FakeSession:
     def point_count(self, source):
         return self.reported_points
 
-    def set_property(self, rep, name, value):
-        pass
+    def block_point_count(self, source, selector):
+        return self.reported_points
 
-    def color_by(self, rep, association, array, component):
-        pass
+    def set_property(self, rep, name, value):
+        self.writes.append((name, value))
 
     def clear_color(self, rep):
         pass
 
-    def rescale(self, rep, lo, hi):
+    def new_color_map(self, component):
+        return SimpleNamespace(component=component)
+
+    def rescale_color_map(self, lut, lo, hi):
+        pass
+
+    def delete_color_map(self, lut):
+        pass
+
+    def set_selected_blocks(self, source, selectors):
         pass
 
     def write_camera(self, camera):
@@ -236,6 +248,23 @@ def test_in_memory_input_opens_nothing(scene, session):
     assert session.opened == []
 
 
+def test_add_multiblock_shows_one_representation(scene, session):
+    session.reported_points = 88
+    scene.add_dataset(file_to_dataset(str(MANY_BLOCKS_VTM)), _metadata("mb", file_path="/shared/many_blocks.vtm"))
+    scene.rca_window._capture._render()
+    shown_blocks = [value for name, value in session.writes if name == "BlockSelectors"][-1]
+    assert (len(session.shown), session.render_count, len(shown_blocks), shown_blocks[:3]) == (
+        1,
+        1,
+        66,
+        [
+            "/Root/GroupA/GroupAA/Block0",
+            "/Root/GroupA/GroupAA/GroupAAA/Block0",
+            "/Root/GroupA/GroupAA/GroupAAA/Block1",
+        ],
+    )
+
+
 # ---------------------------------------------------------------------------
 # remove_dataset and clear
 # ---------------------------------------------------------------------------
@@ -258,6 +287,15 @@ def test_remove_dataset_unregisters_the_dataset(scene):
     dataset_id = scene.add_dataset(_triangle_points(), _metadata("a", file_path="/shared/a.vtp"))
     scene.remove_dataset(dataset_id)
     assert list(scene.datasets) == []
+
+
+def test_remove_multiblock_dataset_deletes_only_its_source(scene, session):
+    session.reported_points = 88
+    dataset_id = scene.add_dataset(
+        file_to_dataset(str(MANY_BLOCKS_VTM)), _metadata("mb", file_path="/shared/many_blocks.vtm")
+    )
+    scene.remove_dataset(dataset_id)
+    assert [source.path for source in session.deleted] == ["/shared/many_blocks.vtm"]
 
 
 def test_remove_dataset_holds_lock_when_closing(scene):
@@ -368,3 +406,16 @@ def test_rca_window_wraps_scene_lock(scene, bridge):
     with lock_held_by_another_thread(scene._vtk_lock):
         _ = scene.rca_window.img_cols_rows
     assert bridge.retry_count == 1
+
+
+def test_the_capture_writes_held_block_changes_before_it_renders(scene, session):
+    session.reported_points = 88
+    scene.add_dataset(file_to_dataset(str(MANY_BLOCKS_VTM)), _metadata("mb", file_path="/shared/many_blocks.vtm"))
+    held = [value for name, value in session.writes if name == "BlockSelectors"]
+    session.render = lambda: session.writes.append(("render", None))
+    before = len(session.writes)
+
+    scene.rca_window._capture._render()
+
+    flushed = [name for name, _ in session.writes[before:]]
+    assert (held, "BlockSelectors" in flushed, flushed[-1]) == ([[]], True, "render")

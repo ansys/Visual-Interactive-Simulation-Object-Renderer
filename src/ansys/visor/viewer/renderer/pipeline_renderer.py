@@ -216,7 +216,9 @@ class VtkPipelineRenderer(IRenderer):
         """See :meth:`IRenderer.apply_selected`.
 
         Resolves the pipeline and delegates to
-        :meth:`VtkNodePipeline.set_selected`.  *diffuse_rgb* is passed
+        :meth:`VtkNodePipeline.set_selected`, which writes ``AmbientColor``
+        (the selection tint), ``Ambient`` and ``Diffuse`` as a function of
+        *selected* only, and ``DiffuseColor = diffuse_rgb`` on both branches.  *diffuse_rgb* is passed
         through as given; supplying a default when the part has no stored
         colour is the coordinator's job, not the renderer's.  An unknown
         *node_id* is a logged no-op, never a raise.

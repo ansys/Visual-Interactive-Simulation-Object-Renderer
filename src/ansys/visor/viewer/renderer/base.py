@@ -154,11 +154,10 @@ class IRenderer(ABC):
         """
         Apply or remove the selection highlight on *node_id*.
 
-        Writes ``AmbientColor`` (the selection tint), ``Ambient`` and
-        ``Diffuse`` as a function of *selected* only, and
-        ``DiffuseColor = diffuse_rgb`` on both branches.  Selection never
-        replaces the part colour.  *diffuse_rgb* is the part's current diffuse
-        colour.
+        A selected part is visibly distinguished from an unselected one, as a
+        function of *selected* only.  *diffuse_rgb*, the part's current
+        diffuse colour, is kept on both branches: selection never replaces
+        the part colour.
 
         On return, the state this renderer serves to the client reflects the
         write, and the client is not notified.

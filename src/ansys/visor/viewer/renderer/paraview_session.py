@@ -31,6 +31,9 @@ PvSource = Any
 PvRepresentation = Any
 """A ParaView representation proxy in the session's view; opaque outside the session."""
 
+PvLookupTable = Any
+"""A ParaView lookup-table proxy on pvserver; opaque outside the session."""
+
 PVSERVER_CONNECT_TIMEOUT_S: int = 10
 """Seconds ``Connect`` retries before giving up on an unreachable pvserver."""
 
@@ -48,11 +51,8 @@ class ParaviewSession(Protocol):
     def open(self, path: str) -> PvSource:
         """Open path on pvserver."""
 
-    def extract(self, source: PvSource, selectors: list[str]) -> PvSource:
-        """ExtractBlock with these selectors."""
-
     def show(self, source: PvSource) -> PvRepresentation:
-        """Show source in the view with scalar colouring off."""
+        """Show source in the view with scalar colouring off, scalars mapped to colours before interpolation, and its selection drawn as ParaView's default wireframe."""
 
     def delete(self, source: PvSource) -> None:
         """Hide and delete source on pvserver."""
@@ -60,26 +60,38 @@ class ParaviewSession(Protocol):
     def point_count(self, source: PvSource) -> int:
         """Number of points pvserver reports for source."""
 
+    def block_point_count(self, source: PvSource, selector: str) -> int:
+        """Number of points pvserver reports for the block of source at selector."""
+
     def set_property(self, rep: PvRepresentation, name: str, value: object) -> None:
         """Write one representation property."""
-
-    def color_by(self, rep: PvRepresentation, association: str, array: str, component: str | None) -> None:
-        """ColorBy with a separate colour map for this rep."""
 
     def clear_color(self, rep: PvRepresentation) -> None:
         """ColorBy None."""
 
-    def rescale(self, rep: PvRepresentation, lo: float, hi: float) -> None:
-        """Rescale this rep's transfer function."""
+    def new_color_map(self, component: int) -> PvLookupTable:
+        """A new lookup table in the VTK modes' colours, mapping component, ``-1`` for magnitude, that ParaView never rescales."""
+
+    def rescale_color_map(self, lut: PvLookupTable, lo: float, hi: float) -> None:
+        """Rescale lut's transfer function to [lo, hi]."""
+
+    def delete_color_map(self, lut: PvLookupTable) -> None:
+        """Delete lut on pvserver."""
+
+    def set_selected_blocks(self, source: PvSource, selectors: list[str]) -> None:
+        """Make these blocks of source its whole selection; an empty list clears it."""
 
     def write_camera(self, camera: VisorCameraState) -> None:
-        """Write the view camera properties."""
+        """Write the view camera properties and rotate about its focal point."""
 
     def read_camera(self) -> VisorCameraState:
         """Read the view camera properties."""
 
     def reset_camera(self, bounds: list[float]) -> None:
-        """ResetCamera to bounds."""
+        """ResetCamera to bounds and rotate about their centre."""
+
+    def set_center_of_rotation(self, point: list[float]) -> None:
+        """Make the view's interaction rotate about point."""
 
     def set_background(self, rgb: tuple[float, float, float]) -> None:
         """Set the view background, ignoring the palette."""
@@ -95,11 +107,16 @@ class PvSimpleSession:
     """ParaviewSession over paraview.simple; connects on construction."""
 
     def __init__(self, pvserver: PvserverAddress) -> None:
-        """Connect to pvserver, create the render view, set RemoteRenderThreshold 0 and draw the client-side window offscreen; raise PvserverConnectionError naming the address.
+        """Connect to pvserver, create the render view, set RemoteRenderThreshold 0, stop interaction from rendering and draw the client-side window offscreen; raise PvserverConnectionError naming the address.
 
         ``Connect`` does not raise on an unreachable server: it retries for
         its timeout and returns ``None``.  The timeout is passed explicitly so
         the failure is bounded, and ``None`` is turned into the raise.
+
+        By default each event the interactor handles makes the view render on
+        pvserver, and the end of a gesture makes a still render, none of which
+        is captured.  With ``EnableRenderOnInteraction`` off, an event only
+        moves the camera, and the capture's render is the frame's one render.
 
         Without ``--force-offscreen-rendering`` the client-side window is an
         on-screen window, which the windowing system clamps to the screen, so
@@ -117,6 +134,7 @@ class PvSimpleSession:
         self._view = simple.CreateView("RenderView")
         self._view.RemoteRenderThreshold = REMOTE_RENDER_THRESHOLD_MB
         logger.info("RemoteRenderThreshold set to %s", self._view.RemoteRenderThreshold)
+        self._view.EnableRenderOnInteraction = 0
         self._render_window = self._view.GetClientSideObject().GetRenderWindow()
         self._render_window.SetOffScreenRendering(1)
 
@@ -137,13 +155,18 @@ class PvSimpleSession:
         source.UpdatePipeline()
         return source
 
-    def extract(self, source: PvSource, selectors: list[str]) -> PvSource:
-        """ExtractBlock with these selectors."""
-        return self._simple.ExtractBlock(Input=source, Selectors=selectors)
-
     def show(self, source: PvSource) -> PvRepresentation:
-        """Show source in the view with scalar colouring off."""
+        """Show source in the view with scalar colouring off, scalars mapped to colours before interpolation, and its selection drawn as ParaView's default wireframe.
+
+        A surface selection is coplanar with the faces it covers and
+        z-fights with them; lines are offset towards the camera.
+
+        With ``InterpolateScalarsBeforeMapping`` off, a colour map is applied
+        as vertex colours rather than as a colour texture, so the number of
+        distinct maps is not bounded by the GPU's texture units.
+        """
         rep = self._simple.Show(source, self._view)
+        rep.InterpolateScalarsBeforeMapping = 0
         self.clear_color(rep)
         return rep
 
@@ -156,20 +179,13 @@ class PvSimpleSession:
         """Number of points pvserver reports for source."""
         return source.GetDataInformation().GetNumberOfPoints()
 
+    def block_point_count(self, source: PvSource, selector: str) -> int:
+        """Number of points pvserver reports for the block of source at selector, read from its hierarchy."""
+        return source.SMProxy.GetSubsetDataInformation(0, selector, "Hierarchy").GetNumberOfPoints()
+
     def set_property(self, rep: PvRepresentation, name: str, value: object) -> None:
         """Write one representation property."""
         setattr(rep, name, value)
-
-    def color_by(self, rep: PvRepresentation, association: str, array: str, component: str | None) -> None:
-        """ColorBy with a separate colour map for this rep.
-
-        ``ColorBy`` writes ``UseSeparateColorMap`` from its ``separate``
-        argument, so passing ``separate=True`` here is what keeps two parts
-        coloured by the same array name on two maps; a property write before
-        the call would be overwritten.
-        """
-        value = (association, array) if component is None else (association, array, component)
-        self._simple.ColorBy(rep, value, separate=True)
 
     def clear_color(self, rep: PvRepresentation) -> None:
         """ColorBy None, by clearing the colour array name.
@@ -180,14 +196,89 @@ class PvSimpleSession:
         """
         rep.ColorArrayName = ["POINTS", ""]
 
-    def rescale(self, rep: PvRepresentation, lo: float, hi: float) -> None:
-        """Rescale this rep's transfer function and stop ParaView rescaling it on data changes."""
-        lut = rep.LookupTable
+    def new_color_map(self, component: int) -> PvLookupTable:
+        """A new lookup table mapping component, ``-1`` for magnitude, that ParaView never rescales.
+
+        The table is not registered under an array name, so no other
+        representation coloured by the same array picks it up.  Its colours
+        are those of the VTK modes' table; ParaView's default preset is not used.
+        """
+        lut = self._simple.CreateLookupTable()
         lut.AutomaticRescaleRangeMode = "Never"
+        self._write_visor_colors(lut)
+        if component == -1:
+            lut.VectorMode = "Magnitude"
+        else:
+            lut.VectorMode = "Component"
+            lut.VectorComponent = component
+        return lut
+
+    @staticmethod
+    def _write_visor_colors(lut: PvLookupTable) -> None:
+        """Make lut map as the VTK modes' table does: its colours as RGB points, discretized to its size.
+
+        Each table colour is placed at its normalised index, so the
+        discretized map samples exactly that colour and indexes values as
+        the VTK table does at every range.
+        """
+        from vtkmodules.vtkCommonCore import vtkLookupTable
+
+        from ansys.visor.viewer.vtk.node_pipeline import LOOKUP_TABLE_HUE_RANGE
+
+        table = vtkLookupTable()
+        table.SetHueRange(*LOOKUP_TABLE_HUE_RANGE)
+        table.Build()
+        count = table.GetNumberOfTableValues()
+        points: list[float] = []
+        for index in range(count):
+            red, green, blue, _ = table.GetTableValue(index)
+            points += [index / (count - 1), red, green, blue]
+        lut.ColorSpace = "RGB"
+        lut.RGBPoints = points
+        lut.NumberOfTableValues = count
+        lut.Discretize = 1
+
+    def rescale_color_map(self, lut: PvLookupTable, lo: float, hi: float) -> None:
+        """Rescale lut's transfer function to [lo, hi]."""
         lut.RescaleTransferFunction(lo, hi)
 
+    def delete_color_map(self, lut: PvLookupTable) -> None:
+        """Delete lut on pvserver."""
+        self._simple.Delete(lut)
+
+    def set_selected_blocks(self, source: PvSource, selectors: list[str]) -> None:
+        """Make these blocks of source its whole selection in one write; an empty list clears it.
+
+        This is ``SelectBlocks`` with every selector in one selection source
+        and no render: ``SelectBlocks`` takes one selector per call and
+        renders the view after each.  The selection is of cells:
+        ``SelectBlocks``' default of points extracts each block as vertices,
+        so only its points would be highlighted.
+        """
+        if not selectors:
+            source.SMProxy.SetSelectionInput(0, None, 0)
+            return
+        from paraview.modules.vtkRemotingViews import vtkSMSelectionHelper
+        from paraview.vtk import vtkSelectionNode
+        from vtkmodules.vtkFiltersSources import vtkSelectionSource
+
+        selection = vtkSelectionSource()
+        selection.SetFieldType(vtkSelectionNode.CELL)
+        selection.SetContentType(vtkSelectionNode.BLOCK_SELECTORS)
+        selection.SetArrayName("Hierarchy")
+        for selector in selectors:
+            selection.AddBlockSelector(selector)
+        selection.Update()
+        selection_proxy = vtkSMSelectionHelper.NewSelectionSourceFromSelection(
+            source.GetSession(), selection.GetOutput()
+        )
+        append = vtkSMSelectionHelper.NewAppendSelectionsFromSelectionSource(selection_proxy)
+        source.SMProxy.SetSelectionInput(0, append, 0)
+        append.UnRegister(None)
+        selection_proxy.UnRegister(None)
+
     def write_camera(self, camera: VisorCameraState) -> None:
-        """Write the view camera properties; ParaView recomputes the clipping range at render."""
+        """Write the view camera properties and rotate about its focal point; ParaView recomputes the clipping range at render."""
         view = self._view
         view.CameraPosition = list(camera.position)
         view.CameraFocalPoint = list(camera.focal_point)
@@ -195,6 +286,7 @@ class PvSimpleSession:
         view.CameraViewAngle = camera.view_angle
         view.CameraParallelScale = camera.parallel_scale
         view.CameraParallelProjection = 1 if camera.parallel_projection else 0
+        self.set_center_of_rotation(camera.focal_point)
 
     def read_camera(self) -> VisorCameraState:
         """Read the view's client-side camera, which the interactor moves.
@@ -214,13 +306,24 @@ class PvSimpleSession:
         )
 
     def reset_camera(self, bounds: list[float]) -> None:
-        """ResetCamera to bounds on the view proxy.
+        """ResetCamera to bounds on the view proxy and rotate about their centre.
 
         ``paraview.simple.ResetCamera`` renders the view; this does not, so
         rendering stays on the capture path.  The bounds are passed as six
         arguments: a single sequence matches several overloads.
+
+        ParaView's interaction rotates about the view's ``CenterOfRotation``,
+        not the camera's focal point, and resetting the camera leaves it
+        where it was.  Setting it to the centre of the bounds puts it on the
+        focal point the reset chose.
         """
-        self._view.ResetCamera(*(float(b) for b in bounds))
+        bounds = [float(b) for b in bounds]
+        self._view.ResetCamera(*bounds)
+        self.set_center_of_rotation([(bounds[i] + bounds[i + 1]) / 2.0 for i in (0, 2, 4)])
+
+    def set_center_of_rotation(self, point: list[float]) -> None:
+        """Make the view's interaction rotate about point."""
+        self._view.CenterOfRotation = list(point)
 
     def set_background(self, rgb: tuple[float, float, float]) -> None:
         """Set the view background, ignoring the palette."""
