@@ -3,6 +3,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 import ansys.visor.viewer.api.server as server_mod
+from ansys.visor.viewer.api.models import InitProps
+from ansys.visor.viewer.core.errors import PvserverConnectionError
+from ansys.visor.viewer.core.pvserver_address import PvserverAddress
+from ansys.visor.viewer.core.visor_enums import RenderingMode
 
 
 @pytest.fixture
@@ -59,10 +63,79 @@ def test_initialize_visualizer(api):
     with patch.object(server_mod, "VisorCache") as mock_cache:
         mock_instance = MagicMock()
         mock_cache.get_instance.return_value = (mock_instance, None)
-        result, warnings = api._connect_or_initialize_visualizer("host", 1234, True, False)
+        result, warnings = api._connect_or_initialize_visualizer("host", 1234, True, False, None)
         assert result is mock_instance
         assert warnings is None
         mock_cache.get_instance.assert_called_once()
+
+
+def paraview_props(**fields):
+    return InitProps(host="localhost", port=1, standalone=True, dark_mode=False, rendering_mode="PARAVIEW", **fields)
+
+
+@pytest.mark.asyncio
+async def test_initialize_paraview_resolves_pvserver_from_props(api, mock_settings):
+    """Each pvserver field missing from the request is taken from the settings default."""
+    mock_settings.default_pvserver_address.return_value = PvserverAddress(host="dflt", port=11111)
+
+    with patch.object(api, "_connect_or_initialize_visualizer",
+                      return_value=(MagicMock(), None)) as mock_conn:
+        await api.connect_or_initialize_server(paraview_props(pvserver_host="pv.example"))
+
+    assert mock_conn.call_args.args == (
+        "localhost", 1, True, False, PvserverAddress(host="pv.example", port=11111), RenderingMode.PARAVIEW
+    )
+
+
+@pytest.mark.asyncio
+async def test_initialize_paraview_uses_settings_default_pvserver(api, mock_settings):
+    """A PARAVIEW request without pvserver fields uses the settings default address."""
+    mock_settings.default_pvserver_address.return_value = PvserverAddress(host="dflt", port=11111)
+
+    with patch.object(api, "_connect_or_initialize_visualizer",
+                      return_value=(MagicMock(), None)) as mock_conn:
+        await api.connect_or_initialize_server(paraview_props())
+
+    assert mock_conn.call_args.args[4] == PvserverAddress(host="dflt", port=11111)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["CLIENT", "SERVER"])
+async def test_initialize_other_modes_pass_no_pvserver(api, mode):
+    """Modes other than PARAVIEW pass no pvserver address."""
+    props = InitProps(host="localhost", port=1, standalone=True, dark_mode=False, rendering_mode=mode)
+
+    with patch.object(api, "_connect_or_initialize_visualizer",
+                      return_value=(MagicMock(), None)) as mock_conn:
+        await api.connect_or_initialize_server(props)
+
+    assert mock_conn.call_args.args[4] is None
+
+
+def test_connect_or_initialize_visualizer_passes_pvserver_to_cache(api):
+    """The pvserver address reaches the cache with the URL, mode and trame log dir."""
+    address = PvserverAddress(host="pv.example", port=22222)
+    with patch.object(server_mod, "VisorCache") as mock_cache:
+        mock_cache.get_instance.return_value = (MagicMock(), None)
+        api._connect_or_initialize_visualizer("h", 1, True, False, address, RenderingMode.PARAVIEW)
+
+    mock_cache.get_instance.assert_called_once_with(
+        "http://h:1", RenderingMode.PARAVIEW, True, False, address, "logdir"
+    )
+
+
+@pytest.mark.asyncio
+async def test_pvserver_connection_error_is_500_naming_address(api, mock_settings):
+    """A session that cannot reach pvserver gives HTTP 500 naming the address."""
+    mock_settings.default_pvserver_address.return_value = PvserverAddress(host="dflt", port=11111)
+    error = PvserverConnectionError("Could not connect to pvserver at dflt:11111")
+
+    with patch.object(api, "_connect_or_initialize_visualizer", side_effect=error):
+        with pytest.raises(server_mod.HTTPException) as exc:
+            await api.connect_or_initialize_server(paraview_props())
+
+    assert exc.value.status_code == 500
+    assert exc.value.detail == "Runtime error: Could not connect to pvserver at dflt:11111"
 
 
 @pytest.mark.asyncio

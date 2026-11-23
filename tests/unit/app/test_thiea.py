@@ -1,6 +1,7 @@
 import pytest
 
 from ansys.visor.viewer.app.visor import Visor
+from ansys.visor.viewer.core.pvserver_address import PvserverAddress
 
 
 class ConcreteVisor(Visor):
@@ -57,6 +58,20 @@ def test_invalid_rendering_engine_raises():
         pass
     with pytest.raises(ValueError):
         Visor(rendering_engine=DummyEngine)
+
+@pytest.mark.parametrize("mode", ["CLIENT", "SERVER"])
+def test_pvserver_rejected_outside_paraview(mode):
+    """A pvserver address outside PARAVIEW mode raises an error naming the mode."""
+    address = PvserverAddress(host="localhost", port=11111)
+    with pytest.raises(ValueError, match=f"^pvserver is accepted only in PARAVIEW mode, not {mode}$"):
+        Visor(rendering_mode=mode, url="http://localhost:1234", pvserver=address)
+
+def test_pvserver_rejected_on_direct_vtk_construction():
+    """A VTK viewer built directly rejects a pvserver address too."""
+    from ansys.visor.viewer.app.visor_vtk import VisorVTK
+    address = PvserverAddress(host="localhost", port=11111)
+    with pytest.raises(ValueError, match="^pvserver is accepted only in PARAVIEW mode, not SERVER$"):
+        VisorVTK(rendering_mode="SERVER", url="http://localhost:1234", pvserver=address)
 
 def test_set_default_url_sets_properties(monkeypatch):
     """Verify that default settings are used to construct the URL."""
