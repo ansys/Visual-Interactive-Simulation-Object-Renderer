@@ -3,9 +3,10 @@
 from typing import Any
 
 import numpy as np
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from ansys.visor.viewer.core.metadata import Metadata
+from ansys.visor.viewer.core.pvserver_address import PvserverAddress
 from ansys.visor.viewer.core.visor_enums import RenderingMode
 from ansys.visor.viewer.core.visor_helpers import validate_host
 
@@ -31,7 +32,9 @@ class InitProps(BaseModel):
     )
     standalone: bool | None = Field(None, description="Standalone", examples=[True])
     dark_mode: bool | None = Field(None, description="Dark mode enabled", examples=[False])
-    rendering_mode: RenderingMode | None = Field(None, description="Rendering mode (CLIENT or SERVER)", examples=["CLIENT"])
+    rendering_mode: RenderingMode | None = Field(None, description="Rendering mode (CLIENT, SERVER or PARAVIEW)", examples=["CLIENT"])
+    pvserver_host: str | None = Field(None, description="pvserver host for a PARAVIEW session", examples=["localhost"])
+    pvserver_port: int | None = Field(None, ge=1, le=65535, description="pvserver port for a PARAVIEW session", examples=[11111])
 
     @field_validator("rendering_mode", mode="before")
     @classmethod
@@ -54,6 +57,25 @@ class InitProps(BaseModel):
         if not validate_host(v):
             raise ValueError("Invalid host address")
         return v
+
+    @model_validator(mode="after")
+    def check_pvserver_fields_mode(self) -> "InitProps":
+        """Reject pvserver_host or pvserver_port unless rendering_mode is PARAVIEW."""
+        if self.rendering_mode is not RenderingMode.PARAVIEW:
+            given = [name for name in ("pvserver_host", "pvserver_port") if getattr(self, name) is not None]
+            if given:
+                raise ValueError(
+                    f"{', '.join(given)} only allowed when rendering_mode is PARAVIEW "
+                    f"(got {self.rendering_mode.name if self.rendering_mode else None})"
+                )
+        return self
+
+    def pvserver_address(self, default: PvserverAddress) -> PvserverAddress:
+        """This request's pvserver address, each missing field taken from default."""
+        return PvserverAddress(
+            host=self.pvserver_host if self.pvserver_host is not None else default.host,
+            port=self.pvserver_port if self.pvserver_port is not None else default.port,
+        )
 
 class StartProps(BaseModel):
     """Properties for starting the visualizer instance."""

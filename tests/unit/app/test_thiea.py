@@ -86,6 +86,10 @@ def test_info_returns_expected_dict(monkeypatch):
     assert info["standalone"] == obj.standalone
     assert info["datasets"] == ["foo"]
 
+def test_close_is_a_no_op_by_default():
+    """Verify that close on a Visor holding no external resources does nothing and does not raise."""
+    assert ConcreteVisor().close() is None
+
 def test_standalone_property():
     """Verify that the standalone property reflects the configured value."""
     obj = ConcreteVisor(standalone=False)

@@ -123,6 +123,9 @@ class Visor:
             "metadata": getattr(self, "_metadata", None),
         }
 
+    def close(self) -> None:
+        """Release resources this instance holds outside the current process; nothing by default."""
+
     """ Synchronous Abstract Methods """
     def start(self,
               input: str | VisorDatasetType | None = None,

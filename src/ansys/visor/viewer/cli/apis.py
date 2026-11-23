@@ -60,7 +60,7 @@ class ServerAPI:
         resp = requests.get(f"{self.base}/info")
         print(resp.json())
 
-    def initialize(self, host, port, rendering_mode, standalone, dark_mode, start=False):
+    def initialize(self, host, port, rendering_mode, standalone, dark_mode, pvserver_host, pvserver_port, start=False):
         """Initialize the server with viewer configuration.
 
         Parameters
@@ -77,6 +77,10 @@ class ServerAPI:
             Whether to run in standalone mode (no external orchestrator).
         dark_mode : bool
             Whether to enable dark mode in the viewer UI.
+        pvserver_host : str or None
+            pvserver host for a PARAVIEW instance; ``None`` uses the server's settings default.
+        pvserver_port : int or None
+            pvserver port for a PARAVIEW instance; ``None`` uses the server's settings default.
         start : bool
             Whether to start the viewer instance immediately after initialization.
 
@@ -87,7 +91,7 @@ class ServerAPI:
             the ``/start`` request returns an HTTP error status.
         """
         data = {"host": host, "port": port, "rendering_mode": rendering_mode, "standalone": standalone,
-                "dark_mode": dark_mode}
+                "dark_mode": dark_mode, "pvserver_host": pvserver_host, "pvserver_port": pvserver_port}
         resp = requests.post(f"{self.base}/initialize", json=data)
         print(resp.json())
         resp.raise_for_status()

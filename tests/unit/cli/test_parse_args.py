@@ -41,6 +41,8 @@ def test_server_init_args_defaults():
     assert args.standalone is None
     assert args.port == 0
     assert args.dark_mode is None
+    assert args.pvserver_host is None
+    assert args.pvserver_port is None
     assert args.start is False
 
 def test_server_init_args_custom():
@@ -191,7 +193,7 @@ def test_no_flags_does_not_call_requests(monkeypatch):
     )
 
     # Neither standalone nor dark_mode set -> should return cleanly and not call requests.get
-    check_init_args("api-host", 0, "host", 9000, RenderingMode.CLIENT, None, None)
+    check_init_args("api-host", 0, "host", 9000, RenderingMode.CLIENT, None, None, None, None)
 
 def test_flags_and_request_raises_warning(monkeypatch, capsys):
     """Verify that request failures emit a warning without exiting."""
@@ -203,7 +205,7 @@ def test_flags_and_request_raises_warning(monkeypatch, capsys):
     )
 
     # Should not raise SystemExit; should print a warning
-    check_init_args("api-host", 0, "host", 9000, RenderingMode.CLIENT, True, None)
+    check_init_args("api-host", 0, "host", 9000, RenderingMode.CLIENT, True, None, None, None)
 
     captured = capsys.readouterr()
     assert "Warning: could not check existing instances: boom" in captured.out
@@ -222,13 +224,32 @@ def test_existing_instance_triggers_exit(monkeypatch, capsys):
     )
 
     with pytest.raises(SystemExit) as excinfo:
-        check_init_args("api-host", 0, "target-host", 1234, RenderingMode.CLIENT, True, None)
+        check_init_args("api-host", 0, "target-host", 1234, RenderingMode.CLIENT, True, None, None, None)
 
     # sys.exit(1) should produce SystemExit with code 1
     assert excinfo.value.code == 1
 
     captured = capsys.readouterr()
     assert "Error: Instance already initialized on http://target-host:1234." in captured.out
+
+def test_pvserver_flag_on_existing_instance_triggers_exit(monkeypatch, capsys):
+    """Verify that --pvserver-port alone is refused when the target instance already exists."""
+    class FakeResp:
+        def json(self):
+            return {"urls": ["http://target-host:1234"]}
+
+    def fake_get(url, timeout=5):
+        return FakeResp()
+
+    monkeypatch.setattr(
+        "ansys.visor.viewer.cli.visor_cli.requests.get", fake_get
+    )
+
+    with pytest.raises(SystemExit) as excinfo:
+        check_init_args("api-host", 0, "target-host", 1234, None, None, None, None, 2)
+
+    assert excinfo.value.code == 1
+    assert "--pvserver-port" in capsys.readouterr().out
 
 def test_flags_but_no_existing_instance(monkeypatch):
     """Verify that initialization proceeds when no matching instance exists."""
@@ -244,4 +265,4 @@ def test_flags_but_no_existing_instance(monkeypatch):
     )
 
     # Should not raise
-    check_init_args("api-host", 0, "target-host", 1234, RenderingMode.CLIENT, True, False)
+    check_init_args("api-host", 0, "target-host", 1234, RenderingMode.CLIENT, True, False, None, None)
