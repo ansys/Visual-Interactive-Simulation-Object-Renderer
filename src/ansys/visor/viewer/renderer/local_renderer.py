@@ -228,6 +228,15 @@ class VisorLocalRenderer(VtkPipelineRenderer):
             self._local_view.update()
         timer.log()
 
+    def render_without_rebuild(self) -> None:
+        """Render the window, then push it as data only so the wasm frontend is not rebuilt.
+
+        Renders on the calling thread, as :meth:`render` does; the push is
+        :meth:`push_without_rebuild`.
+        """
+        self._render_window.Render()
+        self.push_without_rebuild()
+
     # ------------------------------------------------------------------
     # Local-only: window render, wasm flush, frontend addressing
     # ------------------------------------------------------------------

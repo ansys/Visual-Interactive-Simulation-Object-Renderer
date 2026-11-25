@@ -66,6 +66,8 @@ class ServerApp(SceneTriggerApp):
         set_dark_mode: Callable[[bool], None],
         rca_window: VisorRcaWindow,
         bridge: ServerLoopBridge,
+        *,
+        get_variable_records_json: Callable[[], str],
     ) -> None:
         """Create the area before start; the view handler is built when the server is ready."""
         self._pick_part_at = pick_part_at
@@ -79,6 +81,7 @@ class ServerApp(SceneTriggerApp):
             standalone=standalone,
             trame_logger=trame_logger,
             scene_mutation_api=scene_mutation_api,
+            get_variable_records_json=get_variable_records_json,
         )
         # The server is passed explicitly: a widget left to resolve its own
         # would register the stream protocol on the default server.

@@ -4,10 +4,12 @@ import { SerialUpdateQueue } from '../wasm/SerialUpdateQueue';
  * Server updates run one at a time.  Updates arriving while one runs merge
  * into one pending update, which keeps the latest options and rebuilds if any
  * arrival was structural.  A failed update never rebuilds and never blocks
- * the next one.
+ * the next one.  A fulfilled update that does not rebuild fires the data
+ * listener instead.
  *
  * The fake apply records `start:<tag>` and is held on a promise the test
- * settles; the fake rebuild records `rebuild`.  Expected records are literals.
+ * settles; the fake rebuild records `rebuild` and the fake data listener
+ * `data`.  Expected records are literals.
  */
 
 type Update = Readonly<{ tag: string; dataOnly?: boolean }>;
@@ -23,6 +25,9 @@ function makeQueue() {
         },
         () => {
             record.push('rebuild');
+        },
+        () => {
+            record.push('data');
         }
     );
     return { record, held, queue };
@@ -86,7 +91,7 @@ describe('SerialUpdateQueue', () => {
         held[1].resolve();
         await flushAsync();
 
-        expect(record).toEqual(['start:A', 'start:D']);
+        expect(record).toEqual(['start:A', 'data', 'start:D', 'data']);
     });
 
     test('merged update rebuilds once when any arrival was structural', async () => {
@@ -98,11 +103,11 @@ describe('SerialUpdateQueue', () => {
         queue.run({ tag: 'D', dataOnly: true });
         held[0].resolve();
         await flushAsync();
-        expect(record).toEqual(['start:A', 'start:D']);
+        expect(record).toEqual(['start:A', 'data', 'start:D']);
 
         held[1].resolve();
         await flushAsync();
-        expect(record).toEqual(['start:A', 'start:D', 'rebuild']);
+        expect(record).toEqual(['start:A', 'data', 'start:D', 'rebuild']);
     });
 
     test('an arrival after the pending update started waits for it', async () => {
@@ -114,10 +119,10 @@ describe('SerialUpdateQueue', () => {
         await flushAsync();
         queue.run({ tag: 'E', dataOnly: true });
         await flushAsync();
-        expect(record).toEqual(['start:A', 'start:B']);
+        expect(record).toEqual(['start:A', 'data', 'start:B']);
 
         held[1].resolve();
         await flushAsync();
-        expect(record).toEqual(['start:A', 'start:B', 'start:E']);
+        expect(record).toEqual(['start:A', 'data', 'start:B', 'data', 'start:E']);
     });
 });

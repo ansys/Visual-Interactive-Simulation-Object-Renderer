@@ -684,10 +684,10 @@ def test_list_variables_for_dataset_delegates(pipeline_instance):
 
 
 def test_update_variables_for_dataset_triggers_updates_and_render(pipeline_instance):
-    """Test that update_variables_for_dataset triggers updates and render."""
+    """Test that update_variables_for_dataset triggers updates and a render that does not rebuild the frontend."""
     vars_payload = ["dummy"]
     render_spy = MagicMock()
-    pipeline_instance.render = render_spy
+    pipeline_instance._renderer.render_without_rebuild = render_spy
 
     pipeline_instance.update_variables_for_dataset(123, vars_payload)
 

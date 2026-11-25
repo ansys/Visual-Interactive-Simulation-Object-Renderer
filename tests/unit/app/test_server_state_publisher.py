@@ -151,6 +151,21 @@ def test_bumps_queued_together_count_up(runner, state):
     ]
 
 
+def test_data_bumps_count_up_data_version_only(runner, state):
+    """Data bumps queued together each count, on data_version; scene_version is never written."""
+    publisher = ServerStatePublisher(runner, state)
+    publisher.bump_data_version()
+    publisher.bump_data_version()
+    for callback in runner.callbacks:
+        callback()
+    assert state.events == [
+        ("set", "data_version", 1),
+        ("flush",),
+        ("set", "data_version", 2),
+        ("flush",),
+    ]
+
+
 def test_bump_writes_on_loop_thread(state):
     async_runner = AsyncRunner()
     try:

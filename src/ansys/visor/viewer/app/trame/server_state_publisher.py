@@ -27,6 +27,9 @@ SERVER_CROSS_SECTION_STATE_KEY: str = "server_cross_section_state"
 SCENE_VERSION_KEY: str = "scene_version"
 """State key counting scene changes; absent until the first change, then 1, 2, ..."""
 
+DATA_VERSION_KEY: str = "data_version"
+"""State key counting data-only changes, which refresh the client in place; absent until the first, then 1, 2, ..."""
+
 
 class ServerStatePublisher(ViewRecordPublisher):
     """Writes server-originated state keys from any thread onto the trame event loop."""
@@ -63,12 +66,16 @@ class ServerStatePublisher(ViewRecordPublisher):
         The read happens inside the callback, so bumps queued together from
         any threads are serialised on the loop and each one counts.
         """
-        self._async_runner.call_soon(self._write_next_scene_version)
+        self._async_runner.call_soon(lambda: self._write_next_version(SCENE_VERSION_KEY))
 
-    def _write_next_scene_version(self) -> None:
-        """Read scene_version (absent counts as 0), write it plus one, and flush; loop thread only."""
-        current = self._state[SCENE_VERSION_KEY]
-        self._write(SCENE_VERSION_KEY, (current or 0) + 1)
+    def bump_data_version(self) -> None:
+        """Increment data_version on the loop thread, as :meth:`bump_scene_version` does scene_version."""
+        self._async_runner.call_soon(lambda: self._write_next_version(DATA_VERSION_KEY))
+
+    def _write_next_version(self, key: str) -> None:
+        """Read the counter at *key* (absent counts as 0), write it plus one, and flush; loop thread only."""
+        current = self._state[key]
+        self._write(key, (current or 0) + 1)
 
     def _write(self, key: str, value: object) -> None:
         """Set one state key and flush it; loop thread only."""

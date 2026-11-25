@@ -54,9 +54,14 @@ class VisorVTKServer(VisorVTK):
             set_dark_mode=self._scene.set_dark_mode,
             rca_window=self._scene.rca_window,
             bridge=bridge,
+            get_variable_records_json=self._scene.get_variable_records_json,
         )
 
     def _post_scene_change_hook(self) -> None:
         """Bump scene_version so connected clients rebuild; requests no frame, the operation already did."""
         self._state_publisher.bump_scene_version()
+
+    def _post_data_change_hook(self) -> None:
+        """Bump data_version so connected clients refresh in place; requests no frame, the operation already did."""
+        self._state_publisher.bump_data_version()
 

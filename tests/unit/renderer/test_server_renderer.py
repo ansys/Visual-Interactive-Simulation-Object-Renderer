@@ -141,6 +141,11 @@ def test_render_requests_a_frame(renderer, requester):
     assert requester.count == 1
 
 
+def test_render_without_rebuild_requests_a_frame(renderer, requester):
+    renderer.render_without_rebuild()
+    assert requester.count == 1
+
+
 def test_not_found_on_a_hidden_highlight_requests_no_frame(renderer, requester):
     renderer.show_geometry_highlight(NoGeometryPick())
     assert requester.count == 0

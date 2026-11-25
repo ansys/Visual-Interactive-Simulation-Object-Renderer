@@ -11,7 +11,7 @@ export type ServerVtk = Readonly<{
     schemaMismatchError: SchemaVersionMismatchError | null;
 }>;
 
-/** Over the probe's session: stream frames, and rebuild the frontend on every scene_version change; idle when trame is null. */
+/** Over the probe's session: stream frames, rebuild the frontend on every scene_version change and refresh it in place on every data_version change; idle when trame is null. */
 export function useServerVtk(trame: Trame | null, visorArgs: VisorArgs): ServerVtk {
     const [visorFrontend, setVisorFrontend] = useState<VisorFrontend | null>(null);
     const [schemaMismatchError, setSchemaMismatchError] =
