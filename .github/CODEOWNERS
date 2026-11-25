@@ -17,7 +17,8 @@
 # anywhere in your repository.
 #apps/ @octocat
 
-pyproject.toml @margalva
+pyproject.toml @margalva @LKasianAnsys
 
 # define an owner for the CODEOWNERS file itself
 /.github/ @margalva
+/.github/CODEOWNERS @margalva @LKasianAnsys
