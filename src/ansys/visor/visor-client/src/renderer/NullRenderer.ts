@@ -3,6 +3,8 @@ import {
     GeometryPickMode,
     IRenderer,
     NodeId,
+    PartSelection,
+    PartVisibility,
     PickGeometryResult,
     VisorCameraState,
 } from './IRenderer';
@@ -172,6 +174,14 @@ export class NullRenderer implements IRenderer {
     }
 
     async sendClearPartColorVariableAsync(_nodeId: NodeId): Promise<void> {
+        // no-op
+    }
+
+    async sendPartsVisibilityAsync(_parts: readonly PartVisibility[]): Promise<void> {
+        // no-op
+    }
+
+    async sendPartsSelectedAsync(_parts: readonly PartSelection[]): Promise<void> {
         // no-op
     }
 

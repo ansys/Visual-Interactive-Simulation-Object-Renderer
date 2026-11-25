@@ -102,6 +102,8 @@ function makeRendererDouble() {
         sendPartOpacityAsync: jest.fn(async () => undefined),
         setSelectedAsync: jest.fn(async () => undefined),
         sendPartSelectedAsync: jest.fn(async () => undefined),
+        sendPartsVisibilityAsync: jest.fn(async () => undefined),
+        sendPartsSelectedAsync: jest.fn(async () => undefined),
         setDiffuseColorRgbAsync: jest.fn(async () => undefined),
         sendPartDiffuseColorAsync: jest.fn(async () => undefined),
         setColorVariableAsync: jest.fn(async () => undefined),
@@ -228,12 +230,14 @@ describe('the client applies delivered state as given', () => {
     });
 });
 
-/** How many times each of the six per-part send members was called. */
+/** How many times each of the eight per-part send members was called. */
 function sendCallCounts(renderer: ReturnType<typeof makeRendererDouble>) {
     return {
         sendPartVisibilityAsync: renderer.sendPartVisibilityAsync.mock.calls.length,
         sendPartOpacityAsync: renderer.sendPartOpacityAsync.mock.calls.length,
         sendPartSelectedAsync: renderer.sendPartSelectedAsync.mock.calls.length,
+        sendPartsVisibilityAsync: renderer.sendPartsVisibilityAsync.mock.calls.length,
+        sendPartsSelectedAsync: renderer.sendPartsSelectedAsync.mock.calls.length,
         sendPartDiffuseColorAsync: renderer.sendPartDiffuseColorAsync.mock.calls.length,
         sendPartColorVariableAsync: renderer.sendPartColorVariableAsync.mock.calls.length,
         sendClearPartColorVariableAsync: renderer.sendClearPartColorVariableAsync.mock.calls.length,
@@ -244,6 +248,8 @@ const NO_SENDS = {
     sendPartVisibilityAsync: 0,
     sendPartOpacityAsync: 0,
     sendPartSelectedAsync: 0,
+    sendPartsVisibilityAsync: 0,
+    sendPartsSelectedAsync: 0,
     sendPartDiffuseColorAsync: 0,
     sendPartColorVariableAsync: 0,
     sendClearPartColorVariableAsync: 0,

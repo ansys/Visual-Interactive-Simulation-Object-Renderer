@@ -1,15 +1,36 @@
 import { render, fireEvent, act } from '@testing-library/react';
 import { VisorFrontend } from '../VisorFrontend';
 import { Panel_TopLeft } from '../components/ui-panels/Panel_TopLeft';
+import { Panel_TopRight } from '../components/ui-panels/Panel_TopRight';
+import { Panel_TopRight_Util } from '../components/ui-panels/Panel_TopRight_Util';
 import { TreeViewUtil } from '../treeview/TreeView';
 import { CreateVisorSceneGraph, VisorSceneNodeExtended } from '../state/VisorSceneGraph.tsx';
 import type { IRenderer } from '../renderer/IRenderer';
 import { deliveredPart, deliveredScene } from './deliveredSceneFixture.ts';
 
+type ViewerClickedListener = (
+    node: VisorSceneNodeExtended | null,
+    ctrlKey: boolean,
+    shiftKey: boolean
+) => Promise<void>;
+
+/**
+ * jsdom has no `ResizeObserver`, which `Panel_TopRight` builds on mount, and
+ * jest here runs with no `setupFiles`, so the stub is this module's own.
+ */
+class ResizeObserverStub {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+}
+(globalThis as unknown as { ResizeObserver: unknown }).ResizeObserver = ResizeObserverStub;
+
 /**
  * The sends a tree interaction makes through `Panel_TopLeft`'s visibility and
- * selection listeners: each part whose value changes sends once, and a part
- * whose value does not change sends nothing.
+ * selection listeners, and a canvas click makes through `Panel_TopRight`'s
+ * viewer-click listener: the parts whose value changes are sent together in
+ * one batch, a part whose value does not change is not in it, and no per-part
+ * send is made.
  *
  * The scene is a root holding a group (parts 1 and 2) and part 3 outside it.
  * Each listener is fire-and-forget and ends with `visorState.render()`, so
@@ -26,8 +47,10 @@ function makeRendererDouble() {
     return {
         setVisibilityAsync: jest.fn(async () => undefined),
         sendPartVisibilityAsync: jest.fn(async () => undefined),
+        sendPartsVisibilityAsync: jest.fn(async () => undefined),
         setSelectedAsync: jest.fn(async () => undefined),
         sendPartSelectedAsync: jest.fn(async () => undefined),
+        sendPartsSelectedAsync: jest.fn(async () => undefined),
     };
 }
 
@@ -112,38 +135,159 @@ async function mountPanel(part1Overrides: Record<string, unknown> = {}) {
 }
 
 describe('tree visibility listener', () => {
-    test('hiding one part in a multi-part tree sends its visibility once', async () => {
+    test('hiding one part in a multi-part tree sends a batch holding only that part', async () => {
         const { renderer, treeViewUtil, nextRender } = await mountPanel();
         const done = nextRender();
 
         fireEvent.click(treeViewUtil.rowUtilsMap.get(PART_2_ID)!.hideButton);
         await done;
 
-        expect(renderer.sendPartVisibilityAsync.mock.calls).toEqual([[2, false]]);
+        expect(renderer.sendPartsVisibilityAsync.mock.calls).toEqual([
+            [[{ nodeId: 2, visible: false }]],
+        ]);
+        expect(renderer.sendPartVisibilityAsync).not.toHaveBeenCalled();
     });
 
-    test('hiding a group row sends once per visible part in the group and none outside it', async () => {
+    test('hiding a group row sends one batch holding every visible part in the group and none outside it', async () => {
         const { renderer, treeViewUtil, nextRender } = await mountPanel();
         const done = nextRender();
 
         fireEvent.click(treeViewUtil.rowUtilsMap.get(GROUP_ID)!.hideButton);
         await done;
 
-        expect(renderer.sendPartVisibilityAsync.mock.calls).toEqual([
-            [1, false],
-            [2, false],
+        expect(renderer.sendPartsVisibilityAsync.mock.calls).toEqual([
+            [
+                [
+                    { nodeId: 1, visible: false },
+                    { nodeId: 2, visible: false },
+                ],
+            ],
         ]);
+        expect(renderer.sendPartVisibilityAsync).not.toHaveBeenCalled();
     });
 });
 
 describe('tree selection listener', () => {
-    test('adding a part to the selection sends its selection once', async () => {
+    test('adding a part to the selection sends a batch holding only that part', async () => {
         const { renderer, treeViewUtil, nextRender } = await mountPanel({ selected: true });
         const done = nextRender();
 
         fireEvent.click(treeViewUtil.rowUtilsMap.get(PART_3_ID)!.tableElem, { ctrlKey: true });
         await done;
 
-        expect(renderer.sendPartSelectedAsync.mock.calls).toEqual([[3, true]]);
+        expect(renderer.sendPartsSelectedAsync.mock.calls).toEqual([
+            [[{ nodeId: 3, selected: true }]],
+        ]);
+        expect(renderer.sendPartSelectedAsync).not.toHaveBeenCalled();
+    });
+
+    test('selecting a group row sends one batch holding every part in the group', async () => {
+        const { renderer, treeViewUtil, nextRender } = await mountPanel();
+        const done = nextRender();
+
+        fireEvent.click(treeViewUtil.rowUtilsMap.get(GROUP_ID)!.tableElem);
+        await done;
+
+        expect(renderer.sendPartsSelectedAsync.mock.calls).toEqual([
+            [
+                [
+                    { nodeId: 1, selected: true },
+                    { nodeId: 2, selected: true },
+                ],
+            ],
+        ]);
+        expect(renderer.sendPartSelectedAsync).not.toHaveBeenCalled();
+    });
+
+    test('re-selecting the only selected part sends no batch', async () => {
+        const { renderer, treeViewUtil, nextRender } = await mountPanel({ selected: true });
+        const done = nextRender();
+
+        fireEvent.click(treeViewUtil.rowUtilsMap.get(PART_1_ID)!.tableElem);
+        await done;
+
+        expect(renderer.sendPartsSelectedAsync).not.toHaveBeenCalled();
+        expect(renderer.sendPartSelectedAsync).not.toHaveBeenCalled();
+    });
+});
+
+/**
+ * Mounts `Panel_TopLeft` for its tree, then `Panel_TopRight` over that tree,
+ * and returns the renderer double and the viewer-click listener the right
+ * panel registered.
+ */
+async function mountViewerClickPanels() {
+    const renderer = makeRendererDouble();
+    let treeViewUtil: TreeViewUtil<VisorSceneNodeExtended> = null!;
+    let viewerClicked: ViewerClickedListener = null!;
+    let registered: () => void = () => {};
+    const topRightRegistered = new Promise<void>((resolve) => {
+        registered = resolve;
+    });
+    const sceneGraph = makeSceneGraph(renderer as unknown as IRenderer);
+    const visorState = {
+        sceneGraph,
+        render: jest.fn(async () => undefined),
+        setTreeViewUtil: jest.fn((u: TreeViewUtil<VisorSceneNodeExtended>) => {
+            treeViewUtil = u;
+        }),
+        setPanelTopLeftUtil: jest.fn(),
+        get treeViewUtilPromise() {
+            return Promise.resolve(treeViewUtil);
+        },
+        addViewerClickedListener: jest.fn((listener: ViewerClickedListener) => {
+            viewerClicked = listener;
+            return jest.fn();
+        }),
+        addSelectionModeChangedListener: jest.fn(() => jest.fn()),
+        getSelectionMode: jest.fn(() => 'part' as const),
+        setVariableRangeAsync: jest.fn(async () => undefined),
+        setPanelTopRightUtil: jest.fn((_u: Panel_TopRight_Util) => registered()),
+        sendPanelTopLeftPanelCollapsedAsync: jest.fn(async () => undefined),
+        sendPanelTopRightPanelCollapsedAsync: jest.fn(async () => undefined),
+        sendPanelTopRightLegendCollapsedAsync: jest.fn(async () => undefined),
+        sendPanelTopRightTabIndexAsync: jest.fn(async () => undefined),
+    };
+    await act(async () => {
+        render(
+            <>
+                <Panel_TopLeft
+                    visorState={visorState as unknown as VisorFrontend}
+                    onLoad={() => {}}
+                />
+                <Panel_TopRight
+                    visorState={visorState as unknown as VisorFrontend}
+                    onLoad={() => {}}
+                />
+            </>
+        );
+    });
+    await topRightRegistered;
+    // Every part selected, in the scene and the tree, without running the
+    // panels' selection listeners.
+    await sceneGraph.setSelectedPartsAsync(new Set(sceneGraph.descendantActorNodesOrSelfArray));
+    treeViewUtil.setSelection([PART_1_ID, PART_2_ID, PART_3_ID], false);
+    renderer.sendPartsSelectedAsync.mockClear();
+    return { renderer, viewerClicked };
+}
+
+describe('viewer click listener', () => {
+    test('a click on empty canvas clears every selected part in one batch', async () => {
+        const { renderer, viewerClicked } = await mountViewerClickPanels();
+
+        await act(async () => {
+            await viewerClicked(null, false, false);
+        });
+
+        expect(renderer.sendPartsSelectedAsync.mock.calls).toEqual([
+            [
+                [
+                    { nodeId: 1, selected: false },
+                    { nodeId: 2, selected: false },
+                    { nodeId: 3, selected: false },
+                ],
+            ],
+        ]);
+        expect(renderer.sendPartSelectedAsync).not.toHaveBeenCalled();
     });
 });
