@@ -39,6 +39,8 @@ class _FakeSession:
         self.rescaled: list[tuple[int, float, float]] = []
         self.deleted_maps: list[int] = []
         self.selections: list[tuple[str, list[str]]] = []
+        self.extracts: list[SimpleNamespace] = []
+        self.extracted: list[tuple[str, list[str]]] = []
         self.centers: list[list[float]] = []
 
     def open(self, path):
@@ -53,6 +55,14 @@ class _FakeSession:
     def delete(self, source):
         self.deleted.append(source)
 
+    def extract_blocks(self, source, selectors):
+        extract = SimpleNamespace(path=f"extract{len(self.extracts)}", of=source, selectors=list(selectors))
+        self.extracts.append(extract)
+        return extract
+
+    def set_extracted_blocks(self, extract, selectors):
+        self.extracted.append((extract.path, list(selectors)))
+
     def point_count(self, source):
         return self.reported_points
 
@@ -65,8 +75,9 @@ class _FakeSession:
     def clear_color(self, rep):
         pass
 
-    def new_color_map(self, component):
-        lut = SimpleNamespace(index=len(self.maps), component=component)
+    def new_color_map(self, component, tint_rgb=None, tint_strength=0.0):
+        tint = None if tint_rgb is None else (list(tint_rgb), tint_strength)
+        lut = SimpleNamespace(index=len(self.maps), component=component, tint=tint)
         self.maps.append(lut)
         return lut
 
@@ -175,6 +186,10 @@ def _register_wing_and_rib(renderer: ParaviewRenderer) -> None:
 
 def _last_write(session: _FakeSession, name: str):
     return [value for _, prop, value in session.writes if prop == name][-1]
+
+
+def _last_write_to(session: _FakeSession, rep, name: str):
+    return [value for target, prop, value in session.writes if target is rep and prop == name][-1]
 
 
 def _color(renderer: ParaviewRenderer, node_id: int, max_val: float = 5.0) -> None:
@@ -374,15 +389,29 @@ def test_deregister_node_releases_its_map():
     assert session.deleted_maps == [0]
 
 
-def test_apply_selected_selects_the_block():
+def test_a_selected_block_is_drawn_tinted_by_its_own_group_not_by_the_representation():
     session = _FakeSession()
     renderer, _ = _renderer(session)
     _register_wing_and_rib(renderer)
 
     renderer.apply_selected(2, True, [1.0, 0.5, 0.0])
     renderer.flush_writes()
+    group = session.reps[1]
 
-    assert session.selections == [("/shared/mb.vtm", ["/Root/body/rib"])]
+    assert (_last_write_to(session, session.reps[0], "BlockSelectors"), [e.selectors for e in session.extracts]) == (
+        ["/Root/wing"],
+        [["/Root/body/rib"]],
+    )
+    assert [(prop, value) for rep, prop, value in session.writes if rep is group] == [
+        ("AmbientColor", [0.0, 62 / 255, 111 / 255]),
+        ("Ambient", 0.5),
+        ("Diffuse", 0.5),
+        ("Visibility", 1),
+        ("DiffuseColor", [1.0, 0.5, 0.0]),
+        ("Opacity", 1.0),
+        ("LookupTable", None),
+    ]
+    assert session.selections == []
 
 
 def test_a_composite_source_draws_its_selection_opaque_in_the_server_blue():
@@ -394,7 +423,7 @@ def test_a_composite_source_draws_its_selection_opaque_in_the_server_blue():
     assert _last_write(session, "SelectionColor") == [0.0, 62 / 255, 111 / 255]
 
 
-def test_hiding_a_selected_block_drops_it_from_the_selection():
+def test_hiding_a_selected_block_drops_it_from_its_group():
     session = _FakeSession()
     renderer, _ = _renderer(session)
     _register_wing_and_rib(renderer)
@@ -405,10 +434,126 @@ def test_hiding_a_selected_block_drops_it_from_the_selection():
     renderer.apply_visibility(2, False)
     renderer.flush_writes()
 
-    assert session.selections == [
-        ("/shared/mb.vtm", ["/Root/body/rib", "/Root/wing"]),
-        ("/shared/mb.vtm", ["/Root/wing"]),
-    ]
+    assert ([e.selectors for e in session.extracts], session.extracted) == (
+        [["/Root/wing", "/Root/body/rib"]],
+        [("extract0", ["/Root/wing"])],
+    )
+
+
+def test_selected_blocks_of_different_colours_are_drawn_by_one_group_each():
+    session = _FakeSession()
+    renderer, _ = _renderer(session)
+    _register_wing_and_rib(renderer)
+
+    renderer.apply_selected(1, True, [1.0, 0.0, 0.0])
+    renderer.apply_selected(2, True, [0.0, 1.0, 0.0])
+    renderer.flush_writes()
+
+    assert [e.selectors for e in session.extracts] == [["/Root/wing"], ["/Root/body/rib"]]
+
+
+def test_reselecting_reuses_the_hidden_group():
+    session = _FakeSession()
+    renderer, _ = _renderer(session)
+    _register_wing_and_rib(renderer)
+    renderer.apply_selected(1, True, [1.0, 0.0, 0.0])
+    renderer.flush_writes()
+    renderer.apply_selected(1, False, [1.0, 0.0, 0.0])
+    renderer.flush_writes()
+
+    renderer.apply_selected(2, True, [0.0, 1.0, 0.0])
+    renderer.flush_writes()
+    group = session.reps[1]
+
+    assert (len(session.extracts), session.extracted) == (1, [("extract0", ["/Root/body/rib"])])
+    assert (_last_write_to(session, group, "Visibility"), _last_write_to(session, group, "DiffuseColor")) == (
+        1,
+        [0.0, 1.0, 0.0],
+    )
+
+
+def test_opacity_and_edges_of_a_selected_block_reach_its_group():
+    session = _FakeSession()
+    renderer, _ = _renderer(session)
+    _register_wing_and_rib(renderer)
+    renderer.apply_selected(2, True, [1.0, 1.0, 1.0])
+    renderer.flush_writes()
+    group = session.reps[1]
+
+    renderer.apply_opacity(2, 0.25)
+    renderer.set_edges_visible(True)
+    renderer.flush_writes()
+
+    assert (_last_write_to(session, group, "Opacity"), _last_write_to(session, group, "Representation")) == (
+        0.25,
+        "Surface With Edges",
+    )
+
+
+def test_a_selected_block_coloured_by_an_array_is_drawn_through_a_tinted_map():
+    session = _FakeSession()
+    renderer, _ = _renderer(session)
+    _register_wing_and_rib(renderer)
+    _color(renderer, 2)
+
+    renderer.apply_selected(2, True, [1.0, 1.0, 1.0])
+    renderer.flush_writes()
+    lut = _last_write_to(session, session.reps[1], "LookupTable")
+
+    assert (lut.index, lut.tint, session.rescaled) == (
+        1,
+        ([0.0, 62 / 255, 111 / 255], 0.5),
+        [(0, 0.0, 5.0), (1, 0.0, 5.0)],
+    )
+
+
+def test_a_tinted_map_is_deleted_only_after_its_group_stops_naming_it():
+    session = _FakeSession()
+    renderer, _ = _renderer(session)
+    _register_wing_and_rib(renderer)
+    _color(renderer, 2)
+    renderer.apply_selected(2, True, [1.0, 1.0, 1.0])
+    renderer.flush_writes()
+
+    renderer.clear_color_variable(2)
+    deleted_before_flush = list(session.deleted_maps)
+    renderer.flush_writes()
+
+    assert (deleted_before_flush, session.deleted_maps, _last_write_to(session, session.reps[1], "LookupTable")) == (
+        [],
+        [0, 1],
+        None,
+    )
+
+
+def test_a_selected_whole_part_coloured_by_an_array_uses_the_tinted_map_until_deselected():
+    session = _FakeSession()
+    renderer, _ = _renderer(session)
+    _register(renderer, 1, "a")
+    _color(renderer, 1)
+
+    renderer.apply_selected(1, True, [1.0, 1.0, 1.0])
+    tinted = _last_write(session, "LookupTable")
+    renderer.apply_selected(1, False, [1.0, 1.0, 1.0])
+    renderer.flush_writes()
+
+    assert (tinted.tint, _last_write(session, "LookupTable"), session.deleted_maps) == (
+        ([0.0, 62 / 255, 111 / 255], 0.5),
+        session.maps[0],
+        [1],
+    )
+
+
+def test_close_source_deletes_its_selected_groups_before_the_source():
+    session = _FakeSession()
+    renderer, _ = _renderer(session)
+    _register_wing_and_rib(renderer)
+    renderer.apply_selected(2, True, [1.0, 1.0, 1.0])
+    renderer.flush_writes()
+
+    renderer.close_source("mb")
+
+    assert [d.path for d in session.deleted] == ["extract0", "/shared/mb.vtm"]
 
 
 def test_deregister_node_hides_only_that_block():
@@ -483,7 +628,7 @@ def test_a_burst_of_block_changes_writes_each_list_once_at_the_flush():
     )
 
 
-def test_a_burst_of_selection_changes_makes_one_selection_write():
+def test_a_burst_of_selection_changes_makes_one_group():
     session = _FakeSession()
     renderer, _ = _renderer(session)
     _register_blocks(renderer, 3)
@@ -493,7 +638,7 @@ def test_a_burst_of_selection_changes_makes_one_selection_write():
     renderer.apply_selected(2, False, [1.0, 1.0, 1.0])
     renderer.flush_writes()
 
-    assert session.selections == [("/shared/mb.vtm", ["/Root/b0", "/Root/b2"])]
+    assert ([e.selectors for e in session.extracts], session.extracted) == ([["/Root/b0", "/Root/b2"]], [])
 
 
 def test_a_released_map_is_deleted_only_after_the_lists_are_written():
@@ -523,7 +668,7 @@ def test_flush_writes_nothing_when_nothing_changed():
 
     renderer.flush_writes()
 
-    assert (session.writes, session.selections) == ([], [])
+    assert (session.writes, session.selections, session.extracts) == ([], [], [])
 
 
 def test_record_pipeline_camera_rotates_about_the_focal_point_a_gesture_left():

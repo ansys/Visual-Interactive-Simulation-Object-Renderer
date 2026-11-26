@@ -184,6 +184,27 @@ def test_new_color_map_samples_the_colors_of_the_vtk_modes_table(monkeypatch):
     assert samples == _sampled(vtk_table, -3.0, 17.0)
 
 
+def test_new_color_map_mixes_each_colour_towards_the_tint(monkeypatch):
+    _, session = _session(monkeypatch)
+    plain = session.new_color_map(-1).RGBPoints
+    tinted = session.new_color_map(-1, (0.0, 0.0, 1.0), 0.25).RGBPoints
+
+    # The first point is the table's blue end, the last its red end, each a quarter of the way to blue.
+    assert (plain[:4], tinted[:4], tinted[-4:]) == ([0.0, 0.0, 0.0, 1.0], [0.0, 0.0, 0.0, 1.0], [1.0, 0.75, 0.0, 0.25])
+
+
+def test_extract_blocks_keeps_the_selectors_and_set_extracted_blocks_rewrites_them(monkeypatch):
+    simple, session = _session(monkeypatch)
+    simple.ExtractBlock = lambda **kwargs: SimpleNamespace(**kwargs)
+    source = object()
+
+    extract = session.extract_blocks(source, ["/Root/wing"])
+    first = (extract.Input, extract.Selectors)
+    session.set_extracted_blocks(extract, ["/Root/body/rib"])
+
+    assert (first, extract.Selectors) == ((source, ["/Root/wing"]), ["/Root/body/rib"])
+
+
 class _FakeSelectionHelper:
     """vtkSMSelectionHelper's two factories, recording the selection each is given."""
 

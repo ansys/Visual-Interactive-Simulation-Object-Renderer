@@ -57,6 +57,12 @@ class ParaviewSession(Protocol):
     def delete(self, source: PvSource) -> None:
         """Hide and delete source on pvserver."""
 
+    def extract_blocks(self, source: PvSource, selectors: list[str]) -> PvSource:
+        """A new ExtractBlock of source keeping the blocks at selectors."""
+
+    def set_extracted_blocks(self, extract: PvSource, selectors: list[str]) -> None:
+        """Make the blocks at selectors the ones extract keeps."""
+
     def point_count(self, source: PvSource) -> int:
         """Number of points pvserver reports for source."""
 
@@ -69,8 +75,13 @@ class ParaviewSession(Protocol):
     def clear_color(self, rep: PvRepresentation) -> None:
         """ColorBy None."""
 
-    def new_color_map(self, component: int) -> PvLookupTable:
-        """A new lookup table in the VTK modes' colours, mapping component, ``-1`` for magnitude, that ParaView never rescales."""
+    def new_color_map(
+        self,
+        component: int,
+        tint_rgb: tuple[float, float, float] | None = None,
+        tint_strength: float = 0.0,
+    ) -> PvLookupTable:
+        """A new lookup table in the VTK modes' colours, each mixed by tint_strength towards tint_rgb, mapping component, ``-1`` for magnitude, that ParaView never rescales."""
 
     def rescale_color_map(self, lut: PvLookupTable, lo: float, hi: float) -> None:
         """Rescale lut's transfer function to [lo, hi]."""
@@ -175,6 +186,18 @@ class PvSimpleSession:
         self._simple.Hide(source, self._view)
         self._simple.Delete(source)
 
+    def extract_blocks(self, source: PvSource, selectors: list[str]) -> PvSource:
+        """A new ExtractBlock of source keeping the blocks at selectors.
+
+        The extract renames the blocks it keeps, so a selector of source
+        does not address the same block in the extract.
+        """
+        return self._simple.ExtractBlock(Input=source, Selectors=list(selectors))
+
+    def set_extracted_blocks(self, extract: PvSource, selectors: list[str]) -> None:
+        """Make the blocks at selectors the ones extract keeps."""
+        extract.Selectors = list(selectors)
+
     def point_count(self, source: PvSource) -> int:
         """Number of points pvserver reports for source."""
         return source.GetDataInformation().GetNumberOfPoints()
@@ -196,16 +219,23 @@ class PvSimpleSession:
         """
         rep.ColorArrayName = ["POINTS", ""]
 
-    def new_color_map(self, component: int) -> PvLookupTable:
+    def new_color_map(
+        self,
+        component: int,
+        tint_rgb: tuple[float, float, float] | None = None,
+        tint_strength: float = 0.0,
+    ) -> PvLookupTable:
         """A new lookup table mapping component, ``-1`` for magnitude, that ParaView never rescales.
 
         The table is not registered under an array name, so no other
         representation coloured by the same array picks it up.  Its colours
-        are those of the VTK modes' table; ParaView's default preset is not used.
+        are those of the VTK modes' table, each mixed by tint_strength
+        towards tint_rgb when one is given; ParaView's default preset is not
+        used.
         """
         lut = self._simple.CreateLookupTable()
         lut.AutomaticRescaleRangeMode = "Never"
-        self._write_visor_colors(lut)
+        self._write_visor_colors(lut, tint_rgb, tint_strength)
         if component == -1:
             lut.VectorMode = "Magnitude"
         else:
@@ -214,12 +244,15 @@ class PvSimpleSession:
         return lut
 
     @staticmethod
-    def _write_visor_colors(lut: PvLookupTable) -> None:
+    def _write_visor_colors(
+        lut: PvLookupTable, tint_rgb: tuple[float, float, float] | None, tint_strength: float
+    ) -> None:
         """Make lut map as the VTK modes' table does: its colours as RGB points, discretized to its size.
 
         Each table colour is placed at its normalised index, so the
         discretized map samples exactly that colour and indexes values as
-        the VTK table does at every range.
+        the VTK table does at every range.  With tint_rgb, each colour is
+        first mixed by tint_strength towards it.
         """
         from vtkmodules.vtkCommonCore import vtkLookupTable
 
@@ -231,8 +264,10 @@ class PvSimpleSession:
         count = table.GetNumberOfTableValues()
         points: list[float] = []
         for index in range(count):
-            red, green, blue, _ = table.GetTableValue(index)
-            points += [index / (count - 1), red, green, blue]
+            rgb = table.GetTableValue(index)[:3]
+            if tint_rgb is not None:
+                rgb = tuple(c + (t - c) * tint_strength for c, t in zip(rgb, tint_rgb))
+            points += [index / (count - 1), *rgb]
         lut.ColorSpace = "RGB"
         lut.RGBPoints = points
         lut.NumberOfTableValues = count

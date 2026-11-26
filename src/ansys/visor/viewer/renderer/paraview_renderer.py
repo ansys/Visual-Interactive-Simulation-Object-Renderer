@@ -52,10 +52,17 @@ if TYPE_CHECKING:
 logger = VisorDefaultLogger(__name__)
 
 SELECTED_AMBIENT_RGB: tuple[float, float, float] = (0 / 255, 62 / 255, 111 / 255)
-"""Ambient tint of a selected part, as the VTK pipeline applies it; also the colour of a selected block."""
+"""Tint of a selected part, as the VTK pipeline applies it; also the colour of a source's block-selection wireframe."""
+
+SELECTED_TINT_STRENGTH: float = 0.5
+"""How strongly a selected part shows the tint, from 0 (none) to 1 (solid tint); it acts like the selection's opacity.
+
+It is the part's Ambient, with Diffuse ``1 - strength``, and how far each
+colour of a selected part's colour map is mixed towards the tint.
+"""
 
 SELECTED_BLOCK_OPACITY: float = 1.0
-"""Opacity of a selected block's wireframe outline."""
+"""Opacity of the wireframe ParaView draws over a source's block selection; this renderer writes no such selection."""
 
 _ASSOCIATIONS: dict[VisorVtkVariableType, str] = {
     VisorVtkVariableType.POINT: "POINTS",
@@ -90,41 +97,46 @@ class _ColorMap:
 
 
 class _ColorMaps:
-    """The colour maps in use across every representation, one per key, counted by the parts using them.
+    """The colour maps in use across every representation, one per key and tint, counted by the parts using them.
 
-    A map is never changed once a part uses it: a part whose key changes
-    moves to the map for its new key.  A map no part uses stops counting at
-    once and is deleted by :meth:`delete_retired`, which runs after the
-    per-block lists that named it are rewritten.
+    A tinted map has the key's colours mixed towards the selection tint; a
+    selected part coloured by an array uses it.  A map is never changed
+    once a part uses it: a part whose key changes moves to the map for its
+    new key.  A map no part uses stops counting at once and is deleted by
+    :meth:`delete_retired`, which runs after the per-block lists and
+    selected groups that named it are rewritten.
     """
 
     def __init__(self, session: ParaviewSession) -> None:
         """Hold no maps."""
         self._session = session
-        self._maps: dict[ColorMapKey, _ColorMap] = {}
+        self._maps: dict[tuple[ColorMapKey, bool], _ColorMap] = {}
         self._retired: list[PvLookupTable] = []
 
-    def acquire(self, key: ColorMapKey) -> PvLookupTable:
-        """The map for key, with one more user.
+    def acquire(self, key: ColorMapKey, tinted: bool = False) -> PvLookupTable:
+        """The map for key, tinted or not, with one more user.
 
         A new map is created and given its range here, before any part uses
         it.
         """
-        shared = self._maps.get(key)
+        shared = self._maps.get((key, tinted))
         if shared is not None:
             shared.users += 1
             return shared.lut
-        lut = self._session.new_color_map(key.component)
+        if tinted:
+            lut = self._session.new_color_map(key.component, SELECTED_AMBIENT_RGB, SELECTED_TINT_STRENGTH)
+        else:
+            lut = self._session.new_color_map(key.component)
         self._session.rescale_color_map(lut, key.min_val, key.max_val)
-        self._maps[key] = _ColorMap(lut, 1)
+        self._maps[(key, tinted)] = _ColorMap(lut, 1)
         return lut
 
-    def release(self, key: ColorMapKey) -> None:
-        """Drop one user of key's map; a map no part uses is retired, to be deleted by delete_retired."""
-        shared = self._maps[key]
+    def release(self, key: ColorMapKey, tinted: bool = False) -> None:
+        """Drop one user of key's map, tinted or not; a map no part uses is retired, to be deleted by delete_retired."""
+        shared = self._maps[(key, tinted)]
         shared.users -= 1
         if shared.users == 0:
-            del self._maps[key]
+            del self._maps[(key, tinted)]
             self._retired.append(shared.lut)
 
     def delete_retired(self) -> None:
@@ -151,22 +163,121 @@ class _BlockEntry:
     color: tuple[ColorMapKey, PvLookupTable] | None = None
 
 
+@dataclass(frozen=True)
+class _Look:
+    """What every block of one selected group shows; None rgb leaves the representation's colour in force."""
+
+    rgb: tuple[float, ...] | None
+    opacity: float
+    color_key: ColorMapKey | None
+
+
+class _SelectedGroup:
+    """The selected blocks of one source that share a look, drawn tinted through their own extract and representation.
+
+    The source's representation hides these blocks, so nothing is drawn
+    coplanar with them.  The tint is written on the whole representation, as
+    the pipeline renderer tints a selected actor, because ParaView has no
+    per-block lighting terms; a block coloured by an array is drawn through
+    its key's tinted map, so the tint shows over the array's colours.  The
+    extract renames the blocks it keeps, so no per-block list is written to
+    its representation.
+    """
+
+    def __init__(
+        self,
+        session: ParaviewSession,
+        color_maps: _ColorMaps,
+        source: PvSource,
+        selectors: list[str],
+        representation: str | None,
+    ) -> None:
+        """Extract the blocks at selectors and show them tinted, drawn as representation when one is given."""
+        self._session = session
+        self._color_maps = color_maps
+        self.extract = session.extract_blocks(source, selectors)
+        self._rep = session.show(self.extract)
+        self._selectors = list(selectors)
+        self.look: _Look | None = None
+        session.set_property(self._rep, "AmbientColor", list(SELECTED_AMBIENT_RGB))
+        session.set_property(self._rep, "Ambient", SELECTED_TINT_STRENGTH)
+        session.set_property(self._rep, "Diffuse", 1.0 - SELECTED_TINT_STRENGTH)
+        if representation is not None:
+            self.set_representation(representation)
+
+    def show(self, selectors: list[str], look: _Look) -> None:
+        """Draw the blocks at selectors with look, writing only what changed."""
+        if selectors != self._selectors:
+            self._session.set_extracted_blocks(self.extract, selectors)
+            self._selectors = list(selectors)
+        previous = self.look
+        if look == previous:
+            return
+        if previous is None:
+            self._session.set_property(self._rep, "Visibility", 1)
+        if look.rgb is not None and (previous is None or look.rgb != previous.rgb):
+            self._session.set_property(self._rep, "DiffuseColor", list(look.rgb))
+        if previous is None or look.opacity != previous.opacity:
+            self._session.set_property(self._rep, "Opacity", look.opacity)
+        previous_key = None if previous is None else previous.color_key
+        if previous is None or look.color_key != previous_key:
+            self._write_color(look.color_key, previous_key)
+        self.look = look
+
+    def hide(self) -> None:
+        """Hide the group, solid, letting go of its map; its extract is kept for reuse."""
+        if self.look is None:
+            return
+        self._write_color(None, self.look.color_key)
+        self._session.set_property(self._rep, "Visibility", 0)
+        self.look = None
+
+    def release(self) -> None:
+        """Let go of the group's map; the caller deletes its extract."""
+        if self.look is not None and self.look.color_key is not None:
+            self._color_maps.release(self.look.color_key, tinted=True)
+        self.look = None
+
+    def set_representation(self, representation: str) -> None:
+        """Draw the group as representation, Surface or Surface With Edges."""
+        self._session.set_property(self._rep, "Representation", representation)
+
+    def _write_color(self, key: ColorMapKey | None, previous: ColorMapKey | None) -> None:
+        """Colour by key's tinted map, or solid for None; previous's tinted map is released after."""
+        if key is None:
+            self._session.clear_color(self._rep)
+            self._session.set_property(self._rep, "LookupTable", None)
+        else:
+            lut = self._color_maps.acquire(key, tinted=True)
+            self._session.set_property(self._rep, "UseSeparateColorMap", 1)
+            self._session.set_property(self._rep, "LookupTable", lut)
+            self._session.set_property(self._rep, "ColorArrayName", [key.association, key.array_name])
+        if previous is not None:
+            self._color_maps.release(previous, tinted=True)
+
+
 class BlockTable:
     """The registered blocks of one composite representation, written as its per-block property lists.
 
     Each list is written whole, in registration order, from the entries;
     values are strings, as ParaView stores them.  A block not in the table is
-    hidden.  Changes only mark their lists stale; :meth:`flush` writes each
-    stale list, and the source's block selection, once.
+    hidden.  A visible selected block is drawn by a selected group, not by
+    the representation.  Changes only mark their lists stale; :meth:`flush`
+    writes each stale list, and the selected groups, once.
     """
 
-    def __init__(self, session: ParaviewSession, source: PvSource, rep: PvRepresentation) -> None:
-        """Hold no blocks, so none is shown; selected blocks are outlined in the opaque selection colour."""
+    def __init__(
+        self, session: ParaviewSession, source: PvSource, rep: PvRepresentation, color_maps: _ColorMaps
+    ) -> None:
+        """Hold no blocks, so none is shown; a block selection written to the source is outlined in the opaque selection colour."""
         self._session = session
         self._source = source
         self._rep = rep
+        self._color_maps = color_maps
         self._entries: dict[str, _BlockEntry] = {}
         self._selected: set[str] = set()
+        self._groups: list[_SelectedGroup] = []
+        self._representation: str | None = None
         self._stale: set[Callable[[], None]] = set()
         self._write_visible()
         session.set_property(rep, "SelectionColor", list(SELECTED_AMBIENT_RGB))
@@ -209,33 +320,56 @@ class BlockTable:
         """Set the block's opacity."""
         self._entries[selector].opacity = opacity
         self._stale.add(self._write_opacities)
+        self._stale_if_selected(selector)
 
     def set_diffuse(self, selector: str, rgb: list[float]) -> None:
         """Set the block's solid colour."""
         self._entries[selector].rgb = list(rgb)
         self._stale.add(self._write_colors)
+        self._stale_if_selected(selector)
 
     def set_selected(self, selector: str, selected: bool) -> None:
-        """Add the block to, or remove it from, the source's selection."""
+        """Draw the block in its look's selected group, or back in the representation."""
         if selected:
             self._selected.add(selector)
         else:
             self._selected.discard(selector)
-        self._stale.add(self._write_selected)
+        self._stale.update((self._write_visible, self._write_selected))
 
     def color_by(self, selector: str, key: ColorMapKey, lut: PvLookupTable) -> None:
         """Colour the block by key's array through lut."""
         self._entries[selector].color = (key, lut)
         self._stale.add(self._write_color_maps)
+        self._stale_if_selected(selector)
 
     def clear_color(self, selector: str) -> None:
         """Colour the block solid."""
         self._entries[selector].color = None
         self._stale.add(self._write_color_maps)
+        self._stale_if_selected(selector)
+
+    def set_representation(self, representation: str) -> None:
+        """Draw every selected group, and each group created later, as representation."""
+        self._representation = representation
+        for group in self._groups:
+            group.set_representation(representation)
+
+    def delete_selected_groups(self) -> None:
+        """Release every selected group's map and delete its extract; the source is about to be deleted."""
+        for group in self._groups:
+            group.release()
+            self._session.delete(group.extract)
+        self._groups.clear()
+
+    def _stale_if_selected(self, selector: str) -> None:
+        if selector in self._selected:
+            self._stale.add(self._write_selected)
 
     def _write_visible(self) -> None:
         self._session.set_property(
-            self._rep, "BlockSelectors", [s for s, e in self._entries.items() if e.visible]
+            self._rep,
+            "BlockSelectors",
+            [s for s, e in self._entries.items() if e.visible and s not in self._selected],
         )
 
     def _write_opacities(self) -> None:
@@ -287,10 +421,34 @@ class BlockTable:
         self._session.set_property(self._rep, "BlockColorArrayNames", names)
 
     def _write_selected(self) -> None:
-        """Write the selected blocks that are visible: the selection is drawn from the source, not through BlockSelectors."""
-        self._session.set_selected_blocks(
-            self._source, sorted(s for s in self._selected if self._entries[s].visible)
-        )
+        """Draw the visible selected blocks, one tinted group per look; a group no look needs is hidden for reuse.
+
+        A group that drew a look keeps it, so only its block list changes; a
+        new look takes a hidden group before a new extract is made.
+        """
+        wanted: dict[_Look, list[str]] = {}
+        for selector, entry in self._entries.items():
+            if selector in self._selected and entry.visible:
+                look = _Look(
+                    None if entry.rgb is None else tuple(entry.rgb),
+                    1.0 if entry.opacity is None else entry.opacity,
+                    None if entry.color is None else entry.color[0],
+                )
+                wanted.setdefault(look, []).append(selector)
+        kept = {group.look: group for group in self._groups if group.look in wanted}
+        spare = [group for group in self._groups if group.look not in wanted]
+        for look, selectors in wanted.items():
+            group = kept.get(look)
+            if group is None and spare:
+                group = spare.pop(0)
+            if group is None:
+                group = _SelectedGroup(
+                    self._session, self._color_maps, self._source, selectors, self._representation
+                )
+                self._groups.append(group)
+            group.show(selectors, look)
+        for group in spare:
+            group.hide()
 
 
 class _PartWriter(Protocol):
@@ -311,18 +469,26 @@ class _PartWriter(Protocol):
 
     def clear_color(self) -> None: ...
 
+    def release_tint(self) -> None: ...
+
     def hide(self) -> None: ...
 
 
 class _WholePart:
     """A part that is a whole representation, written through the representation's own properties."""
 
-    def __init__(self, session: ParaviewSession, rep: PvRepresentation, dataset: vtkDataObject) -> None:
+    def __init__(
+        self, session: ParaviewSession, color_maps: _ColorMaps, rep: PvRepresentation, dataset: vtkDataObject
+    ) -> None:
         """Write nothing; the representation is already shown."""
         self._session = session
+        self._color_maps = color_maps
         self._rep = rep
         self.dataset = dataset
         self.color_key: ColorMapKey | None = None
+        self._lut: PvLookupTable | None = None
+        self._selected = False
+        self._tinted: ColorMapKey | None = None
 
     def set_visible(self, visible: bool) -> None:
         self._session.set_property(self._rep, "Visibility", 1 if visible else 0)
@@ -334,28 +500,57 @@ class _WholePart:
         self._session.set_property(self._rep, "DiffuseColor", list(rgb))
 
     def set_selected(self, selected: bool, diffuse_rgb: list) -> None:
-        """Write AmbientColor, Ambient and Diffuse as the pipeline renderer does, and DiffuseColor."""
+        """Write AmbientColor, Ambient and Diffuse as the pipeline renderer does, and DiffuseColor.
+
+        A part coloured by an array is drawn through its key's tinted map
+        while selected, so the tint shows over the array's colours.
+        """
         if selected:
             self._session.set_property(self._rep, "AmbientColor", list(SELECTED_AMBIENT_RGB))
-            self._session.set_property(self._rep, "Diffuse", 0.5)
-            self._session.set_property(self._rep, "Ambient", 0.5)
+            self._session.set_property(self._rep, "Diffuse", 1.0 - SELECTED_TINT_STRENGTH)
+            self._session.set_property(self._rep, "Ambient", SELECTED_TINT_STRENGTH)
         else:
             self._session.set_property(self._rep, "Diffuse", 1.0)
             self._session.set_property(self._rep, "Ambient", 0.0)
         self._session.set_property(self._rep, "DiffuseColor", list(diffuse_rgb))
+        self._selected = selected
+        if self.color_key is not None:
+            self._write_lookup_table()
 
     def color_by(self, key: ColorMapKey, lut: PvLookupTable) -> None:
-        """Colour the representation by key's array through lut, which no ColorBy replaces."""
+        """Colour the representation by key's array through lut, or its tinted map while selected, which no ColorBy replaces."""
         self.color_key = key
+        self._lut = lut
         self._session.set_property(self._rep, "UseSeparateColorMap", 1)
-        self._session.set_property(self._rep, "LookupTable", lut)
+        self._write_lookup_table()
         self._session.set_property(self._rep, "ColorArrayName", [key.association, key.array_name])
 
     def clear_color(self) -> None:
-        """Colour the representation solid and let go of its map."""
+        """Colour the representation solid and let go of its maps."""
         self.color_key = None
+        self._lut = None
         self._session.clear_color(self._rep)
         self._session.set_property(self._rep, "LookupTable", None)
+        self.release_tint()
+
+    def release_tint(self) -> None:
+        """Let go of the tinted map, if the part holds one."""
+        if self._tinted is not None:
+            self._color_maps.release(self._tinted, tinted=True)
+            self._tinted = None
+
+    def _write_lookup_table(self) -> None:
+        """Write the key's tinted map while selected, else the part's own map; a tinted map held before is released after."""
+        previous = self._tinted
+        if self._selected:
+            self._tinted = self.color_key
+            lut = self._color_maps.acquire(self.color_key, tinted=True)
+        else:
+            self._tinted = None
+            lut = self._lut
+        self._session.set_property(self._rep, "LookupTable", lut)
+        if previous is not None:
+            self._color_maps.release(previous, tinted=True)
 
     def hide(self) -> None:
         """Hide the representation, solid."""
@@ -385,7 +580,7 @@ class _BlockPart:
         self._table.set_diffuse(self._selector, rgb)
 
     def set_selected(self, selected: bool, diffuse_rgb: list) -> None:
-        """Select the block in the source's block selection, and write its colour."""
+        """Draw the block in its source's tinted selected group, or back in the representation, and write its colour."""
         self._table.set_selected(self._selector, selected)
         self._table.set_diffuse(self._selector, diffuse_rgb)
 
@@ -396,6 +591,9 @@ class _BlockPart:
     def clear_color(self) -> None:
         self.color_key = None
         self._table.clear_color(self._selector)
+
+    def release_tint(self) -> None:
+        """Nothing: the block's selected group holds its tinted map."""
 
     def hide(self) -> None:
         """Remove the block from the table, which hides it."""
@@ -550,13 +748,13 @@ class ParaviewRenderer(IRenderer):
                     f"{where}: pvserver reports {server_points} points, the local dataset has {local_points}"
                 )
         rep = self._session.show(source)
-        table = BlockTable(self._session, source, rep) if entries[0].selector is not None else None
+        table = BlockTable(self._session, source, rep, self._color_maps) if entries[0].selector is not None else None
         self._sources[dataset_key] = _OpenedSource(source, rep, table)
         for entry in entries:
             self._leaf_index[id(entry.dataset)] = entry
 
     def close_source(self, dataset_key: str) -> None:
-        """Delete the source, which takes its representation, then release the maps its parts used."""
+        """Delete the source's selected groups, then the source, which takes its representation, then release the maps its parts used."""
         opened = self._sources.pop(dataset_key, None)
         if opened is None:
             logger.debug("close_source: no source for %s; skipping.", dataset_key)
@@ -564,6 +762,10 @@ class ParaviewRenderer(IRenderer):
         parts = [self._parts.pop(node_id) for node_id in opened.node_ids]
         keys = [part.color_key for part in parts if part.color_key is not None]
         self._leaf_index = {k: v for k, v in self._leaf_index.items() if v.source_key != dataset_key}
+        if opened.blocks is not None:
+            opened.blocks.delete_selected_groups()
+        for part in parts:
+            part.release_tint()
         self._session.delete(opened.source)
         for key in keys:
             self._color_maps.release(key)
@@ -593,7 +795,7 @@ class ParaviewRenderer(IRenderer):
             raise VisorAddDatasetError(f"No pvserver source holds part {node.name!r}")
         opened = self._sources[entry.source_key]
         if entry.selector is None:
-            part: _PartWriter = _WholePart(self._session, opened.rep, dataset)
+            part: _PartWriter = _WholePart(self._session, self._color_maps, opened.rep, dataset)
         else:
             part = _BlockPart(opened.blocks, entry.selector, dataset)
         self._parts[node.id] = part
@@ -613,16 +815,18 @@ class ParaviewRenderer(IRenderer):
             self._color_maps.release(key)
 
     def deregister_all(self) -> None:
-        """Delete every source, then every colour map."""
+        """Delete every source's selected groups and the source, then every colour map."""
         self._parts.clear()
         for opened in self._sources.values():
+            if opened.blocks is not None:
+                opened.blocks.delete_selected_groups()
             self._session.delete(opened.source)
         self._sources.clear()
         self._leaf_index.clear()
         self._color_maps.release_all()
 
     def flush_writes(self) -> None:
-        """Write every representation's stale per-block lists and selection, then delete the maps no part uses."""
+        """Write every representation's stale per-block lists and selected groups, then delete the maps no part uses."""
         for opened in self._sources.values():
             if opened.blocks is not None:
                 opened.blocks.flush()
@@ -668,9 +872,10 @@ class ParaviewRenderer(IRenderer):
 
         A whole representation is tinted with AmbientColor, Ambient and
         Diffuse, as the pipeline renderer tints an actor.  ParaView has no
-        per-block lighting terms, so a block is instead put in the source's
-        block selection, which ParaView outlines as a wireframe in the
-        selection colour; this renderer owns that selection.
+        per-block lighting terms, so a block is instead hidden in its
+        representation and drawn, tinted the same way, by the selected group
+        for its look.  A part coloured by an array is drawn through its
+        key's tinted map, so the tint shows over the array's colours.
         """
         part = self._part(node_id, "apply_selected")
         if part is None:
@@ -771,10 +976,12 @@ class ParaviewRenderer(IRenderer):
     # ------------------------------------------------------------------
 
     def set_edges_visible(self, visible: bool) -> None:
-        """Write the edges representation on every opened source's representation, then request a frame."""
+        """Write the edges representation on every opened source's representation and selected groups, then request a frame."""
         representation = "Surface With Edges" if visible else "Surface"
         for opened in self._sources.values():
             self._session.set_property(opened.rep, "Representation", representation)
+            if opened.blocks is not None:
+                opened.blocks.set_representation(representation)
         self._frame_requester.request_frame()
 
     def set_cross_section_visibility(self, visible: bool) -> None:
