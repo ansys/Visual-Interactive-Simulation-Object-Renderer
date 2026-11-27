@@ -429,11 +429,15 @@ class VisorSceneBase(ABC):
     def clear(self):
         """Remove all actors from the renderer and reset the scene.
 
+        Also discards the renderer's cross-section plane record, so the next
+        populate places a default plane on the new scene's bounds.
+
         Holds ``_vtk_lock``: deregistering actors mutates the VTK renderer.
         """
         with self._vtk_lock:
             if self._scene_graph is not None:
                 self._renderer.deregister_all()
+            self._renderer.reset_cross_section_plane()
             self._dataset_registry.clear()
             self._scene_graph = None
             self._rebuild_variable_records_from_registry()

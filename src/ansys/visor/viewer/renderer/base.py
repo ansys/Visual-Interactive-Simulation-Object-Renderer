@@ -52,11 +52,13 @@ class IRenderer(ABC):
 
     _last_camera_state: "VisorCameraState | None"
     _last_cross_section_state: "VisorCrossSectionState | None"
+    _cross_section_plane_is_explicit: bool
 
     def __init__(self) -> None:
-        """Initialize the camera and cross-section records to ``None``."""
+        """Initialize the camera and cross-section records to ``None``, the plane record as not explicit."""
         self._last_camera_state = None
         self._last_cross_section_state = None
+        self._cross_section_plane_is_explicit = False
 
     # ------------------------------------------------------------------------
     # Wire contract
@@ -279,7 +281,11 @@ class IRenderer(ABC):
     def sync_cross_section_plane(
         self, origin: list[float], normal: list[float]
     ) -> None:
-        """Store a copy of *origin* and *normal* as the plane record.
+        """Store a copy of *origin* and *normal* as the plane record and mark it explicit.
+
+        Every deliberate placement -- a client drag, a server drag, a loaded
+        state -- arrives here.  An explicit record is preserved across later
+        bounds updates until :meth:`reset_cross_section_plane`.
 
         An implementation with a widget overrides this, calls ``super()``
         first, then writes the widget's VTK objects.
@@ -290,10 +296,21 @@ class IRenderer(ABC):
         self._last_cross_section_state = VisorCrossSectionState(
             origin=list(origin), normal=list(normal)
         )
+        self._cross_section_plane_is_explicit = True
 
     def get_cross_section_plane(self) -> "VisorCrossSectionState | None":
         """Return the plane record, or ``None`` if nothing has written one yet."""
         return self._last_cross_section_state
+
+    def reset_cross_section_plane(self) -> None:
+        """Discard the plane record and its explicit mark, so the next bounds update places a default plane.
+
+        Called when the scene is cleared: a plane placed for the previous
+        scene's datasets has no meaning for the next one.  Writes no VTK
+        object and notifies no client.
+        """
+        self._last_cross_section_state = None
+        self._cross_section_plane_is_explicit = False
 
 
     @abstractmethod
