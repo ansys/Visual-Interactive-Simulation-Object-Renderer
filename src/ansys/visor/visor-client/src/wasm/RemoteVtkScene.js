@@ -297,6 +297,7 @@ export default class RemoteVtkScene {
      * @return {void}
      */
     #checkMemory = () => {
+        // Stands in for wasmHandler.freeMemory until vtk-wasm is 3.0.3 or later; see BlobEviction.
         this.#blobEviction.evict(this.#wasmHandler);
     };
     /**

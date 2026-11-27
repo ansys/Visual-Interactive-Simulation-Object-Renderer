@@ -13,8 +13,13 @@ export interface BlobStore {
 /**
  * Evicts cached wasm blobs oldest-first down to a byte budget, never one a render window last reported in use.
  *
- * vtk-wasm 1.7.3's own `freeMemory` evicts in-use blobs as well, so a scene larger than the budget is fetched
- * again in full on every update.  vtk-wasm 3.0.3 and later skip in-use blobs, as this does.
+ * This is a workaround for vtk-wasm 1.7.3, whose own `freeMemory` evicts in-use blobs as well, so a scene larger
+ * than the budget is fetched again in full on every update.  It reproduces the upstream fix released in vtk-wasm
+ * 3.0.3, "fix(blob): prevent blob eviction when used from cache" (https://github.com/Kitware/vtk-wasm/pull/68).
+ *
+ * It reads and writes internal members of the 1.7.3 handler, so it is only valid while `package.json` pins
+ * `@kitware/vtk-wasm` to exactly 1.7.3.  Once vtk-wasm is 3.0.3 or later, delete this class and call the handler's
+ * own `freeMemory` again.
  */
 export class BlobEviction {
     readonly #budgetBytes: number;
