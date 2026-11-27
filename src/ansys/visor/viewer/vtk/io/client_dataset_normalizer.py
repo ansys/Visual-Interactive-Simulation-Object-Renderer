@@ -1,24 +1,37 @@
 """Normalize platform-width VTK arrays before a dataset is served to the wasm client.
 
-WORKAROUND for an upstream VTK serialization defect: ``vtkObjectManager``
-serializes ``vtkLongArray`` / ``vtkUnsignedLongArray`` by class name only.
-On an LP64 server (Linux, macOS) ``long`` is 8 bytes; in the wasm32
-vtkWebAssembly client it is 4 bytes, so the client rebuilds those arrays
-with the wrong element width and reads every 64-bit value as two 32-bit
-halves.  ``vtkHDFReader`` returns 64-bit integer data, including cell
-connectivity and offsets, as ``vtkLongArray`` on LP64 hosts, so a dataset
-read back from VTKHDF (for example a ``load_state`` snapshot) renders empty
-or crashes the client with ``std::bad_alloc``.
+WORKAROUND for an upstream VTK serialization defect (``vtkDataArraySerDesHelper``):
+``vtkObjectManager`` serializes a data array as its class name and a raw byte
+blob, with no element width.  The client rebuilds the same class at its own
+width and reads the blob at that width.  Three classes are platform-width:
 
-Scope: applied only to datasets Visor itself reads from VTKHDF, in
-``file_to_dataset``.  Those objects are owned by Visor, so they are converted
-in place.  In-memory datasets supplied by a caller are deliberately not
-converted (that would mutate objects the caller still holds); long-backed
-in-memory data remains affected by the upstream defect.
+* ``vtkIdTypeArray`` is 8 bytes on a 64-bit-id server, on every OS, and
+  4 bytes in the wasm32 vtkWebAssembly client.
+* ``vtkLongArray`` / ``vtkUnsignedLongArray`` are 8 bytes on an LP64 server
+  (Linux, macOS) and 4 bytes in the wasm32 client.
 
-Remove this module, and its call in ``file_to_dataset``, once the VTK version
-Visor depends on serializes platform-width arrays with a fixed element width.
+Where the widths differ, the client reads every 64-bit value as two 32-bit
+halves, the value and then 0.  The XML readers return global and pedigree
+ids as ``vtkIdTypeArray``, so colouring by them shows wrong values.
+``vtkHDFReader`` returns 64-bit integer data, including cell connectivity and
+offsets, as ``vtkLongArray`` on LP64 hosts, so a dataset read back from VTKHDF
+(for example a ``load_state`` snapshot) renders empty or crashes the client
+with ``std::bad_alloc``.
+
+Scope: applied only to datasets Visor itself reads, in ``file_to_dataset``.
+Those objects are owned by Visor, so they are converted in place.  A VTKHDF
+dataset gets the full conversion (topology, point, cell and field data);
+every other format gets only its point and cell data converted.  In-memory
+datasets supplied by a caller are not converted (that would mutate objects
+the caller still holds); the CLIENT-mode scene rejects them instead, using
+:meth:`ClientDatasetNormalizer.platform_width_attribute_arrays`.
+
+Remove this module, its calls in ``file_to_dataset`` and the CLIENT-mode
+rejection once the VTK version Visor depends on serializes platform-width
+arrays with a fixed element width.
 """
+
+from collections.abc import Iterator
 
 from vtkmodules.vtkCommonCore import (
     vtkAbstractArray,
@@ -40,6 +53,7 @@ from vtkmodules.vtkCommonDataModel import (
 # Matched by exact class name, not isinstance: whether the fixed-width
 # classes derive from the platform-width ones depends on the VTK build.
 _FIXED_WIDTH_REPLACEMENTS = {
+    "vtkIdTypeArray": vtkTypeInt64Array,
     "vtkLongArray": vtkTypeInt64Array,
     "vtkUnsignedLongArray": vtkTypeUInt64Array,
 }
@@ -74,6 +88,56 @@ class ClientDatasetNormalizer:
         if isinstance(dataset, vtkDataSet):
             return ClientDatasetNormalizer._normalize_leaf(dataset)
         return 0
+
+    @staticmethod
+    def normalize_attribute_arrays_for_client(dataset: vtkDataObject) -> int:
+        """Normalize only the point and cell data of every leaf in place; return the number of arrays replaced.
+
+        Topology and field data are left untouched.  Values, array names,
+        array order and active-attribute roles are preserved.
+        """
+        replaced = 0
+        for leaf in ClientDatasetNormalizer._leaves_of(dataset):
+            leaf_replaced = sum(
+                ClientDatasetNormalizer._normalize_field_data(attributes)
+                for attributes in (leaf.GetPointData(), leaf.GetCellData())
+            )
+            if leaf_replaced:
+                leaf.Modified()
+            replaced += leaf_replaced
+        return replaced
+
+    @staticmethod
+    def platform_width_attribute_arrays(dataset: vtkDataObject) -> list[str]:
+        """Return a label such as ``"POINT 'GlobalNodeId' (vtkIdTypeArray)"`` for each platform-width point or cell array, once per label."""
+        labels: list[str] = []
+        for leaf in ClientDatasetNormalizer._leaves_of(dataset):
+            for association, attributes in (("POINT", leaf.GetPointData()), ("CELL", leaf.GetCellData())):
+                if attributes is None:
+                    continue
+                for position in range(attributes.GetNumberOfArrays()):
+                    array = attributes.GetAbstractArray(position)
+                    if array is None or array.GetClassName() not in _FIXED_WIDTH_REPLACEMENTS:
+                        continue
+                    label = f"{association} '{array.GetName()}' ({array.GetClassName()})"
+                    if label not in labels:
+                        labels.append(label)
+        return labels
+
+    @staticmethod
+    def _leaves_of(dataset: vtkDataObject) -> Iterator[vtkDataSet]:
+        """Yield *dataset* itself if it is a ``vtkDataSet``, or each non-empty ``vtkDataSet`` leaf of a composite."""
+        if isinstance(dataset, vtkCompositeDataSet):
+            iterator = dataset.NewIterator()
+            iterator.SkipEmptyNodesOn()
+            iterator.InitTraversal()
+            while not iterator.IsDoneWithTraversal():
+                leaf = iterator.GetCurrentDataObject()
+                if isinstance(leaf, vtkDataSet):
+                    yield leaf
+                iterator.GoToNextItem()
+        elif isinstance(dataset, vtkDataSet):
+            yield dataset
 
     @staticmethod
     def _normalize_leaf(leaf: vtkDataSet) -> int:
@@ -113,7 +177,7 @@ class ClientDatasetNormalizer:
 
     @staticmethod
     def _normalize_field_data(field_data: vtkFieldData | None) -> int:
-        """Replace vtkLongArray/vtkUnsignedLongArray with fixed-width copies, keeping array order, names and active-attribute roles."""
+        """Replace vtkIdTypeArray/vtkLongArray/vtkUnsignedLongArray with fixed-width copies, keeping array order, names and active-attribute roles."""
         if field_data is None:
             return 0
         arrays = [field_data.GetAbstractArray(i) for i in range(field_data.GetNumberOfArrays())]
@@ -145,7 +209,7 @@ class ClientDatasetNormalizer:
 
     @staticmethod
     def _fixed_width_copy(array: vtkAbstractArray | None) -> vtkDataArray | None:
-        """Return a vtkTypeInt64Array/vtkTypeUInt64Array deep copy of a long array, or None if no conversion is needed."""
+        """Return a vtkTypeInt64Array/vtkTypeUInt64Array deep copy of a platform-width array, or None if no conversion is needed."""
         if array is None:
             return None
         replacement_class = _FIXED_WIDTH_REPLACEMENTS.get(array.GetClassName())

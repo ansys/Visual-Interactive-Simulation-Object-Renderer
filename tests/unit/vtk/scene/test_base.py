@@ -3988,3 +3988,15 @@ def test_add_dataset_without_metadata_leaves_the_record_applied(add_scene, array
     assert prop.GetAmbient() == pytest.approx(0.0)
     assert prop.GetDiffuseColor() == pytest.approx((0.8, 0.8, 0.8))
 
+
+def test_check_dataset_accepts_platform_width_arrays_on_base():
+    """The base check, used by the SERVER and PARAVIEW scenes, accepts a vtkIdTypeArray dataset."""
+    from vtkmodules.vtkCommonCore import vtkIdTypeArray
+
+    dataset = vtkPolyData()
+    ids = vtkIdTypeArray()
+    ids.SetName("GlobalNodeId")
+    dataset.GetPointData().AddArray(ids)
+
+    assert VisorSceneBase.check_dataset(MagicMock(), dataset) is None
+

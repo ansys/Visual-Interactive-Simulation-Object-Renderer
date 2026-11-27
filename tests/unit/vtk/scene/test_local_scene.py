@@ -4,6 +4,14 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
+from vtkmodules.vtkCommonCore import (
+    vtkIdTypeArray,
+    vtkLongArray,
+    vtkPoints,
+    vtkTypeInt64Array,
+    vtkUnsignedLongArray,
+)
+from vtkmodules.vtkCommonDataModel import vtkPolyData
 
 from ansys.visor.viewer.core.metadata import ExtendedMetadata
 from ansys.visor.viewer.models.runtime.vtk.renderer_annotation import (
@@ -248,6 +256,52 @@ def test_add_dataset_none_input(pipeline_instance):
     """Test that add_dataset with None input raises RuntimeError."""
     with pytest.raises(ValueError):
         pipeline_instance.add_dataset(None, ExtendedMetadata(name="test", unit="m"))
+
+
+def _polydata_with_point_array(array_class, name: str) -> vtkPolyData:
+    """One-point polydata whose point data holds a single *array_class* array named *name*."""
+    points = vtkPoints()
+    points.InsertNextPoint(0.0, 0.0, 0.0)
+    poly = vtkPolyData()
+    poly.SetPoints(points)
+    array = array_class()
+    array.SetName(name)
+    array.InsertNextValue(924)
+    poly.GetPointData().AddArray(array)
+    return poly
+
+
+@pytest.mark.parametrize("array_class,class_name", [
+    (vtkIdTypeArray, "vtkIdTypeArray"),
+    (vtkLongArray, "vtkLongArray"),
+    (vtkUnsignedLongArray, "vtkUnsignedLongArray"),
+])
+def test_check_dataset_rejects_platform_width_arrays(pipeline_instance, array_class, class_name):
+    """Each platform-width class is rejected on every host, with the array and class named."""
+    dataset = _polydata_with_point_array(array_class, "GlobalNodeId")
+
+    with pytest.raises(ValueError) as excinfo:
+        pipeline_instance.check_dataset(dataset)
+
+    assert f"POINT 'GlobalNodeId' ({class_name})" in str(excinfo.value)
+
+
+def test_check_dataset_accepts_fixed_width_arrays(pipeline_instance):
+    """A vtkTypeInt64Array id array is accepted."""
+    dataset = _polydata_with_point_array(vtkTypeInt64Array, "GlobalNodeId")
+
+    assert pipeline_instance.check_dataset(dataset) is None
+
+
+def test_add_dataset_rejects_platform_width_array_before_loading(pipeline_instance):
+    """A rejected dataset never reaches the dataset registry or the scene graph."""
+    dataset = _polydata_with_point_array(vtkIdTypeArray, "GlobalNodeId")
+
+    with pytest.raises(ValueError, match="GlobalNodeId"):
+        pipeline_instance.add_dataset(dataset, ExtendedMetadata(name="test", unit="m"))
+
+    pipeline_instance._dataset_registry.get_sanitized_metadata_name.assert_not_called()
+    pipeline_instance._scene_graph.load_dataset.assert_not_called()
 
 def test_visorscene_constructor_runtimeerror():
     """Test that VisorLocalScene constructor raises RuntimeError when encountering an error during initialization."""

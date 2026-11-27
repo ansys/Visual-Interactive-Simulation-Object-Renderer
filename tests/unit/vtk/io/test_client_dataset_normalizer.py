@@ -1,12 +1,14 @@
 """Unit tests for ClientDatasetNormalizer.
 
-Inputs are hand-built ``vtkLongArray`` / ``vtkUnsignedLongArray`` datasets, so
-these run on any OS: a ``vtkLongArray``-backed ``vtkCellArray`` uses generic
-storage everywhere, which is what ``vtkHDFReader`` produces on LP64 hosts.
+Inputs are hand-built ``vtkIdTypeArray`` / ``vtkLongArray`` /
+``vtkUnsignedLongArray`` datasets, so these run on any OS: a
+``vtkLongArray``-backed ``vtkCellArray`` uses generic storage everywhere,
+which is what ``vtkHDFReader`` produces on LP64 hosts.
 """
 
 from vtkmodules.vtkCommonCore import (
     vtkFloatArray,
+    vtkIdTypeArray,
     vtkLongArray,
     vtkPoints,
     vtkTypeInt64Array,
@@ -144,4 +146,46 @@ def test_fixed_width_dataset_is_left_untouched():
     assert replaced == 0
     assert poly.GetPolys().GetConnectivityArray() is connectivity
     assert poly.GetPointData().GetArray("a") is scalars
+
+
+def test_attribute_only_normalize_leaves_topology_and_field_data():
+    """Only point and cell data are converted; cell arrays and field data keep their original objects."""
+    poly = _triangle_polydata()
+    poly.GetPointData().AddArray(_array(vtkIdTypeArray, "gid", (924, 925, 935)))
+    poly.GetFieldData().AddArray(_array(vtkLongArray, "fid", (11, 12)))
+    connectivity = poly.GetPolys().GetConnectivityArray()
+    offsets = poly.GetPolys().GetOffsetsArray()
+    field = poly.GetFieldData().GetArray("fid")
+
+    replaced = ClientDatasetNormalizer.normalize_attribute_arrays_for_client(poly)
+
+    gid = poly.GetPointData().GetArray("gid")
+    assert replaced == 1
+    assert (gid.GetClassName(), _values(gid)) == ("vtkTypeInt64Array", [924, 925, 935])
+    assert poly.GetPolys().GetConnectivityArray() is connectivity
+    assert poly.GetPolys().GetOffsetsArray() is offsets
+    assert poly.GetFieldData().GetArray("fid") is field
+
+
+def test_platform_width_attribute_arrays_lists_each_label_once():
+    """Point and cell platform-width arrays are labelled once across leaves; fixed-width and field arrays are not listed."""
+    def leaf() -> vtkPolyData:
+        poly = _triangle_polydata(cell_array_class=vtkTypeInt64Array)
+        poly.GetPointData().AddArray(_array(vtkFloatArray, "T", (1.0, 2.0, 3.0)))
+        poly.GetPointData().AddArray(_array(vtkIdTypeArray, "gid", (1, 2, 3)))
+        poly.GetCellData().AddArray(_array(vtkLongArray, "lid", (4,)))
+        poly.GetCellData().AddArray(_array(vtkUnsignedLongArray, "uid", (5,)))
+        poly.GetFieldData().AddArray(_array(vtkIdTypeArray, "fid", (6,)))
+        return poly
+
+    blocks = vtkMultiBlockDataSet()
+    blocks.SetNumberOfBlocks(2)
+    blocks.SetBlock(0, leaf())
+    blocks.SetBlock(1, leaf())
+
+    assert ClientDatasetNormalizer.platform_width_attribute_arrays(blocks) == [
+        "POINT 'gid' (vtkIdTypeArray)",
+        "CELL 'lid' (vtkLongArray)",
+        "CELL 'uid' (vtkUnsignedLongArray)",
+    ]
 
