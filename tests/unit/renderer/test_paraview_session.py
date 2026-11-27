@@ -110,13 +110,6 @@ def _session(monkeypatch):
     return simple, PvSimpleSession(PvserverAddress(host="localhost", port=11111))
 
 
-def test_show_leaves_the_selection_representation_at_its_default(monkeypatch):
-    simple, session = _session(monkeypatch)
-    simple.Show = lambda source, view: SimpleNamespace()
-
-    assert not hasattr(session.show(object()), "SelectionRepresentation")
-
-
 def test_show_turns_off_interpolate_scalars_before_mapping(monkeypatch):
     """A colour map is applied as vertex colours, not as a texture, so maps do not consume texture units."""
     simple, session = _session(monkeypatch)
@@ -184,71 +177,25 @@ def test_new_color_map_samples_the_colors_of_the_vtk_modes_table(monkeypatch):
     assert samples == _sampled(vtk_table, -3.0, 17.0)
 
 
-class _FakeSelectionHelper:
-    """vtkSMSelectionHelper's two factories, recording the selection each is given."""
-
-    def __init__(self) -> None:
-        self.calls: list[tuple] = []
-
-    def NewSelectionSourceFromSelection(self, session, selection): # noqa: N802
-        node = selection.GetNode(0)
-        selectors = [node.GetSelectionList().GetValue(i) for i in range(node.GetSelectionList().GetNumberOfValues())]
-        self.calls.append(("source", session, node.GetContentType(), node.GetFieldType(), selectors))
-        return _Unregistering(self.calls, "selection-proxy")
-
-    def NewAppendSelectionsFromSelectionSource(self, selection_proxy): # noqa: N802
-        self.calls.append(("append", selection_proxy.name))
-        return _Unregistering(self.calls, "append-proxy")
-
-
-class _Unregistering:
-    def __init__(self, calls: list[tuple], name: str) -> None:
-        self.calls = calls
-        self.name = name
-
-    def UnRegister(self, owner) -> None: # noqa: N802
-        self.calls.append(("unregister", self.name))
-
-
-def _selection_source(calls: list[tuple]):
-    proxy = SimpleNamespace(SetSelectionInput=lambda port, append, out: calls.append(("input", port, append, out)))
-    return SimpleNamespace(SMProxy=proxy, GetSession=lambda: "pv-session")
-
-
-def test_set_selected_blocks_writes_every_block_in_one_selection_and_never_renders(monkeypatch):
-    from vtkmodules.vtkCommonDataModel import vtkSelectionNode
-
-    simple, session = _session(monkeypatch)
-    helper = _FakeSelectionHelper()
-    monkeypatch.setitem(sys.modules, "paraview.modules", types.ModuleType("paraview.modules"))
-    views = types.ModuleType("paraview.modules.vtkRemotingViews")
-    views.vtkSMSelectionHelper = helper
-    monkeypatch.setitem(sys.modules, "paraview.modules.vtkRemotingViews", views)
-    pv_vtk = types.ModuleType("paraview.vtk")
-    pv_vtk.vtkSelectionNode = vtkSelectionNode
-    monkeypatch.setitem(sys.modules, "paraview.vtk", pv_vtk)
-    simple.Render = lambda *args: helper.calls.append(("render",))
-    source = _selection_source(helper.calls)
-
-    session.set_selected_blocks(source, ["/Root/body/rib", "/Root/wing"])
-
-    # 8 is BLOCK_SELECTORS; 0 is CELL, which extracts a block's faces where POINT extracts only its vertices.
-    assert [(c[0], c[2].name) if c[0] == "input" else c for c in helper.calls] == [
-        ("source", "pv-session", 8, 0, ["/Root/body/rib", "/Root/wing"]),
-        ("append", "selection-proxy"),
-        ("input", "append-proxy"),
-        ("unregister", "append-proxy"),
-        ("unregister", "selection-proxy"),
-    ]
-
-
-def test_set_selected_blocks_with_no_blocks_clears_the_selection(monkeypatch):
+def test_new_color_map_mixes_each_colour_towards_the_tint(monkeypatch):
     _, session = _session(monkeypatch)
-    calls: list[tuple] = []
+    plain = session.new_color_map(-1).RGBPoints
+    tinted = session.new_color_map(-1, (0.0, 0.0, 1.0), 0.25).RGBPoints
 
-    session.set_selected_blocks(_selection_source(calls), [])
+    # The first point is the table's blue end, the last its red end, each a quarter of the way to blue.
+    assert (plain[:4], tinted[:4], tinted[-4:]) == ([0.0, 0.0, 0.0, 1.0], [0.0, 0.0, 0.0, 1.0], [1.0, 0.75, 0.0, 0.25])
 
-    assert calls == [("input", 0, None, 0)]
+
+def test_extract_blocks_keeps_the_selectors_and_set_extracted_blocks_rewrites_them(monkeypatch):
+    simple, session = _session(monkeypatch)
+    simple.ExtractBlock = lambda **kwargs: SimpleNamespace(**kwargs)
+    source = object()
+
+    extract = session.extract_blocks(source, ["/Root/wing"])
+    first = (extract.Input, extract.Selectors)
+    session.set_extracted_blocks(extract, ["/Root/body/rib"])
+
+    assert (first, extract.Selectors) == ((source, ["/Root/wing"]), ["/Root/body/rib"])
 
 
 def test_reset_camera_rotates_about_the_centre_of_the_bounds(monkeypatch):
