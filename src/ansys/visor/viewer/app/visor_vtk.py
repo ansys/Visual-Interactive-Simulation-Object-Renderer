@@ -266,8 +266,10 @@ class VisorVTK(Visor):
 
         logger.info("Starting server")
 
-        # Clear the existing scene if new input is provided
+        # Clear the existing scene if new input is provided; a rejected
+        # in-memory dataset leaves the existing scene in place.
         if input is not None:
+            self._check_input_dataset(input)
             self._scene.clear()
 
         # Prepare the scene with the raw data
@@ -302,8 +304,7 @@ class VisorVTK(Visor):
         """
         logger.info("Updating model")
 
-        if isinstance(input, VisorDatasetType):
-            self._scene.check_dataset(input)
+        self._check_input_dataset(input)
 
         # Clear the existing scene
         self._scene.clear()
@@ -523,8 +524,10 @@ class VisorVTK(Visor):
         """
         logger.info("Starting server")
 
-        # Clear the existing scene if new input is provided
+        # Clear the existing scene if new input is provided; a rejected
+        # in-memory dataset leaves the existing scene in place.
         if input is not None:
+            self._check_input_dataset(input)
             self._scene.clear()
 
         # Prepare the scene with the raw data
@@ -544,6 +547,16 @@ class VisorVTK(Visor):
         return self._server_manager.health
 
     # Private Methods
+    def _check_input_dataset(self, input: str | VisorDatasetType) -> None:
+        """Pass an in-memory dataset to the scene's ``check_dataset``; a file path is checked when it is added.
+
+        Called before the scene is cleared, so a rejected dataset leaves the
+        scene as it was.  A file read converts every array class a scene
+        rejects, so a path needs no check here.
+        """
+        if isinstance(input, VisorDatasetType):
+            self._scene.check_dataset(input)
+
     def _clear_scene(self) -> None:
         """Clear the scene and finalise it; shared by clear and remove_dataset."""
         self._scene.clear()

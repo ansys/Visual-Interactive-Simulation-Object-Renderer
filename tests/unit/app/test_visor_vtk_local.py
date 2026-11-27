@@ -413,6 +413,43 @@ def test_update_rejected_dataset_leaves_scene_uncleared(iface):
     iface._prepare_and_render_scene.assert_not_called()
 
 
+def test_start_rejected_dataset_leaves_scene_uncleared(iface):
+    """A dataset the scene rejects fails start before the scene is cleared or the server is started."""
+    iface._server_manager.running = False
+    iface._scene.check_dataset = MagicMock(side_effect=ValueError("CLIENT mode cannot display"))
+    iface._scene.clear = MagicMock()
+    iface._prepare_and_render_scene = MagicMock()
+    iface._server_manager.start = MagicMock()
+    dataset = vtkPolyData()
+
+    with pytest.raises(ValueError, match="CLIENT mode cannot display"):
+        iface.start(dataset)
+
+    iface._scene.check_dataset.assert_called_once_with(dataset)
+    iface._scene.clear.assert_not_called()
+    iface._prepare_and_render_scene.assert_not_called()
+    iface._server_manager.start.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test__start_async_rejected_dataset_leaves_scene_uncleared(iface):
+    """A dataset the scene rejects fails asynchronous start before the scene is cleared or the server is started."""
+    iface._server_manager.running = False
+    iface._scene.check_dataset = MagicMock(side_effect=ValueError("CLIENT mode cannot display"))
+    iface._scene.clear = MagicMock()
+    iface._prepare_and_render_scene = MagicMock()
+    iface._server_manager.start_async = AsyncMock(return_value="task")
+    dataset = vtkPolyData()
+
+    with pytest.raises(ValueError, match="CLIENT mode cannot display"):
+        await iface._start_async(dataset)
+
+    iface._scene.check_dataset.assert_called_once_with(dataset)
+    iface._scene.clear.assert_not_called()
+    iface._prepare_and_render_scene.assert_not_called()
+    iface._server_manager.start_async.assert_not_awaited()
+
+
 # ================================================================== #
 # load_state
 # ================================================================== #
