@@ -1,0 +1,6 @@
+close
+=====
+
+.. currentmodule:: ansys.visor.viewer
+
+.. automethod:: Visor.close

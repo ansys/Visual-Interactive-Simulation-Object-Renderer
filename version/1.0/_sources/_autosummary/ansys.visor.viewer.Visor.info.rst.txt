@@ -1,0 +1,6 @@
+info
+====
+
+.. currentmodule:: ansys.visor.viewer
+
+.. automethod:: Visor.info
