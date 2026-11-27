@@ -295,8 +295,15 @@ class VisorVTK(Visor):
         Clear old datasets and update the scene with the new VTK dataset.
         This function is going to remove all existing functions and add the new actor
         based on the input model.
+
+        An in-memory dataset the scene rejects (``check_dataset``) leaves the
+        current scene as it was.  A file path is read after the clear; the
+        read converts every array class a scene rejects.
         """
         logger.info("Updating model")
+
+        if isinstance(input, VisorDatasetType):
+            self._scene.check_dataset(input)
 
         # Clear the existing scene
         self._scene.clear()

@@ -488,8 +488,14 @@ class VisorSceneBase(ABC):
             self._update_widget_bounds()
             self._update_actor_count()
 
+    def check_dataset(self, input: VisorDatasetType) -> None:
+        """Raise ValueError if this scene cannot display the dataset; every dataset is accepted here."""
+
     def add_dataset(self, input: VisorDatasetType, metadata: ExtendedMetadata) -> int:
         """Set the input dataset and metadata for the scene graph.
+
+        The dataset is first passed to :meth:`check_dataset`, whose
+        ``ValueError`` leaves the scene unchanged.
 
         Each part's record, seeded from the metadata when the dataset is
         registered, is applied to that part's pipeline through
@@ -505,6 +511,8 @@ class VisorSceneBase(ABC):
                 msg = "Input dataset is None, cannot load dataset."
                 logger.error(msg)
                 raise ValueError(msg)
+
+            self.check_dataset(input)
 
             # Ensure unique dataset name
             dataset_name = self._dataset_registry.get_sanitized_metadata_name(metadata)

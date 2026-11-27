@@ -71,19 +71,22 @@ def file_to_dataset(file_path: str) -> vtkDataSet | vtkCompositeDataSet:
         # Release the reader and its file handle
         del reader
 
+        # WORKAROUND (upstream VTK defect, see ClientDatasetNormalizer): the
+        # wasm32 client misreads platform-width integer arrays.  *copy* is
+        # owned by Visor, so converting it in place is safe.  VTKHDF also
+        # returns topology as long arrays on LP64 and gets the full
+        # conversion; other formats get their point and cell data converted.
+        # Remove this block with ClientDatasetNormalizer once fixed upstream.
         if is_hdf:
-            # WORKAROUND (upstream VTK defect, see ClientDatasetNormalizer):
-            # vtkHDFReader returns 64-bit integers as platform-width long
-            # arrays on LP64, which the wasm32 client misreads.  *copy* is
-            # owned by Visor, so converting it in place is safe.  Remove this
-            # block with ClientDatasetNormalizer once fixed upstream.
             replaced = ClientDatasetNormalizer.normalize_dataset_for_client(copy)
-            if replaced:
-                logger.info(
-                    "Normalized %d array(s) of VTKHDF dataset '%s' to fixed-width types for the client.",
-                    replaced,
-                    file_path,
-                )
+        else:
+            replaced = ClientDatasetNormalizer.normalize_attribute_arrays_for_client(copy)
+        if replaced:
+            logger.info(
+                "Normalized %d array(s) of dataset '%s' to fixed-width types for the client.",
+                replaced,
+                file_path,
+            )
 
         logger.debug(f"Finished creating dataset from file: {file_path}")
         return copy

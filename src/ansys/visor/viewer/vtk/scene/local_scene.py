@@ -2,6 +2,8 @@ import threading
 from typing import TYPE_CHECKING
 
 from ansys.visor.viewer.core.visor_logging import VisorDefaultLogger
+from ansys.visor.viewer.core.visor_types import VisorDatasetType
+from ansys.visor.viewer.vtk.io.client_dataset_normalizer import ClientDatasetNormalizer
 from ansys.visor.viewer.vtk.scene.base import VisorSceneBase
 
 if TYPE_CHECKING:
@@ -45,6 +47,29 @@ class VisorLocalScene(VisorSceneBase):
             msg = f"Failed to initialize VTK pipeline: {e}"
             logger.error(msg)
             raise RuntimeError(msg) from e
+
+    # -------------------------------------------------------------------------
+    # Dataset admission — arrays the wasm32 client cannot read
+    # -------------------------------------------------------------------------
+
+    def check_dataset(self, input: VisorDatasetType) -> None:
+        """Raise ValueError naming each vtkIdTypeArray, vtkLongArray or vtkUnsignedLongArray in the point or cell data.
+
+        The wasm32 client reads those classes at a different element width
+        from the server's (an upstream VTK serialization defect), so their
+        values arrive wrong.  The check does not depend on the host's
+        ``long`` width.  Files Visor reads are already converted by
+        ``file_to_dataset``; an in-memory dataset is rejected, not converted.
+        """
+        labels = ClientDatasetNormalizer.platform_width_attribute_arrays(input)
+        if labels:
+            msg = (
+                f"CLIENT mode cannot display {', '.join(labels)}: the wasm32 client misreads "
+                "vtkIdTypeArray, vtkLongArray and vtkUnsignedLongArray.  Convert these arrays to "
+                "vtkTypeInt64Array or vtkTypeUInt64Array before adding the dataset."
+            )
+            logger.error(msg)
+            raise ValueError(msg)
 
     # -------------------------------------------------------------------------
     # State delivery hook — wasm: JS set_state

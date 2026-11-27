@@ -397,6 +397,22 @@ def test_update_calls_scene_clear(iface):
     iface.update("input", "metadata")
 
 
+def test_update_rejected_dataset_leaves_scene_uncleared(iface):
+    """A dataset the scene rejects fails update before the scene is cleared or reloaded."""
+    iface._server_manager.running = True
+    iface._scene.check_dataset = MagicMock(side_effect=ValueError("CLIENT mode cannot display"))
+    iface._scene.clear = MagicMock()
+    iface._prepare_and_render_scene = MagicMock()
+    dataset = vtkPolyData()
+
+    with pytest.raises(RuntimeError, match="CLIENT mode cannot display"):
+        iface.update(dataset)
+
+    iface._scene.check_dataset.assert_called_once_with(dataset)
+    iface._scene.clear.assert_not_called()
+    iface._prepare_and_render_scene.assert_not_called()
+
+
 # ================================================================== #
 # load_state
 # ================================================================== #

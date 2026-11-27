@@ -1,3 +1,4 @@
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -167,12 +168,12 @@ def _long_backed_triangle() -> vtkPolyData:
     return dataset
 
 
-@pytest.mark.parametrize("ext,reader_cls,expected_class", [
-    ("vtkhdf", "vtkHDFReader", "vtkTypeInt64Array"),
-    ("vtp", "vtkXMLPolyDataReader", "vtkLongArray"),
+@pytest.mark.parametrize("ext,reader_cls,connectivity_class,pid_class", [
+    ("vtkhdf", "vtkHDFReader", "vtkTypeInt64Array", "vtkTypeInt64Array"),
+    ("vtp", "vtkXMLPolyDataReader", "vtkLongArray", "vtkTypeInt64Array"),
 ])
-def test_file_to_dataset_normalizes_long_arrays_only_for_vtkhdf(ext, reader_cls, expected_class):
-    """VTKHDF output is converted to fixed-width arrays; other formats are returned as read."""
+def test_file_to_dataset_normalizes_topology_only_for_vtkhdf(ext, reader_cls, connectivity_class, pid_class):
+    """Every format gets fixed-width point data; only VTKHDF also gets fixed-width topology."""
     with patch("os.path.exists", return_value=True), \
          patch("os.path.basename", return_value=f"model.{ext}"), \
          patch("os.path.splitext", return_value=("model", f".{ext}")), \
@@ -184,6 +185,21 @@ def test_file_to_dataset_normalizes_long_arrays_only_for_vtkhdf(ext, reader_cls,
 
     connectivity = result.GetPolys().GetConnectivityArray()
     pid = result.GetPointData().GetArray("pid")
-    assert (connectivity.GetClassName(), pid.GetClassName()) == (expected_class, expected_class)
+    assert (connectivity.GetClassName(), pid.GetClassName()) == (connectivity_class, pid_class)
     assert [connectivity.GetValue(i) for i in range(3)] == [0, 1, 2]
     assert [pid.GetValue(i) for i in range(3)] == [7, 8, 9]
+
+
+def test_file_to_dataset_serves_id_arrays_as_fixed_width():
+    """The XML reader's vtkIdTypeArray global ids come back as vtkTypeInt64Array with values and role kept."""
+    path = Path(__file__).parents[3] / "files" / "many_blocks" / "many_blocks.vtm"
+    result = file_to_dataset(str(path))
+
+    iterator = result.NewIterator()
+    iterator.SkipEmptyNodesOn()
+    iterator.InitTraversal()
+    point_data = iterator.GetCurrentDataObject().GetPointData()
+    global_node_id = point_data.GetArray("GlobalNodeId")
+    assert global_node_id.GetClassName() == "vtkTypeInt64Array"
+    assert [global_node_id.GetValue(i) for i in range(3)] == [924, 925, 935]
+    assert point_data.GetGlobalIds() is global_node_id
