@@ -83,9 +83,6 @@ class _FakeSession:
     def delete_color_map(self, lut):
         pass
 
-    def set_selected_blocks(self, source, selectors):
-        pass
-
     def write_camera(self, camera):
         pass
 

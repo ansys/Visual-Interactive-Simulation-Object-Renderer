@@ -52,7 +52,7 @@ if TYPE_CHECKING:
 logger = VisorDefaultLogger(__name__)
 
 SELECTED_AMBIENT_RGB: tuple[float, float, float] = (0 / 255, 62 / 255, 111 / 255)
-"""Tint of a selected part, as the VTK pipeline applies it; also the colour of a source's block-selection wireframe."""
+"""Tint of a selected part, as the VTK pipeline applies it."""
 
 SELECTED_TINT_STRENGTH: float = 0.5
 """How strongly a selected part shows the tint, from 0 (none) to 1 (solid tint); it acts like the selection's opacity.
@@ -60,9 +60,6 @@ SELECTED_TINT_STRENGTH: float = 0.5
 It is the part's Ambient, with Diffuse ``1 - strength``, and how far each
 colour of a selected part's colour map is mixed towards the tint.
 """
-
-SELECTED_BLOCK_OPACITY: float = 1.0
-"""Opacity of the wireframe ParaView draws over a source's block selection; this renderer writes no such selection."""
 
 _ASSOCIATIONS: dict[VisorVtkVariableType, str] = {
     VisorVtkVariableType.POINT: "POINTS",
@@ -269,7 +266,7 @@ class BlockTable:
     def __init__(
         self, session: ParaviewSession, source: PvSource, rep: PvRepresentation, color_maps: _ColorMaps
     ) -> None:
-        """Hold no blocks, so none is shown; a block selection written to the source is outlined in the opaque selection colour."""
+        """Hold no blocks, so none is shown."""
         self._session = session
         self._source = source
         self._rep = rep
@@ -280,8 +277,6 @@ class BlockTable:
         self._representation: str | None = None
         self._stale: set[Callable[[], None]] = set()
         self._write_visible()
-        session.set_property(rep, "SelectionColor", list(SELECTED_AMBIENT_RGB))
-        session.set_property(rep, "SelectionOpacity", SELECTED_BLOCK_OPACITY)
 
     def flush(self) -> None:
         """Write every stale list once."""

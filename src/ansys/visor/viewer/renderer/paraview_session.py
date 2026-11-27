@@ -52,7 +52,7 @@ class ParaviewSession(Protocol):
         """Open path on pvserver."""
 
     def show(self, source: PvSource) -> PvRepresentation:
-        """Show source in the view with scalar colouring off, scalars mapped to colours before interpolation, and its selection drawn as ParaView's default wireframe."""
+        """Show source in the view with scalar colouring off and scalars mapped to colours before interpolation."""
 
     def delete(self, source: PvSource) -> None:
         """Hide and delete source on pvserver."""
@@ -88,9 +88,6 @@ class ParaviewSession(Protocol):
 
     def delete_color_map(self, lut: PvLookupTable) -> None:
         """Delete lut on pvserver."""
-
-    def set_selected_blocks(self, source: PvSource, selectors: list[str]) -> None:
-        """Make these blocks of source its whole selection; an empty list clears it."""
 
     def write_camera(self, camera: VisorCameraState) -> None:
         """Write the view camera properties and rotate about its focal point."""
@@ -167,10 +164,7 @@ class PvSimpleSession:
         return source
 
     def show(self, source: PvSource) -> PvRepresentation:
-        """Show source in the view with scalar colouring off, scalars mapped to colours before interpolation, and its selection drawn as ParaView's default wireframe.
-
-        A surface selection is coplanar with the faces it covers and
-        z-fights with them; lines are offset towards the camera.
+        """Show source in the view with scalar colouring off and scalars mapped to colours before interpolation.
 
         With ``InterpolateScalarsBeforeMapping`` off, a colour map is applied
         as vertex colours rather than as a colour texture, so the number of
@@ -280,37 +274,6 @@ class PvSimpleSession:
     def delete_color_map(self, lut: PvLookupTable) -> None:
         """Delete lut on pvserver."""
         self._simple.Delete(lut)
-
-    def set_selected_blocks(self, source: PvSource, selectors: list[str]) -> None:
-        """Make these blocks of source its whole selection in one write; an empty list clears it.
-
-        This is ``SelectBlocks`` with every selector in one selection source
-        and no render: ``SelectBlocks`` takes one selector per call and
-        renders the view after each.  The selection is of cells:
-        ``SelectBlocks``' default of points extracts each block as vertices,
-        so only its points would be highlighted.
-        """
-        if not selectors:
-            source.SMProxy.SetSelectionInput(0, None, 0)
-            return
-        from paraview.modules.vtkRemotingViews import vtkSMSelectionHelper
-        from paraview.vtk import vtkSelectionNode
-        from vtkmodules.vtkFiltersSources import vtkSelectionSource
-
-        selection = vtkSelectionSource()
-        selection.SetFieldType(vtkSelectionNode.CELL)
-        selection.SetContentType(vtkSelectionNode.BLOCK_SELECTORS)
-        selection.SetArrayName("Hierarchy")
-        for selector in selectors:
-            selection.AddBlockSelector(selector)
-        selection.Update()
-        selection_proxy = vtkSMSelectionHelper.NewSelectionSourceFromSelection(
-            source.GetSession(), selection.GetOutput()
-        )
-        append = vtkSMSelectionHelper.NewAppendSelectionsFromSelectionSource(selection_proxy)
-        source.SMProxy.SetSelectionInput(0, append, 0)
-        append.UnRegister(None)
-        selection_proxy.UnRegister(None)
 
     def write_camera(self, camera: VisorCameraState) -> None:
         """Write the view camera properties and rotate about its focal point; ParaView recomputes the clipping range at render."""

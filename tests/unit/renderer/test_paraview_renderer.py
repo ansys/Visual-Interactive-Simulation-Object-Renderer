@@ -38,7 +38,6 @@ class _FakeSession:
         self.maps: list[SimpleNamespace] = []
         self.rescaled: list[tuple[int, float, float]] = []
         self.deleted_maps: list[int] = []
-        self.selections: list[tuple[str, list[str]]] = []
         self.extracts: list[SimpleNamespace] = []
         self.extracted: list[tuple[str, list[str]]] = []
         self.centers: list[list[float]] = []
@@ -86,9 +85,6 @@ class _FakeSession:
 
     def delete_color_map(self, lut):
         self.deleted_maps.append(lut.index)
-
-    def set_selected_blocks(self, source, selectors):
-        self.selections.append((source.path, selectors))
 
     def write_camera(self, camera):
         pass
@@ -411,16 +407,6 @@ def test_a_selected_block_is_drawn_tinted_by_its_own_group_not_by_the_representa
         ("Opacity", 1.0),
         ("LookupTable", None),
     ]
-    assert session.selections == []
-
-
-def test_a_composite_source_draws_its_selection_opaque_in_the_server_blue():
-    session = _FakeSession()
-    renderer, _ = _renderer(session)
-    _register_wing_and_rib(renderer)
-
-    assert _last_write(session, "SelectionOpacity") == 1.0
-    assert _last_write(session, "SelectionColor") == [0.0, 62 / 255, 111 / 255]
 
 
 def test_hiding_a_selected_block_drops_it_from_its_group():
@@ -668,7 +654,7 @@ def test_flush_writes_nothing_when_nothing_changed():
 
     renderer.flush_writes()
 
-    assert (session.writes, session.selections, session.extracts) == ([], [], [])
+    assert (session.writes, session.extracts) == ([], [])
 
 
 def test_record_pipeline_camera_rotates_about_the_focal_point_a_gesture_left():
