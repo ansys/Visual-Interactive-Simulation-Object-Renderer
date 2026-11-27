@@ -1,9 +1,13 @@
 import { VtkWASMHandler } from '@kitware/vtk-wasm/remote';
+import { BlobEviction } from './BlobEviction';
 import { CanvasPixelSize } from './CanvasPixelSize';
 import { SerialUpdateQueue } from './SerialUpdateQueue';
 import TrameInterface from './TrameInterface.js';
 import VtkScene from './VtkScene.js';
 import { VtkWasmPerfCounter } from './VtkWasmPerfCounters.js';
+
+/** Bytes of cached blob memory kept after each update, not counting blobs the scene is using. */
+const BLOB_CACHE_BUDGET_BYTES = 100000000;
 
 /**
  * @typedef {string|number|boolean|null|Object|{observe:()=>number}|Record<string,FrontendVtkObject|(()=>Promise<FrontendVtkObject>)>} FrontendVtkObject
@@ -90,11 +94,13 @@ export default class RemoteVtkScene {
      * @param {boolean} perfLogging
      * @return {{
      * wasmHandler: VtkWASMHandler|any|Object|Record<string,any>,
-     * vtkWasmPerfCounter: ?VtkWasmPerfCounter
+     * vtkWasmPerfCounter: ?VtkWasmPerfCounter,
+     * blobEviction: BlobEviction
      * }}
      */
     static #getWasmHandlerAsync = async (trameSession, wasmUrl, perfLogging) => {
         const wasmHandler = new VtkWASMHandler();
+        const blobEviction = new BlobEviction(BLOB_CACHE_BUDGET_BYTES);
 
         /** @type {?VtkWasmPerfCounter} */
         let vtkWasmPerfCounter = null;
@@ -120,6 +126,7 @@ export default class RemoteVtkScene {
             const t0 = perfLogging ? performance.now() : 0;
             const res = await trameSession.call('vtklocal.get.status', [vtkId]);
             vtkWasmPerfCounter?.logStatusFetch(vtkId, performance.now() - t0);
+            blobEviction.recordInUse(vtkId, res.hashes);
             return res;
         }
 
@@ -139,7 +146,7 @@ export default class RemoteVtkScene {
             },
         });
         this.#reserveBrowserIdRange(wasmHandler);
-        return { wasmHandler, vtkWasmPerfCounter };
+        return { wasmHandler, vtkWasmPerfCounter, blobEviction };
     };
 
     /**
@@ -206,7 +213,7 @@ export default class RemoteVtkScene {
         const rendererId = wasmIds.rendererId;
         const renderWindowId = wasmIds.renderWindowId;
         const perfLogging = trameInterface.getState('perf_logging') === true;
-        const { wasmHandler, vtkWasmPerfCounter } = await this.#getWasmHandlerAsync(
+        const { wasmHandler, vtkWasmPerfCounter, blobEviction } = await this.#getWasmHandlerAsync(
             trameInterface.session,
             wasmUrl,
             perfLogging
@@ -235,6 +242,7 @@ export default class RemoteVtkScene {
         instance.#wasmHandler = wasmHandler;
         instance.#trameInterface = trameInterface;
         instance.#perfCounter = vtkWasmPerfCounter;
+        instance.#blobEviction = blobEviction;
         instance.canvasDiv = canvasDiv;
         instance.canvas = canvas;
         instance.rendererId = rendererId;
@@ -289,8 +297,7 @@ export default class RemoteVtkScene {
      * @return {void}
      */
     #checkMemory = () => {
-        const cacheSize = 100000000;
-        this.#wasmHandler.freeMemory(cacheSize);
+        this.#blobEviction.evict(this.#wasmHandler);
     };
     /**
      * @param {Record<string,Record<string,string>>} definition
@@ -328,6 +335,8 @@ export default class RemoteVtkScene {
     #trameInterface;
     /**@type{?VtkWasmPerfCounter}*/
     #perfCounter = null;
+    /**@type{BlobEviction}*/
+    #blobEviction;
     /**@type{HTMLCanvasElement}*/
     canvas;
     /**@type{HTMLDivElement}*/

@@ -21,6 +21,7 @@ jest.mock('@kitware/vtk-wasm/remote', () => ({
                 return true;
             },
             unRegisterState: (id) => mockCalls.push(['unRegisterState', id]),
+            getTotalBlobMemoryUsage: () => 0,
             startEventLoop: () => true,
         };
         this.stateDecorator = (state) => state;
